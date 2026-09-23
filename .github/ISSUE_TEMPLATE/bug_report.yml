@@ -1,0 +1,123 @@
+name: Bug report
+description: Something in EDSMT does not do what it says it does.
+title: "[bug] "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Not a security report.** A vulnerability goes through private
+        reporting — the **Security** tab above, **Report a vulnerability** —
+        never a public issue. `SECURITY.md` has the detail.
+
+        Everything below is asked because the answer has been needed on a
+        previous report and guessing it wasted a round trip.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version, from the title bar
+      description: >-
+        Read it off the app's own title bar - it is there so that this
+        question has an answer. Otherwise the first reply is always "which
+        build are you on", and a report against a build from three releases
+        ago may already be fixed. If the app will not start at all, the
+        version is in the Add/Remove Programs entry.
+      placeholder: "1.10016"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >-
+        What you pressed, what you expected, and what you got instead.
+      placeholder: |
+        Pressed F10 on a fresh body. The deposit appeared in the list but
+        the map did not redraw and the status line went red.
+    validations:
+      required: true
+
+  - type: input
+    id: status-line
+    attributes:
+      label: What the status line said
+      description: >-
+        The line along the bottom of the window, copied exactly. A failure
+        inside a button used to be completely silent; it now names itself
+        there and writes crash.log. That sentence usually identifies the
+        bug on its own.
+      placeholder: "Journal problem: TypeError - see crash.log"
+    validations:
+      required: true
+
+  - type: input
+    id: journal-folder
+    attributes:
+      label: Your journal folder
+      description: >-
+        The full path EDSMT is reading, from Settings. It matters more often
+        than it looks: the folder can be redirected, OneDrive moves it, and
+        the Steam Play prefix puts it somewhere else entirely. "Journal
+        folder not found" is nearly always this.
+      placeholder: 'C:\Users\you\Saved Games\Frontier Developments\Elite Dangerous'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you are running it
+      options:
+        - Installer (EDSMT-Setup.exe)
+        - Portable (EDSMT.exe)
+        - From source (RUN.bat)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: game-state
+    attributes:
+      label: Was Elite Dangerous running
+      description: >-
+        Most of the app works with the game shut, so this separates a reader
+        problem from everything else.
+      options:
+        - Running, and I was in the SRV
+        - Running, but not in the SRV
+        - Not running
+    validations:
+      required: true
+
+  - type: textarea
+    id: crashlog
+    attributes:
+      label: crash.log
+      description: >-
+        From %LOCALAPPDATA%\RadioRaxxla\EDSMT. It only exists if something
+        threw, and it carries the full traceback with the version stamped on
+        it. Paste the last entry.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: mining-events
+    attributes:
+      label: journal-mining-events.log
+      description: >-
+        Same folder. Attach it if the report is about a deposit type, a
+        density or a DSS signal not being picked up - it holds the first
+        example of every surface-mining event the game wrote, and Frontier
+        have not published that schema, so it is the only evidence there is.
+      render: text
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste `settings.json`.** It holds your Inara API key. If the
+        problem is a setting, say which setting and what it is set to.

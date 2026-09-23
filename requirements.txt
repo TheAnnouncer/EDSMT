@@ -1,0 +1,8 @@
+# Upper bounds are deliberate. Without them a fresh build resolves ">=" to
+# whatever shipped this morning and compiles against a version nobody has
+# run the tests on. Raise these on purpose, after running the tests.
+#
+# No plotting library: the plan view is drawn on a plain canvas, which is
+# why this starts in about a second and the download is a few MB rather
+# than fifty.
+customtkinter>=5.2.2,<6

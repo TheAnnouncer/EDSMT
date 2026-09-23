@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EDSMT — Surface Mining Survey — Radio Raxxla</title>
+<meta name="description" content="EDSMT maps Rhino SRV surface mining deposits straight from your Elite Dangerous journal, puts a compass overlay on your screen, and shares every find with the commanders running it. Free, open source, from Radio Raxxla.">
+<link rel="icon" href="radio-raxxla-badge.png">
+<meta property="og:title" content="EDSMT — Surface Mining Survey">
+<meta property="og:description" content="Map surface mining for the Rhino without typing a coordinate. Free, from Radio Raxxla.">
+<meta property="og:image" content="https://radioraxxla.com/edsmt/radio-raxxla-badge.png">
+<meta name="theme-color" content="#050505">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
+<style>
+/* Radio Raxxla design system - tokens taken from the site's own styles.css
+   so this page belongs to it rather than merely resembling it. Deliberately
+   single-theme: it is a cockpit, it is not lit. */
+:root{
+  --void:#050505;
+  --hull:#0a0908;
+  --panel:#100e0b;
+  --signal:#ff7a18;
+  --signal-dim:#c45a10;
+  --paper:#ffb56a;
+  --mute:#c46e28;
+  --faint:#7a4518;
+  --line:rgba(255,122,24,.38);
+  --line-strong:rgba(255,122,24,.72);
+  --ok:#4ad991;
+  --warn:#ffd166;
+  --bad:#e0523c;
+  --display:'Rajdhani',ui-sans-serif,system-ui,sans-serif;
+  --mono:'Share Tech Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased;background:var(--void);color:var(--paper);color-scheme:dark}
+body{
+  margin:0;background:var(--void);color:var(--paper);
+  font-family:var(--display);font-size:17px;line-height:1.6;font-weight:400;
+  padding-inline:20px;padding-block:0 0;overflow-x:hidden;
+}
+h1,h2,h3{text-wrap:balance;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin:0}
+p{text-wrap:pretty;margin:0 0 14px;max-width:66ch}
+p:last-child{margin-bottom:0}
+a{color:var(--signal)}
+::selection{background:rgba(255,122,24,.45);color:var(--void)}
+:focus-visible{outline:2px solid var(--signal);outline-offset:3px}
+
+.wrap{max-width:1120px;margin:0 auto}
+.hud-label{font-family:var(--mono);font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:var(--mute)}
+
+/* fixed overlays, exactly as the parent site carries them */
+.scanlines{pointer-events:none;position:fixed;inset:0;z-index:40;opacity:.45;
+  background:repeating-linear-gradient(to bottom,rgb(5 5 5/.22) 0,rgb(5 5 5/.22) 1px,transparent 1px,transparent 3px)}
+.vignette{pointer-events:none;position:fixed;inset:0;z-index:39;
+  background:radial-gradient(ellipse at center,transparent 38%,rgb(5 5 5/.72) 100%)}
+
+/* ---------- top bar ---------- */
+nav{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:center;
+  max-width:1120px;margin:0 auto;padding:16px 0 14px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin-right:auto}
+.brand img{width:40px;height:40px;display:block}
+.brand b{font-family:var(--display);font-size:15px;letter-spacing:.16em;color:var(--paper);
+  text-transform:uppercase;font-weight:600;display:block;line-height:1.15}
+.brand span{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--mute)}
+nav a.link{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--mute);text-decoration:none}
+nav a.link:hover,nav a.link[aria-current]{color:var(--signal)}
+
+/* status strip */
+.strip{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  max-width:1120px;margin:0 auto;padding:8px 0;border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+
+/* ---------- hero ---------- */
+.hero{padding:64px 0 54px;position:relative}
+.hero h1{font-size:clamp(3rem,1.5rem + 6vw,7rem);line-height:.94;letter-spacing:.04em;
+  color:var(--paper);margin:14px 0 20px;
+  text-shadow:0 0 18px rgba(255,122,24,.55),0 4px 28px var(--void)}
+.hero .lede{font-size:clamp(1.05rem,.95rem + .5vw,1.35rem);color:var(--paper);max-width:56ch}
+.hero .lede strong{color:var(--signal);font-weight:600}
+
+.cta-row{display:flex;flex-wrap:wrap;gap:12px;margin:30px 0 16px}
+.cta{
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;
+  text-decoration:none;padding:15px 26px;border:1px solid var(--signal);
+  background:linear-gradient(180deg,rgba(255,122,24,.22),rgba(255,122,24,.08));
+  color:var(--paper);display:inline-block;
+}
+.cta:hover{background:linear-gradient(180deg,rgba(255,122,24,.36),rgba(255,122,24,.16))}
+.cta.ghost{background:transparent;border-color:var(--line);color:var(--mute)}
+.cta.ghost:hover{border-color:var(--signal);color:var(--paper);background:rgba(255,122,24,.06)}
+.note-small{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--faint);
+  text-transform:uppercase;max-width:none}
+
+/* ---------- panels ---------- */
+section.panel{border-top:1px solid var(--line);padding:52px 0}
+section.panel > h2{font-size:clamp(1.4rem,1.1rem + 1vw,2rem);color:var(--signal);margin-bottom:6px}
+section.panel > .sub{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--faint);
+  text-transform:uppercase;margin-bottom:26px}
+
+.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:34px}
+.cols3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:var(--line)}
+.cols3 > div{background:var(--hull);padding:22px 24px}
+.cols3 h3{font-size:14px;color:var(--signal);letter-spacing:.14em;margin-bottom:8px}
+.cols3 p{font-size:15.5px;color:var(--mute);margin:0}
+
+/* keys */
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-bottom:22px}
+.key{border:1px solid var(--line);background:var(--hull);padding:20px 22px;position:relative}
+.key kbd{font-family:var(--mono);font-size:26px;color:var(--signal);display:block;margin-bottom:8px;
+  letter-spacing:.08em}
+.key p{font-size:15.5px;color:var(--mute);margin:0}
+.key b{color:var(--paper);font-weight:600}
+.hud-corner{pointer-events:none;position:absolute;width:1.05rem;height:1.05rem;
+  border-color:var(--signal);opacity:.9}
+.c-tl{top:-1px;left:-1px;border-top:2px solid;border-left:2px solid}
+.c-br{bottom:-1px;right:-1px;border-bottom:2px solid;border-right:2px solid}
+
+/* readout */
+.readout{border:1px solid var(--line);background:var(--panel);padding:20px 22px;font-family:var(--mono)}
+.readout .cap{font-size:10.5px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;
+  border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:13px}
+.readout .row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:4px 0}
+.readout .k{color:var(--faint);letter-spacing:.1em}
+.readout .v{color:var(--paper);text-align:right}
+.readout .v.ok{color:var(--ok)}
+.readout .v.warn{color:var(--warn)}
+
+/* status chips */
+.chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  padding:3px 9px;border:1px solid currentColor;white-space:nowrap;display:inline-block}
+.chip.verified{color:var(--ok)}
+.chip.reported{color:var(--mute)}
+.chip.stale{color:var(--bad)}
+
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);margin-top:18px}
+table{border-collapse:collapse;width:100%;min-width:640px;font-family:var(--mono);font-size:13px}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line)}
+th{font-size:10.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;
+  background:var(--hull);font-weight:400}
+td{color:var(--paper)}
+tr:last-child td{border-bottom:none}
+td.dim{color:var(--faint)}
+
+.tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:18px}
+.tier{border:1px solid var(--line);background:var(--hull);padding:16px 18px}
+.tier .n{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--faint);
+  text-transform:uppercase;display:block;margin-bottom:6px}
+.tier p{font-size:15px;color:var(--mute);margin:0}
+
+ul{margin:0 0 14px;padding-left:20px;max-width:66ch;color:var(--mute)}
+li{margin-bottom:6px}
+li::marker{color:var(--signal)}
+li b{color:var(--paper);font-weight:600}
+code{font-family:var(--mono);font-size:.88em;color:var(--signal);
+  background:rgba(255,122,24,.09);padding:1px 6px;border:1px solid var(--line)}
+
+.callout{border-left:2px solid var(--signal);padding:4px 0 4px 18px;margin:20px 0}
+.callout .hud-label{display:block;margin-bottom:6px;color:var(--signal)}
+.callout.warn{border-left-color:var(--warn)}
+.callout.warn .hud-label{color:var(--warn)}
+
+footer{border-top:1px solid var(--line);margin-top:20px;padding:26px 0 60px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--faint);
+  text-transform:uppercase;display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between}
+footer a{color:var(--mute);text-decoration:none}
+footer a:hover{color:var(--signal)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:600px){
+  .hero{padding:44px 0 38px}
+  section.panel{padding:40px 0}
+}
+</style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<nav>
+  <a class="brand" href="/">
+    <img src="radio-raxxla-badge.png" alt="Radio Raxxla">
+    <span><b>Radio Raxxla</b><span>Tooling &middot; EDSMT</span></span>
+  </a>
+  <!-- The site's own nav. Set these hrefs to the real paths. -->
+  <a class="link" href="/">Cockpit</a>
+  <a class="link" href="/the-announcer">The Announcer</a>
+  <a class="link" href="/streamers">Streamers</a>
+  <a class="link" href="/expedition">Expedition</a>
+  <a class="link" href="/frequency">Frequency</a>
+  <a class="link" href="/archives">Archives</a>
+  <a class="link" href="/comms">Comms</a>
+  <a class="link" href="/EDSMT/" aria-current="page">EDSMT</a>
+</nav>
+
+<div class="strip">
+  <span>EDSMT <!--VERSION-->1.10028<!--/VERSION--></span>
+  <span>Elite Dangerous 4.4.1.1</span>
+  <span>GPL-3.0 &middot; Windows</span>
+</div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="hud-label">Vodel Rhino &middot; Surface Survey &middot; Test Build</div>
+    <h1>EDSMT</h1>
+    <p class="lede">Map surface mining for the Rhino <strong>without typing a
+    single coordinate</strong>. It reads your journal, so the system, the body,
+    your latitude and longitude and the commodity all come from the game.</p>
+
+    <div class="cta-row">
+      <a class="cta" href="EDSMT-Setup.exe">Download &middot; Installer</a>
+      <a class="cta ghost" href="EDSMT.exe">Portable .exe</a>
+      <a class="cta ghost" href="EDSMT-source.zip">Source (GPL-3.0)</a>
+    </div>
+    <p class="note-small">Free &middot; No account &middot; Nothing is shared until you switch it on</p>
+  </header>
+
+  <section class="panel">
+    <h2>Two keys. That is the whole tool.</h2>
+    <p class="sub">The workflow the game actually uses</p>
+
+    <div class="keys">
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>F9</kbd>
+        <p><b>Inside a mining location signal.</b> The game has just listed what
+        might be in it. One press records the signal, its position and
+        everything it offered &mdash; including anything already marked
+        depleted.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>F10</kbd>
+        <p><b>Where the scanner pinged.</b> One press per deposit. Rigs can be
+        left blank &mdash; you do not know the count until you are stood on it,
+        so fill it in when you do.</p></div>
+    </div>
+
+    <div class="cols2">
+      <div>
+        <div class="callout">
+          <span class="hud-label">No centre to set. No bearing to work out.</span>
+          <p>A deposit records where it <em>is</em>. How far it is and which way
+          to turn are worked out live from wherever you happen to be standing
+          &mdash; which is the number you want with your hands on the wheel, and
+          it means nothing has to be pressed before a find can be recorded.</p>
+        </div>
+        <p>Both hotkeys are system-wide, so they work with the game in front,
+        and the position is taken the instant you press the key. Both are
+        rebindable.</p>
+      </div>
+      <div class="readout">
+        <div class="cap">Live &middot; SRV Telemetry</div>
+        <div class="row"><span class="k">System</span><span class="v">Ega</span></div>
+        <div class="row"><span class="k">Body</span><span class="v">Ega 1</span></div>
+        <div class="row"><span class="k">Class</span><span class="v">High metal content</span></div>
+        <div class="row"><span class="k">Gravity</span><span class="v">0.25 g</span></div>
+        <div class="row"><span class="k">Surface temp</span><span class="v">214 K</span></div>
+        <div class="row"><span class="k">DSS signals</span><span class="v">6 mining locations</span></div>
+        <div class="row"><span class="k">In signal</span><span class="v">3</span></div>
+        <div class="row"><span class="k">Nearest</span><span class="v">Haematite &nbsp; 896 m</span></div>
+        <div class="row"><span class="k">Turn</span><span class="v ok">Slightly left</span></div>
+        <div class="row"><span class="k">Amount</span><span class="v warn">Low</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>The overlay</h2>
+    <p class="sub">Drive by the strip, not by alt-tab</p>
+    <div class="cols2">
+      <div>
+        <p>A compass tape across the top of your screen showing which way every
+        recorded deposit is, how far, and how many rigs it takes.</p>
+        <p>Anything behind you pins to the near edge with a turn arrow rather
+        than silently vanishing &mdash; which is the failure that makes an
+        overlay useless the moment you drive past something. Labels that would
+        collide stack onto separate rows, because deposits cluster, and a
+        cluster is exactly when there is most to read.</p>
+        <p>Unlock it to drag it where you want, lock it again and clicks pass
+        straight through to the game.</p>
+        <div class="callout warn">
+          <span class="hud-label">Borderless or windowed, not fullscreen</span>
+          <p>No overlay of any kind can draw over a game in exclusive
+          fullscreen. That is DirectX, not this app.</p>
+        </div>
+      </div>
+      <div class="readout">
+        <div class="cap">Overlay &middot; Compass Tape</div>
+        <svg viewBox="0 0 340 112" width="100%" height="auto" role="img"
+             aria-label="Compass tape showing north-west, north and north-east, a heading pointer, and three haematite deposits at 896 metres, 1.26 kilometres and 1.47 kilometres, the last one behind you.">
+          <rect x="0" y="0" width="340" height="112" fill="#0a0908"></rect>
+          <line x1="0" y1="34" x2="340" y2="34" stroke="#7a4518" stroke-width="1"></line>
+          <g stroke="#7a4518">
+            <line x1="40" y1="28" x2="40" y2="34"></line>
+            <line x1="100" y1="28" x2="100" y2="34"></line>
+            <line x1="220" y1="28" x2="220" y2="34"></line>
+            <line x1="280" y1="28" x2="280" y2="34"></line>
+          </g>
+          <g stroke="#ff7a18" stroke-width="1.5">
+            <line x1="70" y1="21" x2="70" y2="34"></line>
+            <line x1="170" y1="21" x2="170" y2="34"></line>
+            <line x1="250" y1="21" x2="250" y2="34"></line>
+          </g>
+          <g fill="#ff7a18" font-family="Share Tech Mono,monospace" font-size="10">
+            <text x="62" y="15">NW</text><text x="166" y="15">N</text><text x="244" y="15">NE</text>
+          </g>
+          <polygon points="170,44 163,36 177,36" fill="#4ad991"></polygon>
+          <g font-family="Share Tech Mono,monospace" font-size="10.5">
+            <line x1="150" y1="36" x2="150" y2="52" stroke="#ffb56a"></line>
+            <text x="150" y="62" text-anchor="end" fill="#ffb56a">&lt; HAEMATITE 896m 6R</text>
+            <line x1="214" y1="36" x2="214" y2="72" stroke="#ffb56a"></line>
+            <text x="214" y="82" text-anchor="start" fill="#ffb56a">&gt; HAEMATITE 1.26km 4R</text>
+            <text x="8" y="103" fill="#7a4518">v HAEMATITE 1.47km &mdash; behind you</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Density and amount are different questions</h2>
+    <p class="sub">And conflating them throws away what the game tells you</p>
+    <div class="cols2">
+      <div>
+        <p>A site can be <b style="color:var(--paper)">high density</b> and
+        <b style="color:var(--paper)">depleted</b> at the same time: rich, empty
+        today, worth coming back to. One number cannot say that.</p>
+        <p>Press <b style="color:var(--signal)">MINED OUT</b> and the deposit
+        drops to Depleted with the note stamped
+        <code>Mined 10/09/2026 01:05</code>. Press it again next month and it
+        adds a line, so the site keeps its history.</p>
+        <p>It is not a delete. The deposit stays on the map, because "empty as
+        of the tenth" is worth more to the next commander than nothing at all.</p>
+      </div>
+      <div class="tiers">
+        <div class="tier"><span class="n">Density</span>
+          <p>How rich it is. Low / Medium / High. Does not change.</p></div>
+        <div class="tier"><span class="n">Amount</span>
+          <p>How much is left. Depleted / Low / Medium / High. Walks down as you
+          work it.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>The shared survey</h2>
+    <p class="sub">A hotspot list never goes stale. This one does.</p>
+    <div class="cols2">
+      <div>
+        <p>Ring hotspots are permanent, so a hotspot database is written once
+        and stays true. Surface deposits are not. Frontier were explicit: once
+        collected, they <b style="color:var(--paper)">regenerate at a very slow
+        rate</b>.</p>
+        <p>So age is not a column here that you are left to interpret &mdash; it
+        is part of the ranking. Every site is scored on rigs, on overlap and on
+        density, then decayed by how long ago somebody actually stood on it.</p>
+        <p>The alternative is a list that looks authoritative and sends people
+        on a two-hour trip to an empty crater.</p>
+      </div>
+      <div>
+        <p><span class="chip verified">Verified</span> means somebody from Radio
+        Raxxla has driven to it and confirmed it. <span class="chip reported">Reported</span>
+        is any commander's find &mdash; just as welcome, and most of the
+        database.</p>
+        <div class="callout">
+          <span class="hud-label">Verification cannot be self-awarded</span>
+          <p>The app cannot mark its own rows verified. The badge is granted by
+          the server to a named person holding a staff key, and the database
+          records who. An unaccountable badge is worth less than no badge.</p>
+        </div>
+        <p>It does not stop the clock either. A site verified in March is still
+        an empty crater in September, so freshness decay applies to verified
+        rows exactly as it does to any other.</p>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <caption style="text-align:left;padding:10px 15px;font-size:10.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase">Example results &mdash; illustrative, not live data</caption>
+        <thead><tr><th>System</th><th>Body</th><th>Rigs</th><th>Types in patch</th><th>Last confirmed</th><th>Status</th><th>Score</th></tr></thead>
+        <tbody>
+          <tr><td>Col 285 AB-C d1-23</td><td>A 3</td><td>12</td><td>Magnesite, Olivine, Ruby</td><td>1 day ago</td><td><span class="chip verified">Verified</span></td><td>28.4</td></tr>
+          <tr><td>Deciat</td><td>6</td><td>18</td><td>Diamond</td><td>6 days ago</td><td><span class="chip reported">Reported</span></td><td>20.4</td></tr>
+          <tr><td class="dim">Shinrarta Dezhra</td><td class="dim">A 1</td><td class="dim">14</td><td class="dim">Sapphire, Iridium</td><td class="dim">64 days ago</td><td><span class="chip stale">Stale</span></td><td class="dim">2.9</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note-small" style="margin-top:14px">The third row is the point. On
+    raw numbers it is a good site. Nobody has seen it in two months, so it ranks
+    below a smaller one confirmed last week.</p>
+  </section>
+
+  <section class="panel">
+    <h2>What nobody else is collecting</h2>
+    <p class="sub">Two gaps in the community's data, and why they exist</p>
+    <div class="cols3">
+      <div>
+        <h3>Which worlds hold what</h3>
+        <p>Planet class, gravity, atmosphere and volcanism ride with every
+        deposit. Nobody has published which surface deposits favour which
+        bodies, because nobody has been collecting both halves at once.</p>
+      </div>
+      <div>
+        <h3>Where it actually sells</h3>
+        <p>Find answers it from a verified upstream &mdash; nearest first, with
+        the distance in light years on every row, and a station in a system
+        nobody has placed reads "-" rather than sorting to the top as the
+        closest thing in the galaxy. Your own journal fills the gap those
+        services leave: the game writes <code>Market.json</code> every time you
+        open a market.</p>
+      </div>
+      <div>
+        <h3>The journal schema itself</h3>
+        <p>Frontier have not published the surface-mining events. Rather than
+        guess names, EDSMT captures the first example of each to
+        <code>journal-mining-events.log</code>. Posting that to the forums is
+        how the schema gets written down for every tool that follows.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="whatsnew">
+    <h2>What changed</h2>
+    <p class="sub">Latest build &middot; <!--VERSION-->1.10028<!--/VERSION--></p>
+    <!--WHATSNEW-->
+    <h3>Fixed — an update could wipe your settings</h3>
+    <p>Updating to the last build reset some commanders&#x27; overlay layout, hotkeys and switches to the defaults. The cause was two things together: settings were written straight over the old file, and a settings file that could not be read at that moment was replaced with the defaults.</p>
+    <p>Both are gone. Every save now goes to a temporary file and replaces the old one only once it is complete, the last good copy is kept beside it as <code>settings.json.bak</code>, and a file that cannot be read is set aside and the backup used instead — never overwritten. If that ever happens, the status line says so. Only one copy of EDSMT can run at a time now, and the installer waits for it to close rather than updating it underneath itself.</p>
+    <h3>New — updates fetch themselves</h3>
+    <p>When a new version is out, EDSMT downloads it in the background from radioraxxla.com, and keeps it only if it matches the checksum published beside it, byte for byte. The button in the title bar then reads <b>INSTALL UPDATE</b>. Nothing is installed until you press it, so it never closes on you mid-run. Press it and EDSMT closes, updates, and opens again with everything as it was. Settings → <i>This build</i> has the switch if you would rather it asked first.</p>
+    <p>This build is the last one you fetch from the website by hand.</p>
+    <h3>New — Where to land</h3>
+    <p>A <b>Where to land</b> button in the title bar lists every landable body in the system, best first, and fills itself in as you scan: honk, resolve bodies in the FSS, map one with the DSS, and it keeps up without a click. Each body shows an estimated value and one line saying why — known sites still intact, mining locations nobody has shared yet, not mapped, or nothing found — with the DSS count, what that kind of ground usually carries, what has already been shared there, your own finds, and how much you have surveyed.</p>
+    <p>What a kind of ground usually carries comes from everyone&#x27;s shared finds once there are enough of them, and from the commodity tables until then. The list says which, every time.</p>
+    <h3>New — Survey area: know you have covered all of it</h3>
+    <p>Press <b>CENTRE</b> in the middle of an area and <b>BORDER</b> at its edge. The map draws the circles to drive, spaced so the scanner&#x27;s reach overlaps, and shades everywhere your SRV has covered. The Survey area panel and the STATUS box show <b>AREA SWEPT</b> as a percentage, and it reads 100% only when all of it is. Kept per body, saved as you go, so you can finish tomorrow.</p>
+    <h3>New — Rig down, and TOO FAR FROM RIG</h3>
+    <p>Press <b>RIG DOWN</b> — or its key — as you drop each rig. One key for all six: they are numbered for you and drawn on the map and the scope. STATUS shows how many are down and how far the farthest is. Drive past your limit from any of them (1,000 m unless you change it in Settings) and every overlay box you have open says <b>TOO FAR FROM RIG</b> with its number, in red, with a warning sound if you want one. It sounds once per trip out, not every second you are over the line. <b>ALL UP</b> when you have collected them.</p>
+    <h3>New — everyone&#x27;s finds on your map and overlay</h3>
+    <p>Arrive on a body and the finds other commanders have shared there appear on the map, the scope and the deposit card as diamonds, so yours and theirs are never confused. Click one to see who shared it and when. A shared find sitting on one of your own is shown once, as yours.</p>
+    <h3>New — UPDATE a deposit instead of marking it twice</h3>
+    <p><b>UPDATE</b> sits beside MARK DEPOSIT. On a deposit you have already marked, it writes what the boxes say onto that deposit — the Amount going down as you work it, the rig count once you know it — and stamps the note with when. If you share, the shared copy is updated too. MARK now asks first if you already have that commodity marked within 100 m; press it again to add a separate one.</p>
+    <h3>Fixed — the lists open as you click and type, and Tab works</h3>
+    <p>Every box with a list — commodity, rigs, amount, density, and the ones in the edit windows — now opens it as soon as you click in or start typing, narrows it as you type, and takes the highlighted choice on Enter or Tab. Tab moves down the boxes in order. Tabbing through a box without typing leaves it as it was.</p>
+    <h3>Fixed — windows that cut information off</h3>
+    <p>The Find table dropped its last columns — <b>Found by</b> included — on anything but a very wide screen, and cut long commodity lists after 34 letters. The table now scrolls sideways when it has to and wraps long cells instead. The edit windows size themselves to what is in them, so Save is never off the bottom, and a long body name is shown whole. On a narrow window the title bar buttons move under the readouts rather than squashing the system name and your commander name.</p>
+    <h3>Fixed — an overlay box could crash the app</h3>
+    <p>A box closed out from under the overlay took the app down on the next redraw. It is now put back where it was instead. Reported by <b>Raizo/Drakain [IHCF]</b> with a crash log — thank you.</p>
+    <h3>Fixed — a protected Saved Games folder</h3>
+    <p>When Windows refuses to let EDSMT read the journal folder, the title bar now says <b>NO ACCESS</b> in red, instead of the app sitting there waiting for a game it cannot see.</p>
+    <h3>Also</h3>
+    <ul><li>Staff: with your token set, the finds you share are verified in your name as they go up. Settings has the switch.</li><li>The installer puts only the program, this README and the licence on your PC.</li><li>Thanks to everyone who sent in feedback on the last build — most of this release is your list.</li></ul>
+    <!--/WHATSNEW-->
+  </section>
+
+  <section class="panel">
+    <h2>Install</h2>
+    <p class="sub">Download, run, done</p>
+    <div class="cols2">
+      <div>
+        <p><b style="color:var(--paper)">EDSMT-Setup.exe</b> is a normal
+        installer wizard &mdash; Start menu entry, optional desktop shortcut, a
+        proper line in Add/Remove Programs. <b style="color:var(--paper)">It
+        installs for you only, so it never asks for admin.</b></p>
+        <p>If you would rather not install anything,
+        <b style="color:var(--paper)">EDSMT.exe</b> is the same program as one
+        portable file. Save it anywhere and double-click it.</p>
+        <div class="callout warn">
+          <span class="hud-label">Windows will warn you the first time</span>
+          <p>"Windows protected your PC" &mdash; the build is not code signed,
+          because a certificate costs several hundred a year and this is free.
+          <b style="color:var(--paper)">More info &rarr; Run anyway.</b></p>
+        </div>
+        <p>Your finds live in
+        <code>%LOCALAPPDATA%\RadioRaxxla\EDSMT</code>, not the program folder,
+        so updating never touches them. There is a backup button in Settings
+        that writes one dated zip.</p>
+        <div class="cta-row">
+          <a class="cta" href="EDSMT-Setup.exe">Download &middot; Installer</a>
+          <a class="cta ghost" href="EDSMT.exe">Portable .exe</a>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:14px;color:var(--signal);letter-spacing:.14em;margin-bottom:12px">Nothing leaves your machine until you say so</h3>
+        <ul>
+          <li><b>Sharing is off by default.</b> The app works standalone, forever, if that is what you want.</li>
+          <li><b>Your CMDR name is optional.</b> Share anonymously if you prefer.</li>
+          <li><b>There is no account and no sign-up.</b></li>
+          <li><b>No personal data is stored</b> &mdash; a deposit is a position, a commodity and a date.</li>
+          <li><b>It is GPL-3.0.</b> The source is on this page, so you can read exactly what it sends and when.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Radio Raxxla &middot; EDSMT <!--VERSION-->1.10028<!--/VERSION--> &middot; GPL-3.0</span>
+    <span>Not affiliated with Frontier Developments. Elite Dangerous is a trademark of Frontier Developments plc.</span>
+  </footer>
+
+</div>
+</body>
+</html>
