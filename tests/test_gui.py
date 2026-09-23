@@ -116,9 +116,19 @@ import edsmt as A                   # noqa: E402
 from survey import fold as SV_fold  # noqa: E402
 A.DATA_DIR = _HOME
 A.SETTINGS_FILE = os.path.join(_HOME, "settings.json")
+# An empty settings folder is a first run, and a first run puts the sharing
+# question up 900 ms in: a modal window that takes the keyboard. On a quick
+# machine the typing checks below finished before it arrived; on a slower
+# one it landed in the middle of them and every key went to it - six false
+# failures on Windows in 1.10028, with the type-ahead itself working. Here
+# the question has been answered; it gets its own checks at the end.
+with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
+    json.dump({"asked_to_share": True}, _f)
 app = A.EDSMT()
 app.geometry("1400x900+0+0")
 root = app
+# Nothing in here asks the live site whether there is a newer version.
+app.updates.check = lambda *args, **kwargs: None
 
 def settle(times=4):
     for _ in range(times):
@@ -238,6 +248,11 @@ def press(widget, keysym, _char=""):
     settle(2)
 
 app.deiconify(); app.lift(); app.focus_force(); settle(4)
+# If another window has the keyboard, every check below fails for a reason
+# that has nothing to do with the boxes. Say so first, in one line.
+check("nothing else has hold of the keyboard - no dialog, no grab",
+      app.grab_current() is None and app.focus_get() is not None,
+      (str(app.grab_current()), str(app.focus_get())))
 com = app.fields["commodity"]
 ce = entry_of(com)
 ce.focus_force(); settle(4)
@@ -456,6 +471,26 @@ check("a body the DSS maps while it is open appears without a click",
 lander.destroy(); settle(4)
 check("closing it is noticed and nothing keeps polling a dead window",
       (app.follow_land(), app.lander)[1] is None)
+
+print("== first run: the sharing question holds the keyboard until answered ==")
+app.settings["asked_to_share"] = False
+app.ask_to_share(); settle(6)
+_welcome = [w for w in app.winfo_children() if isinstance(w, A.WelcomeWindow)]
+check("the question opens", len(_welcome) == 1, app.winfo_children())
+check("and nothing behind it can be typed into until it is answered",
+      _welcome and app.grab_current() is _welcome[0], str(app.grab_current()))
+check("it has been recorded as asked", app.settings.get("asked_to_share") is True)
+_welcome[0].answer(False); settle(6)
+check("answering closes it", not _welcome[0].winfo_exists())
+check("and gives the keyboard back", app.grab_current() is None, str(app.grab_current()))
+check("Not now leaves sharing off", app.settings.get("community_enabled") is False)
+entry_of(app.fields["commodity"]).focus_force(); settle(4)
+press(entry_of(app.fields["commodity"]), "Escape")
+app.fields["commodity"].set("")
+for ch in "iri":
+    press(entry_of(app.fields["commodity"]), ch, ch)
+check("and typing in the boxes works again straight after",
+      app.fields["commodity"].get() == "iri", app.fields["commodity"].get())
 
 app.destroy()
 shutil.rmtree(_HOME, ignore_errors=True)
