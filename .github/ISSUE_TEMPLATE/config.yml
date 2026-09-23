@@ -1,0 +1,14 @@
+# Blank issues stay on. Somebody with a question that fits no form should
+# not be turned away by a form.
+blank_issues_enabled: true
+
+# Only links whose address is certain go here. A security report is routed
+# in the bug form's own text instead, because the advisory URL depends on
+# where this repository ends up living and a dead link in a public repo is
+# worse than a sentence.
+contact_links:
+  - name: Download, and what changed in this build
+    url: https://www.radioraxxla.com/EDSMT/
+    about: >-
+      The installer, the portable exe and the source zip. Check the version
+      there before reporting - it may already be fixed.

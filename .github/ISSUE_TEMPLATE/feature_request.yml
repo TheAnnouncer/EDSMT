@@ -1,0 +1,69 @@
+name: Feature request
+description: Something EDSMT should do and does not.
+title: "[request] "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requests are tracked in `BACKLOG.md` with where each one came from
+        and whether it is in a build you can actually install. Worth a look
+        first - it may already be there, and it may already be built.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: >-
+        The thing in front of you, not the feature. "I cannot tell which of
+        six signals I have already stripped without opening the map" is
+        worth more than "add a column", because the second one fixes one
+        case and the first one gets thought about properly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you think would fix it
+      description: Optional. Say it if you have one; the question above is the important one.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - The map
+        - The overlay
+        - Find - the shared database
+        - Recording deposits and signals
+        - Settings
+        - Installer, updates, packaging
+        - The community API
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version, from the title bar
+      description: >-
+        So the answer can be "that shipped in 1.10016" rather than a
+        conversation about what you already have.
+      placeholder: "1.10016"
+    validations:
+      required: true
+
+  - type: textarea
+    id: elsewhere
+    attributes:
+      label: Does another tool do this
+      description: >-
+        Optional, and genuinely useful. Name it and say what it gets right.
+        Nothing here is precious about being first.
+    validations:
+      required: false

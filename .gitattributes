@@ -1,0 +1,10 @@
+# Line endings, decided here rather than by whoever's Git settings clone it.
+#
+# The batch files MUST be CRLF: with Unix line endings cmd.exe loses track of
+# labels and `goto` silently stops working. The shell scripts MUST be LF:
+# they run on a Linux server, and a CRLF one fails with "bad interpreter".
+* text=auto
+*.bat text eol=crlf
+*.sh text eol=lf
+*.ico binary
+*.png binary

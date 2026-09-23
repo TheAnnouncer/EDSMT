@@ -1,0 +1,107 @@
+# Radio Raxxla surface mining API
+#
+# Deliberately small. It is written to sit on a box that already has a job,
+# so it is capped and de-prioritised and can never starve whatever else is
+# running there, however much traffic it gets.
+#
+# Every name in here is an example - the service, the container, the network.
+# Change them to suit your own box.
+
+services:
+  edsmt-api:
+    build: .
+    container_name: edsmt-api
+    restart: unless-stopped
+
+    # Localhost only. The reverse proxy is the way in; this port exists so
+    # the box itself can curl the API without going out and back through
+    # DNS and TLS, which is what verify.sh does.
+    #
+    # Deliberately not 8080. Something else on a busy box usually has it,
+    # and two things binding one port is a container that will not start -
+    # with an error that says "address already in use" and does not name who
+    # has it. Set RR_HOST_PORT if 9110 is taken too.
+    ports:
+      - "127.0.0.1:${RR_HOST_PORT:-9110}:8080"
+
+    environment:
+      RR_DB: /data/deposits.db
+      RR_WRITE_TOKEN: ${RR_WRITE_TOKEN:-}
+      RR_STAFF: ${RR_STAFF:-}
+      PORT: 8080
+      # How fast confidence in a REPORT decays. Not the deposit - sites have
+      # been watched sitting unchanged across a hotfix. What ages is our
+      # right to state that somebody saw it.
+      RR_HALF_LIFE_DAYS: ${RR_HALF_LIFE_DAYS:-21}
+      # How much doubt survives one commander saying a site is stripped.
+      # Raised to the power of the number of independent reporters, so two
+      # people saying it is a far stronger claim than one.
+      RR_DEPLETION_DOUBT: ${RR_DEPLETION_DOUBT:-0.05}
+      # How long a stripped site MIGHT take to come back. A guess, and the
+      # API says so on every response that touches it: the reformation timer
+      # is unmeasured. It exists only to stop a crater from March sitting at
+      # the bottom of the rankings forever. RR_REGEN_DAYS is the old spelling
+      # and is still read, so an existing .env keeps working.
+      RR_REFORMATION_ESTIMATE_DAYS: ${RR_REFORMATION_ESTIMATE_DAYS:-60}
+      RR_REGEN_DAYS: ${RR_REGEN_DAYS:-60}
+      # /v1/sell can add a public market index on top of commanders' own
+      # reads, so one cache and one rate limiter cover everybody instead of
+      # each copy of the app hitting somebody else's service. Which index is
+      # up to whoever runs the server: set both in .env. Left blank, /v1/sell
+      # answers from commanders' own reads alone.
+      RR_SELL_API: ${RR_SELL_API:-}
+      RR_SELL_API_NAME: ${RR_SELL_API_NAME:-}
+      RR_SELL_CACHE: ${RR_SELL_CACHE:-900}
+      RR_SELL_MIN_INTERVAL: ${RR_SELL_MIN_INTERVAL:-1.0}
+      RR_SELL_TIMEOUT: ${RR_SELL_TIMEOUT:-8}
+
+    volumes:
+      - ./data:/data
+
+    # Whatever else is on the box comes first. One core and 512 MB is far
+    # more than this needs, and it leaves the rest of the machine alone.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+    # Lowest CPU priority on the box, so anything else always wins a
+    # contest for the CPU.
+    cpu_shares: 128
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8080/v1/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      # Built here from a Dockerfile, not pulled from a registry, so an
+      # auto-updater that watches registry images must leave it alone - said
+      # explicitly rather than relied on.
+      com.centurylinklabs.watchtower.enable: "false"
+
+    networks:
+      - default
+      - proxy
+
+networks:
+  # The network your reverse proxy is on. Joining it lets the proxy reach
+  # this container by name - "edsmt-api", port 8080 - so nothing has to be
+  # published to the internet and the proxy handles the certificate.
+  #
+  # Set RR_PROXY_NETWORK in .env to whatever your proxy is actually on:
+  #   docker inspect <your proxy container> \
+  #       --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}'
+  proxy:
+    external: true
+    name: ${RR_PROXY_NETWORK:-proxy}

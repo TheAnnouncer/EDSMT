@@ -1,0 +1,151 @@
+# Builds EDSMT-Setup.exe on a real Windows machine, so an installer exists
+# without anyone having to build one.
+#
+# Push a tag and the installer plus the portable exe are attached to a
+# GitHub release, ready to be uploaded to radioraxxla.com/EDSMT/:
+#
+#     git tag v1.0
+#     git push origin v1.0
+#
+# Every other push just builds and keeps the files as artifacts for 30 days,
+# so a broken build is caught before a release, not during one.
+
+name: build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default. The job that builds runs code from pull requests on
+# a public repository, and it has no business being able to write to it. The
+# release job below asks for write, and only it gets it.
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Nothing in this job pushes, so the checkout token does not need
+          # to stay in .git/config where a build step could read it.
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.0,<7"
+
+      # The API suite is SKIPPED rather than failed when FastAPI is missing,
+      # and a skipped suite is not a pass. Install it so the release build
+      # actually tests the server half, the same way BUILD.bat does.
+      # Best effort, exactly as BUILD.bat treats it: the API is a separate
+      # thing that runs on a server, and not being able to resolve its
+      # dependencies must not stop the app from being built.
+      - name: Install the API's dependencies too, so its suite is not skipped
+        continue-on-error: true
+        run: pip install -r server/requirements.txt
+
+      # Nothing ships that has not passed. The suite needs no display and no
+      # Elite Dangerous, which is the whole reason it can run here.
+      - name: Run the tests
+        run: python tests/run_all.py
+
+      - name: Build the folder build (goes inside the installer)
+        run: pyinstaller build/EDSMT.spec --noconfirm --distpath dist --workpath build/work
+
+      - name: Build the portable single file
+        run: pyinstaller build/EDSMT-onefile.spec --noconfirm --distpath dist --workpath build/work
+
+      # Inno Setup is on the hosted runners already; installing it is a
+      # no-op if so and a few seconds if not.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        run: |
+          & "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" /Q build\installer.iss
+        shell: pwsh
+
+      # GPL-3.0 asks for the source that was used to build the binary, which
+      # includes the scripts that control the build - build\ and .github\.
+      # Both used to be dropped here, so the zip CI attached to a release was
+      # missing the installer config, the PyInstaller specs and this file,
+      # while the one BUILD.bat makes on the desk had all three. Two
+      # different source zips under one version number is worse than either.
+      #
+      # build\ can only be kept if PyInstaller's scratch tree is cleared
+      # first: --workpath put 20-odd MB of unpacked libraries in build\work,
+      # and the filter below only ever sees top-level names.
+      - name: Zip the source (GPL-3.0 obliges us to offer it)
+        shell: pwsh
+        run: |
+          if (Test-Path build\work) { Remove-Item -Recurse -Force build\work }
+          Get-ChildItem -Path . -Recurse -Force -Directory -Filter __pycache__ |
+            Remove-Item -Recurse -Force
+          $skip = @('.git', '.venv', '.venv-build', 'dist', 'upload', '__pycache__', 'internal')
+          $items = Get-ChildItem -Path . -Force | Where-Object { $_.Name -notin $skip }
+          New-Item -ItemType Directory -Force -Path upload | Out-Null
+          Compress-Archive -Path $items.FullName -DestinationPath upload\EDSMT-source.zip -Force
+
+      - name: Collect the downloads
+        shell: pwsh
+        run: |
+          Copy-Item dist\EDSMT.exe upload\EDSMT.exe -Force
+
+      # After both downloads exist: version.json carries their SHA-256, and
+      # the app refuses an update that does not match it. Upload it to the
+      # website LAST, after the exes.
+      - name: Write version.json and the download page
+        shell: pwsh
+        run: |
+          python build/site.py
+          Copy-Item site\version.json upload\version.json -Force
+          Copy-Item site\index.html upload\index.html -Force
+          if (Test-Path site\edsmt.html) { Copy-Item site\edsmt.html upload\edsmt.html -Force }
+          Get-ChildItem upload | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EDSMT-windows
+          path: upload/*
+          retention-days: 30
+
+  # Its own job so that write access to the repository exists only on a tag,
+  # and never in a build triggered by a pull request.
+  release:
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # Read-only checkout, for CHANGELOG.md: the release page carries the
+      # same patch notes as the website, taken from the same entry.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Patch notes for this version
+        run: python3 build/release_notes.py "${GITHUB_REF_NAME}" > release-notes.md
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: EDSMT-windows
+          path: upload
+
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: upload/*
+          body_path: release-notes.md
