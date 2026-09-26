@@ -18,8 +18,13 @@ the geometry that would drift away from this one within a week.
 import math
 
 # Rings land on numbers a person can hold in their head while driving,
-# rather than on a third of whatever the extent happens to be.
-NICE_STEPS_M = [10, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000, 25000]
+# rather than on a third of whatever the extent happens to be. The list runs
+# out to planet scale: it used to stop at 25 km, so a view zoomed out over a
+# whole body drew a ring every 25 km - fifty-odd rings with their labels
+# stacked into one unreadable column.
+NICE_STEPS_M = [10, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000,
+                25000, 50000, 100000, 250000, 500000, 1000000, 2500000,
+                5000000, 10000000]
 
 # The Rhino's scanner reaches this far. Community field testing puts it at
 # 2 km MEASURED FROM THE VEHICLE - contacts drop out of the list by distance
@@ -30,6 +35,35 @@ SCANNER_RANGE_M = 2000.0
 # How far out a view is ever allowed to zoom. Past this the deposits are a
 # single dot and the picture stops being navigation.
 MAX_MAP_RADIUS_M = 50000.0
+
+# The map opens on the signal being worked, not on the whole body. One body
+# can carry mining locations thousands of kilometres apart, and a view sized
+# to hold every one of them draws the patch under the wheels as one dot.
+#
+# SIGNAL_REACH_M: anything this close to the signal belongs to it, whatever
+# number it was logged under - a find is where it is, not what it was
+# called. A worked signal runs to 7-8 km across (measured: a 4.5 km survey
+# border with finds out to 7.7 km). SIGNAL_NAMED_REACH_M: a find logged
+# under the signal's own number belongs to it out to here; past it, it is a
+# typo or another body's row, not part of the patch. SIGNAL_VIEW_CAP_M: the
+# widest the opening view goes; past it a find is an arrow at the edge.
+# SIGNAL_VIEW_EMPTY_M: with nothing recorded at the signal yet, the view
+# shows the ground the scanner can reach, and a little more.
+SIGNAL_REACH_M = 8000.0
+SIGNAL_NAMED_REACH_M = 25000.0
+# SIGNAL_AT_M: you are AT a logged signal when you are this close to where
+# it was logged - the measured survey border was 4.5 km. Drive into one and
+# it becomes the signal being worked; be further than SIGNAL_REACH_M from the
+# one picked and the views stop pretending you are at it.
+SIGNAL_AT_M = 5000.0
+SIGNAL_VIEW_CAP_M = 15000.0
+SIGNAL_VIEW_FLOOR_M = 250.0
+SIGNAL_VIEW_EMPTY_M = SCANNER_RANGE_M * 1.25
+
+# Scroll zoom, in metres of view radius. Absolute, not a multiple of the
+# opening view: a multiple could never get closer than a tenth of whatever
+# the furthest find dragged the view out to.
+ZOOM_CLOSEST_M = 100.0
 
 
 def to_offset(range_m, bearing_deg):
@@ -47,6 +81,13 @@ def to_offset(range_m, bearing_deg):
     except (TypeError, ValueError):
         theta = 0.0
     return metres * math.sin(theta), metres * math.cos(theta)
+
+
+def compass_point(bearing):
+    """A bearing as one of the sixteen points: 0 is N, 45 is NE."""
+    points = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+              "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
+    return points[int((float(bearing) % 360) / 22.5 + 0.5) % 16]
 
 
 def to_polar(east_m, north_m):
@@ -241,6 +282,182 @@ def site_centre(rows, location=None):
     return {"east_m": east, "north_m": north,
             "label": ("LOCATION %s" % key) if key else "SITE",
             "location": key, "count": len(groups[key])}
+
+
+def signal_focus(rows, signal="", anchor=None, reach_m=SIGNAL_REACH_M,
+                 named_reach_m=SIGNAL_NAMED_REACH_M, near_m=None):
+    """Which finds belong to the signal being worked, and where it is.
+
+    Where the signal is, best first:
+      1. `anchor` - the spot the signal was logged at (F9), as metres
+         east/north of the commander. It is a reading, not a guess.
+      2. The finds logged under the signal's number: the middle of them
+         with any wild one thrown out, or with only one or two, the one
+         nearest the commander - a typo on the far side of the body must
+         not become the middle of the map.
+      3. The commander. Nothing is known about the signal yet, so the view
+         is the ground around the SRV.
+
+    `here` is every row within `reach_m` of that spot whatever number it
+    carries, and every row logged under the signal's number within
+    `named_reach_m`; `away` is the rest of the body. The map draws `here`
+    until it is zoomed out past the signal.
+
+    `near_m`: when the signal's spot is further than this from the
+    commander, the commander is not at it - the box still names the last
+    signal, or the one being driven to - and the view is the ground around
+    the SRV instead, with `far` saying where the signal is. A scope sized to
+    hold a signal 40 km away is a scope with nothing on it but one dot.
+    """
+    wanted = str(signal or "").strip()
+    placed = []
+    for row in rows or []:
+        placed.append((row, to_offset(row.get("range_m"), row.get("bearing"))))
+
+    how = "commander"
+    centre = (0.0, 0.0)
+    named = []
+    if wanted:
+        named = [point for row, point in placed
+                 if str((row.get("deposit") or {}).get("location") or "")
+                 .strip() == wanted]
+    if anchor is not None:
+        try:
+            centre = (float(anchor[0]), float(anchor[1]))
+            how = "logged"
+        except (TypeError, ValueError, IndexError):
+            anchor = None
+    if anchor is None and named:
+        if len(named) >= 3:
+            centre = midpoint(named)
+        else:
+            centre = min(named, key=lambda p: math.hypot(p[0], p[1]))
+        how = "finds"
+
+    far = None
+    if near_m is not None and how != "commander":
+        apart = math.hypot(centre[0], centre[1])
+        if apart > float(near_m):
+            far = {"signal": wanted, "range_m": apart,
+                   "bearing": (math.degrees(math.atan2(centre[0], centre[1]))
+                               + 360.0) % 360.0}
+            centre, how, wanted = (0.0, 0.0), "commander", ""
+
+    here, away = [], []
+    for row, (east, north) in placed:
+        apart = math.hypot(east - centre[0], north - centre[1])
+        mine = bool(wanted) and str((row.get("deposit") or {}).get("location")
+                                    or "").strip() == wanted
+        close = apart <= reach_m or (mine and apart <= named_reach_m)
+        (here if close else away).append(row)
+    return {"centre": centre, "how": how, "signal": wanted,
+            "here": here, "away": away, "far": far}
+
+
+def group_offscreen(items, sector_deg=20.0):
+    """One arrow per direction, not one per find.
+
+    Finds beyond the edge in much the same direction are one destination as
+    far as the driver is concerned. Drawn one each, their arrows and
+    distances land on top of each other at the rim; grouped, each direction
+    gets one arrow, the nearest distance and how many lie that way.
+    """
+    groups = {}
+    for item in items:
+        if not item.get("offscreen"):
+            continue
+        sector = int((float(item.get("view_bearing", item.get("bearing", 0.0)))
+                      % 360.0) // sector_deg)
+        groups.setdefault(sector, []).append(item)
+    out = []
+    for sector in sorted(groups):
+        members = sorted(groups[sector], key=lambda i: i.get("range_m", 0.0))
+        nearest = members[0]
+        out.append({"edge": nearest["edge"], "bearing": nearest["bearing"],
+                    "range_m": nearest.get("range_m", 0.0),
+                    "commodity": nearest.get("commodity", ""),
+                    "count": len(members), "items": members})
+    return out
+
+
+def swept_shapes(points, scan_m, centre=None, border_m=None, sides=28,
+                 view=None):
+    """The ground swept, as shapes to fill, kept inside the survey border.
+
+    Each position the SRV has been is a disc of scanner range. With a border
+    set, the survey area is the inside of that circle and nothing painted
+    outside it means anything, so:
+      - a disc wholly inside the border is returned as ("disc", e, n, r);
+      - a disc wholly outside it is dropped;
+      - a disc across it is returned as ("poly", [(e, n), ...]) - the disc
+        with every point outside the border pulled in onto the border line,
+        which is the part of the disc that lies inside.
+    Without a border every disc is returned whole. `view` is a second
+    circle, ((e, n), radius), for a round scope: nothing is painted past its
+    rim either. Metres, east/north.
+    """
+    try:
+        scan = float(scan_m or 0.0)
+    except (TypeError, ValueError):
+        scan = 0.0
+    if scan <= 0:
+        return []
+    fences = []
+    if centre is not None and border_m:
+        fences.append((float(centre[0]), float(centre[1]), float(border_m)))
+    if view is not None:
+        fences.append((float(view[0][0]), float(view[0][1]), float(view[1])))
+    out = []
+    for point in points or []:
+        east, north = float(point[0]), float(point[1])
+        inside, outside = True, False
+        for fe, fn, radius in fences:
+            apart = math.hypot(east - fe, north - fn)
+            if apart - scan >= radius:
+                outside = True
+            if apart + scan > radius:
+                inside = False
+        if outside:
+            continue
+        if inside:
+            out.append(("disc", east, north, scan))
+            continue
+        shape = []
+        for step in range(sides):
+            angle = 2.0 * math.pi * step / sides
+            pe, pn = east + scan * math.sin(angle), north + scan * math.cos(angle)
+            for fe, fn, radius in fences:
+                reach = math.hypot(pe - fe, pn - fn)
+                if reach > radius:
+                    pe = fe + (pe - fe) * radius / reach
+                    pn = fn + (pn - fn) * radius / reach
+            shape.append((pe, pn))
+        out.append(("poly", shape))
+    return out
+
+
+def boxes_touch(a, b, pad=2.0):
+    """Do two (x0, y0, x1, y1) boxes overlap, with a little breathing room?"""
+    return not (a[2] + pad <= b[0] or b[2] + pad <= a[0]
+                or a[3] + pad <= b[1] or b[3] + pad <= a[1])
+
+
+def label_spot(candidates, taken, pad=2.0, bounds=None):
+    """The first candidate box that overlaps nothing already placed.
+
+    Candidates are tried in order of preference - beside the dot, then the
+    other side, then below and above. None if every one is taken: a label
+    that can only be printed over another one is left off, and the map says
+    how many it left off, rather than printing two into one smudge.
+    `bounds` (x0, y0, x1, y1) keeps a label on the canvas.
+    """
+    for box in candidates:
+        if bounds is not None and (box[0] < bounds[0] or box[1] < bounds[1]
+                                   or box[2] > bounds[2] or box[3] > bounds[3]):
+            continue
+        if not any(boxes_touch(box, other, pad) for other in taken):
+            return box
+    return None
 
 
 def marker_radius(rigs, base=5.0, per_rig=1.7, cap=17.0):

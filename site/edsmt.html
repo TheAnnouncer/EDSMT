@@ -228,21 +228,37 @@ footer a:hover{color:var(--signal)}
   </header>
 
   <section class="panel">
-    <h2>Two keys. That is the whole tool.</h2>
-    <p class="sub">The workflow the game actually uses</p>
+    <h2>Six keys, in the order you work.</h2>
+    <p class="sub">Left Alt and the number row &middot; the number is the step</p>
 
     <div class="keys">
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>F9</kbd>
-        <p><b>Inside a mining location signal.</b> The game has just listed
-        what might be in it. One press records the signal, where it is and
-        everything it offered &mdash; including anything already marked
-        depleted.</p></div>
+        <kbd>Alt+1</kbd>
+        <p><b>In the middle of the signal.</b> Logs the signal and sets the
+        centre of the survey. No commodities needed &mdash; they come with the
+        deposits.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>F10</kbd>
-        <p><b>Where the scanner pinged.</b> One press per deposit. Rigs can be
-        left blank &mdash; you do not know the count until you are stood on
-        it, so fill it in when you do.</p></div>
+        <kbd>Alt+2</kbd>
+        <p><b>At the location's edge line.</b> Hold the mineral scanner all the
+        way out and while you map. The border: the map and the scope shade the
+        ground you have swept inside it.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+3</kbd>
+        <p><b>Stood on a deposit.</b> One press per deposit. Rigs can be left
+        blank &mdash; you do not know the count until you are on it.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+4</kbd>
+        <p><b>As each rig goes down.</b> Numbered, and drawn on the scope and
+        the compass in the colour of what it is mining.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+5</kbd>
+        <p><b>Rigs back up.</b> Clears them from the scope and the
+        compass, and clears every rig warning.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+6</kbd>
+        <p><b>Back at a deposit you marked.</b> Writes the Amount going down, or
+        the rig count you now know, onto it instead of adding a second
+        copy.</p></div>
     </div>
 
     <div class="callout">
@@ -253,8 +269,8 @@ footer a:hover{color:var(--signal)}
       nothing has to be pressed before a find can be recorded.</p>
     </div>
 
-    <p>Both keys are system-wide, so they work with the game in front, and
-    both are rebindable. Get one wrong and every deposit is editable
+    <p>The keys are system-wide, so they work with the game in front, and
+    every one can be changed in Settings. Get one wrong and every deposit is editable
     afterwards &mdash; marking a find is one keypress with the game in front
     of you, so the commodity or the signal number can easily be whatever the
     boxes happened to say at that moment.</p>
@@ -262,13 +278,13 @@ footer a:hover{color:var(--signal)}
 
   <section class="panel">
     <h2>On your screen while you drive</h2>
-    <p class="sub">Four boxes. Any combination. Drag them, then lock them.</p>
+    <p class="sub">Six boxes. Any combination. Drag them, then lock them.</p>
 
     <div class="cols2">
       <div>
         <p>It used to be one overlay window, and one window is one compromise:
         wherever it goes it covers something in somebody's cockpit. There are
-        now four separate boxes, each switched on or off on its own.</p>
+        now six separate boxes, each switched on or off on its own.</p>
 
         <div class="boxes">
           <div class="box"><span class="n">Compass</span>
@@ -279,6 +295,10 @@ footer a:hover{color:var(--signal)}
             <p>The nearest finds in order, with the turn and the range.</p></div>
           <div class="box"><span class="n">Status</span>
             <p>Body, deposit count, rig total, and what is next.</p></div>
+          <div class="box"><span class="n">Mineral deposit</span>
+            <p>The deposit you are on, with a radar of the signal.</p></div>
+          <div class="box"><span class="n">Guide</span>
+            <p>The step you are on, the key for it, and what comes next.</p></div>
         </div>
 
         <p style="margin-top:18px"><b style="color:var(--paper)">A position is

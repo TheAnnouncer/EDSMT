@@ -4,6 +4,241 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10030
+
+### Fixed — Alt+1 to Alt+6 work in the game
+
+Two faults, both found by the testers. After **Save** in Settings every key
+went dead: the old key thread still held the keys when the new one asked for
+them, so Windows refused them and they were never registered. Saving now
+waits for the old thread to let go. And with **Num Lock on**, Settings read
+every key pressed as **Alt+** that key — so nothing could be bound without
+Alt, and Alt+F1 went to an NVIDIA screenshot. Settings now reads Alt properly
+and takes **any key**, with or without Ctrl, Alt or Shift. The keys are also
+read ten times a second on their own, and a fault anywhere else in the app can
+no longer stop them being heard.
+
+### New — EDSMT names keys other programs own
+
+Pick a key NVIDIA, AMD, Windows, Steam, Discord or the game uses by default —
+Alt+F1, Alt+F9, Alt+Z, Alt+R, Win+ keys, Shift+Tab, F10, F12 — and Settings
+says who owns it the moment you press it. You can still keep it.
+
+### Fixed — the compass and scope keep up with the Rhino
+
+They redraw ten times a second from Status.json instead of every 0.7 s. Out
+setting the border the scope keeps you in the picture out to 8 km, instead of
+freezing at 1.5 km round the centre with you pinned to the rim — and pinned to
+the rim or not, your chevron turns with the Rhino. The swept ground is no
+longer a solid teal plate before there is a border; inside a border it is a
+see-through mesh.
+
+### Fixed — changing the overlay theme no longer moves the boxes
+
+The boxes were measured while Windows had them hidden — whenever EDSMT's own
+window was in front — and that was saved. They are now saved only when you
+drop one. **The default layout is new**: compass across the top, scope and
+guide down the left, targets on the right, status along the bottom. Layouts
+from 1.10029 are put on it once, because that build could have scrambled them.
+
+### Changed — Earnings is Rhino sessions only
+
+A session starts when the Rhino leaves the ship and ends when it comes back
+aboard. Every tonne it refines counts, every transfer to the ship counts, and
+when you sell what it dug up the credits go against it. Trading, exploration
+and asteroid mining no longer appear. **Multi-session** keeps one session
+going across trips to a station and back; **End session** closes one by hand.
+After every transfer the overlay flashes what is in the ship and the room
+left, and STATUS shows the ship and Rhino holds for the whole session.
+
+### Changed — logging a signal
+
+No commodities needed: they come with the deposits. The signal number is
+picked for you — the one the game has targeted, or the number in the box, or
+the one you are standing in, or the next free number — so a new signal never
+lands on top of one logged elsewhere. Pressing the key again at the same
+signal keeps its centre. The message says to **hold the mineral scanner** out
+to the location's edge line, press Alt+2 there, and keep holding it while you
+map the area.
+
+### Changed — the guide starts at the jump
+
+Jump in and honk, click Where to land, map the body, pick a signal, land,
+deploy the Rhino. **Deploy** only shows once you are out of glide and under
+30 m; until then it says you are gliding, or how high you are.
+
+### New — a big warning on high-gravity bodies
+
+Arrive at a body at or over 2 g (Settings) and a warning triangle takes the
+middle of the screen, once; the GUIDE and STATUS boxes carry a red bar for as
+long as you are there. Where to land marks those bodies in red.
+
+### New — the last rig warning at 4.8 km
+
+The game warns at 4 km and destroys a rig at 5 km. At 4.8 km a big warning
+triangle goes up in the middle of the screen and the warning sounds again.
+Past 5 km the rig is gone: EDSMT drops it and clears the warnings. **Alt+5**
+(ALL UP) clears every rig warning by hand.
+
+### Changed — MARK on a spot already marked with another commodity
+
+It asks: **Alt+6** renames the deposit already there — position, history and
+tonnes kept — and **Alt+3** again adds the new commodity as a deposit of its
+own. No more second find at 0 m.
+
+### New — finds filed under the wrong signal number show at the signal
+
+Anything within 5 km of the signal you are on, filed under another number, is
+listed under it with a button that puts the number right.
+
+### Changed
+
+- The top bar: Find, My sites, Where to land and Earnings on the left;
+  Overlay, Unlock and Settings on the right.
+- A commodity picked from its list with the mouse closes the list.
+- Beta testers: welcome **CMDR Rumphrend**.
+
+---
+
+## 1.10029
+
+### Changed — the keys are Left Alt and the number row, in the order you work
+
+Alt+1 logs the signal and sets the centre, Alt+2 the border, Alt+3 marks a
+deposit, Alt+4 puts a rig down, Alt+5 brings the rigs up and Alt+6 updates the
+deposit you are on — the number is the step. Keys you set yourself are kept;
+keys still on the old defaults move, once, and EDSMT says so when it starts.
+Every one can be changed in Settings → Hotkeys, and Reset puts it back.
+
+### New — the Inara key and the token are hidden on screen
+
+Both boxes in Settings show dots. **Show** beside each reveals it, and it goes
+back to dots by itself after 20 seconds — safe to open Settings on stream.
+
+### New — a guide over the game
+
+A GUIDE box shows the step you are on, the key for it and what comes next:
+map the body, pick the signal, land, launch the Rhino, log the centre, set the
+border, mark a deposit, place the rigs, next deposit. It moves on by itself as
+each step is done, and never asks for one you have already done.
+
+### New — rigs say what they are mining
+
+Each rig goes on the map, the scope and the compass tape in the colour of the
+deposit it is on, with that deposit's name beside it, so you can see which
+rig is on which deposit. Red when you are too far from it.
+
+### New — the map opens on the signal you are working
+
+The map and the scope open on the signal, sized to it, instead of on every
+find on the body. Finds elsewhere on the body are counted, not drawn, until
+you scroll out. Range rings are labelled once and nothing prints over
+anything else — on the map or on the scope. When a patch is too crowded to
+name every find, the nearest are named and the rest counted. The ground you
+have swept is shaded only inside the border, on the map and the scope.
+
+### New — the scope and the map are the signal you are AT
+
+Drive into a signal you have logged and EDSMT picks it, once, and says so. A
+signal still left in the box from before — 40 km back — no longer stretches
+the scope to hold it: the scope shows the ground round the SRV and its header
+says where that signal is. The scope never zooms past 15 km, and while you are
+at the signal it holds the patch, its border, its rigs and you; further out
+you are a chevron on the rim with the range. "N unlabelled" now counts finds
+only, not ring distances.
+
+### New — the deposit you are on, and the one you are going to
+
+- **In the SRV, the deposit of yours you drive onto is picked** — once — so
+  MINED OUT, UPDATE and Copy to share are one click. A deposit you pick by
+  hand while standing there stays picked.
+- **Pick a deposit on the map or in the list and the overlay guides you to
+  it**: the scope and STATUS say **GO** instead of NEXT, and TARGETS lists it
+  first. Arriving there ends it.
+- **Tonnes are the deposit's own commodity.** By-products are listed beside
+  them, no longer added in. **MINED OUT files what it gave**, and from then on
+  its details say what it **holds** and about how much is **left** while you
+  work it again. A worked-out deposit says how long ago — nothing assumes how
+  fast it grows back. New tonnes show a few seconds after the laser stops.
+- **Border before centre is kept**: press BORDER at the edge first and it
+  becomes the border the moment you log the signal in the middle.
+- **Where to land → Carrying**: only the bodies that carry one commodity.
+- **My sites** opens on the body you are on.
+- **Copies stay on the clipboard after EDSMT closes**, and a copy made while
+  another program holds the clipboard waits for it instead of being lost.
+- A pasted find a few metres from one of yours is recognised as yours.
+
+### New — share a find as a line of text
+
+**Copy to share** on a deposit puts it on the clipboard as one readable line —
+system, body, signal, what it is, rigs, amount and where — for Discord or a
+friend. Anyone running EDSMT adds it with **Settings → Your finds → Paste
+shared finds**; chat around the lines is ignored and a find already there is
+not added twice. A deposit's details also say where it is from the middle of
+its signal: *from the signal centre: 1.24 km NE 045*.
+
+### New — the signal you target is the signal picked
+
+When the game names the number of the mining location you have targeted,
+EDSMT picks the same signal. Pick another by hand and it stays picked until
+you target something new.
+
+### New — My sites
+
+**My sites** in the title bar lists every signal you have logged and every
+find you have marked, on every body and in every system: what is there, what
+the signal offers that you have not found yet, rigs still to be had, tonnes
+mined and when you were last there. Filter by system, body or commodity; copy
+a system name and paste it into the galaxy map to go back.
+
+### New — cargo already aboard, and where to sell it
+
+Ore already in the ship or the SRV when EDSMT starts is counted in its own
+column, *aboard at start* — never as mined. Logging in already on the ground
+starts a run. The hold line names the SRV and the ship separately.
+
+Earnings now shows **where to sell what is aboard**: for each commodity, the
+best price within the distance you choose of the system you are in, with
+that system's own price beside it. The main window's strip quotes the total.
+**Best sell prices** in Find now asks from the system you are in too.
+
+### New — tonnes mined per deposit
+
+The game writes one journal line per tonne refined. EDSMT puts each one
+against the marked deposit it came off, and the selected deposit shows what
+it has given, by-products included.
+
+### New — fourteen themes, for the app and the overlay
+
+A **Basic settings** section at the top of Settings has the app theme, the
+overlay theme and the switches most people want, and says that everything
+can be changed. Fourteen palettes, every one held to readable contrast. The
+overlay changes as soon as you Save; **Save and restart now** puts a new app
+theme on straight away.
+
+### New — rigs, sounds and the overlay only over the game
+
+The rig warning defaults to 3,500 m (the game warns at about 4 km and a rig
+drops off Contacts at about 2.9 km), a distance saves however you type it —
+3950, 3,950, 3950 m or 3.95 km — and there is a profane warning sound if you
+want it. The overlay boxes show only while the game is in front, and each key
+says over the game what it did.
+
+### Fixed
+
+- Tables no longer show an empty sideways scrollbar with nothing to scroll.
+- Restarting EDSMT in the middle of a session no longer counts a sale twice,
+  or brings a banked run back as a second one.
+- A game in another language no longer files Water as *Eau*, or leaves its
+  markets unpriced. Commodities are named from the game's own symbols.
+- A by-product refined in the SRV no longer changes the Commodity box, so the
+  next deposit marked is not filed under it.
+- The Find window loads individual deposits a page at a time, and has a
+  **Last seen** column.
+- Pick from a box with the mouse and Tab goes on to the next one.
+
+---
+
 ## 1.10028
 
 ### Fixed — an update could wipe your settings

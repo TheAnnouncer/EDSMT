@@ -11,6 +11,13 @@ import math
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import overlay as OV
+# These checks are about what the boxes draw, not about which window happens
+# to be in front of the machine running them. On Windows that is the console
+# or the test window, never the game, so the boxes would stand down and draw
+# nothing - which is right in play and meaningless here. "Cannot tell"
+# (None) is the one answer that leaves them up; the checks that are about
+# standing down set their own answer.
+OV.foreground_is_game = lambda: None
 
 fails = []
 def check(label, cond, extra=""):
@@ -547,8 +554,42 @@ check("the scanner ring is drawn and labelled with its range",
 check("the best patch is called out", said(scope, "BEST PATCH  11R"), texts(scope))
 check("the next target is a heading and a range, not just a dot",
       said(scope, "NEXT") and said(scope, "Haematite"), texts(scope))
-check("the hotkeys that record one are on it",
-      said(scope, "F9 SITE") and said(scope, "F10 DEPOSIT"), texts(scope))
+wide_scope = drawn(RADAR_ROWS, heading=12.0, size=(760, 420))
+check("with room, the hotkeys that record one are on it, in the order the "
+      "work is done",
+      said(wide_scope, "Alt+1 SITE  Alt+2 BORDER  Alt+3 DEPOSIT  Alt+4 RIG"),
+      texts(wide_scope))
+check("squeezed, they give way to where to go next rather than print over it",
+      said(scope, "NEXT") and not said(scope, "Alt+1 SITE"), texts(scope))
+# Nothing prints over anything else. Every label placed beside a mark is
+# drawn from its top-left corner; rebuild each box the way the scope sized it
+# and make sure no two of them touch.
+CROWD = [row(300.0 + 5 * i, (37 * i) % 360, id="crowd%d" % i,
+             commodity=("Haematite", "Copper", "Thorium", "Samarium")[i % 4],
+             rigs=str(1 + i % 3)) for i in range(24)]
+crowd = drawn(CROWD, heading=0.0, size=(420, 420), location="2")
+boxes = []
+for name, _a, kw in crowd.calls:
+    if name == "create_text" and kw.get("anchor") == "nw":
+        size = kw["font"][1]
+        w, h = OV.text_box(kw["text"], size)
+        boxes.append((_a[0], _a[1], _a[0] + w, _a[1] + h, kw["text"]))
+clashes = [(a[4], b[4]) for i, a in enumerate(boxes) for b in boxes[i + 1:]
+           if a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]]
+check("a crowded scope names what it can and prints nothing over anything else",
+      boxes and not clashes, clashes[:4])
+check("and says how many it left unnamed",
+      any("unlabelled" in str(kw.get("text", "")) for n, _a, kw in crowd.calls
+          if n == "create_text"))
+_named = sum(1 for t in texts(crowd)
+             if t.split(" (")[0] in ("Haematite", "Copper", "Thorium", "Samarium"))
+_unnamed = [t for t in texts(crowd) if t.endswith(" unlabelled")]
+check("and the count is finds, not ring distances or the scanner's label",
+      _unnamed == ["%d unlabelled" % (len(CROWD) - _named)], (_unnamed, _named))
+_two = drawn([row(420, 200, id="u1", commodity="Haematite", rigs="6"),
+              row(610, 240, id="u2", commodity="Samarium", rigs="4")])
+check("two finds, both named, is not '2 unlabelled'",
+      not any(t.endswith("unlabelled") for t in texts(_two)), texts(_two))
 check("the commander is a chevron", len(shapes(scope, "create_polygon")) >= 1)
 check("and it is amber, the Radio Raxxla colour",
       any(kw.get("fill") == OV.AMBER for _a, kw in shapes(scope, "create_polygon")))
@@ -640,11 +681,157 @@ check("with no invented site to centre on", said(blank, "CENTRE  SRV"),
 one = drawn([RADAR_ROWS[0]])
 check("one deposit draws", said(one, "Haematite (6R)"), texts(one))
 check("and is its own centre", said(one, "CENTRE  LOCATION 2"), texts(one)[:6])
-miles = drawn(RADAR_ROWS + [row(3_000_000, 47, id="f", commodity="Gold", rigs="5")])
+miles_overlay = OV.Overlay(app=_App(), tk_module=None,
+                           settings={"overlay_mode": "radar",
+                                     "overlay_click_through": True})
+miles_overlay.window = _Window(420, 420)
+miles_overlay.canvas = _Canvas()
+miles_overlay.draw(RADAR_ROWS + [row(3_000_000, 47, id="f", commodity="Gold",
+                                     rigs="5")], 0.0)
+miles = miles_overlay.canvas
 check("a find on the far side of the body does not blank the scope",
       said(miles, "Haematite (6R)"), texts(miles))
-check("and the radius stopped at the cap",
-      said(miles, "MAP RADIUS  50 km"), texts(miles)[:4])
+# It used to stop at the 50 km cap, which is what the scope in his 1.10028
+# screenshot showed: MAP RADIUS 50 km, the patch a dot, 9,698 km arrows at
+# the rim. A find that far off is on another signal; it is left off the
+# boxes and counted, and the scope stays sized to the patch.
+check("and it does not drag the scope out at all",
+      not said(miles, "MAP RADIUS  50 km") and said(miles, "MAP RADIUS"),
+      texts(miles)[:4])
+check("the far find is not drawn, not even as an arrow",
+      not said(miles, "Gold"), texts(miles))
+check("it is counted as elsewhere on the body",
+      miles_overlay._elsewhere == 1, miles_overlay._elsewhere)
+
+print("== the scope is the signal you are AT, and nothing else ==")
+# Reported as "only focus on the signal source we are at", with a
+# screenshot: MAP RADIUS 50 km. The box still named the signal before, 36 km
+# back, and the scope stretched to hold it and the SRV both.
+def radius_of(canvas):
+    for text in texts(canvas):
+        if text.startswith("MAP RADIUS"):
+            value = text.split("MAP RADIUS", 1)[1].strip().replace(",", "")
+            if value.endswith("km"):
+                return float(value[:-2].strip()) * 1000.0
+            return float(value.rstrip("m").strip())
+    return None
+
+behind = [row(36055, 56.3, id="o%d" % n, commodity="Gold", rigs="3",
+              location="1") for n in range(3)]
+around_me = [row(420, 200, id="n1", commodity="Haematite", rigs="6",
+                 location="5"),
+             row(610, 240, id="n2", commodity="Samarium", rigs="4",
+                 location="5")]
+stale = drawn(behind + around_me, location="1", site=(30000.0, 20000.0))
+check("a signal 36 km back does not size the scope",
+      radius_of(stale) is not None and radius_of(stale) < 2000,
+      radius_of(stale))
+check("the finds round the SRV are what it shows",
+      said(stale, "Haematite") and said(stale, "Samarium"), texts(stale))
+check("and it says, up top, where the signal in the box is",
+      said(stale, "CENTRE  SRV   SIGNAL 1  36 km ENE"), texts(stale))
+check("the old signal's finds are not drawn", not said(stale, "Gold"),
+      texts(stale))
+
+stale_border = drawn(behind + around_me, location="1", site=(30000.0, 20000.0),
+                     survey={"centre": (30000.0, 20000.0), "border_m": 4500.0,
+                             "points": [], "scan_m": 500.0, "rings": []},
+                     rigs={"rigs": [{"n": 1, "east": 29000.0, "north": 19500.0,
+                                     "range_m": 34800.0, "commodity": "Gold"}],
+                           "limit_m": 3500.0})
+check("nor does the border and a rig left at it",
+      radius_of(stale_border) is not None and radius_of(stale_border) < 2000,
+      radius_of(stale_border))
+nothing_here = drawn(behind, location="1", site=(30000.0, 20000.0))
+check("with nothing near the SRV either, it is the scanner's reach, not 50 km",
+      radius_of(nothing_here) is not None
+      and radius_of(nothing_here) <= PV.SIGNAL_VIEW_EMPTY_M * 1.3,
+      radius_of(nothing_here))
+
+at_it = [row(1400 + 90 * n, 45 + 5 * n, id="a%d" % n, commodity="Haematite",
+             rigs="2", location="5") for n in range(4)]
+working = drawn(at_it, location="5", site=(900.0, 900.0))
+check("at the signal, the scope holds the patch and you",
+      radius_of(working) is not None and radius_of(working) < 3000,
+      radius_of(working))
+outside = drawn([row(6300 + 80 * n, 90, id="b%d" % n, commodity="Bromellite",
+                     rigs="2", location="7") for n in range(3)],
+                location="7", site=(6400.0, 0.0))
+# Setting the border is driving out to the location's edge, and that can be
+# 6 km. The scope used to stop at 5 km, freeze at 1.5 km round the centre
+# and pin the Rhino to the rim at 5.91 km, pointing nowhere.
+check("6 km out from it - out setting the border - the scope takes you in",
+      radius_of(outside) is not None and 6400 < radius_of(outside) <= 10000,
+      radius_of(outside))
+check("so you are on it, not a chevron on the rim with the range",
+      not said(outside, "6.40km"), texts(outside))
+
+
+def _rim_chevron(heading):
+    """Draw the commander off the edge of a scope and return the chevron."""
+    scope = OV.Overlay(app=_App(), tk_module=None,
+                       settings={"overlay_mode": "radar"})
+    scope.canvas = _Canvas()
+    view = PV.Viewport(420, 420, 1000.0, margin=40)
+    plan = PV.layout([], view, heading=heading, origin=(9000.0, 0.0),
+                     clip="circle")
+    scope._commander(view, plan)
+    return [a for name, a, kw in scope.canvas.calls if name == "create_polygon"]
+
+
+_east, _south = _rim_chevron(90.0), _rim_chevron(180.0)
+check("off the edge, the chevron turns with the Rhino, not with the bearing "
+      "back to it", _east and _south and _east != _south, (_east, _south))
+wide = drawn(at_it, location="5", site=(900.0, 900.0),
+             settings={"overlay_max_radius_m": 50000},
+             survey={"centre": (900.0, 900.0), "border_m": 4500.0,
+                     "points": [], "scan_m": 500.0, "rings": []})
+check("a survey border is in view, all of it",
+      radius_of(wide) is not None and 4500 < radius_of(wide) < 8000,
+      radius_of(wide))
+check("and no hand-set cap lets the scope past the signal's own limit",
+      radius_of(drawn(at_it + [row(14000, 45, id="z", commodity="Gold",
+                                   location="5")],
+                      location="5", site=(900.0, 900.0),
+                      settings={"overlay_max_radius_m": 50000}))
+      <= PV.SIGNAL_VIEW_CAP_M)
+
+far = PV.signal_focus(behind + around_me, "1", anchor=(30000.0, 20000.0),
+                      near_m=PV.SIGNAL_REACH_M)
+check("planview says the signal is far, and where",
+      far["far"] and far["far"]["signal"] == "1"
+      and abs(far["far"]["range_m"] - 36056) < 5
+      and PV.compass_point(far["far"]["bearing"]) == "ENE", far["far"])
+check("and focuses on the SRV instead",
+      far["how"] == "commander" and len(far["here"]) == 2, far["how"])
+near = PV.signal_focus(at_it, "5", anchor=(900.0, 900.0),
+                       near_m=PV.SIGNAL_REACH_M)
+check("a signal you are at is not far", near["far"] is None
+      and near["how"] == "logged", near["how"])
+
+print("== the deposit picked in the app is the one the overlay guides to ==")
+guided = drawn(RADAR_ROWS, heading=0.0, target="t")
+check("the scope says GO to it, not NEXT to the nearest",
+      any(t.startswith("GO ") and "Thortveitite" in t for t in texts(guided))
+      and not any(t.startswith("NEXT") for t in texts(guided)), texts(guided))
+unguided = drawn(RADAR_ROWS, heading=0.0)
+check("with nothing picked it is NEXT, nearest first",
+      any(t.startswith("NEXT") and "Haematite" in t for t in texts(unguided)),
+      [t for t in texts(unguided) if t.startswith("NEXT")])
+_ov = OV.Overlay(app=_App(), tk_module=None, settings={"overlay_mode": "radar"})
+_ov._target_id = "t"
+_first = _ov.ranked(RADAR_ROWS, 0.0)[0]
+check("TARGETS lists it first, marked",
+      _first["commodity"] == "Thortveitite" and _first["target"], _first)
+check("but the deposit card stays on the nearest still worth working",
+      _ov.ranked(RADAR_ROWS, 0.0, limit=1, guided=False)[0]["commodity"] == "Haematite")
+_card = OV.Overlay(app=_App(), tk_module=None, settings={"overlay_mode": "radar"})
+_card.window, _card.canvas, _card._target_id = _Window(420, 420), _Canvas(), "t"
+_card.draw_deposit(RADAR_ROWS, 0.0, 420, 420)
+_ct = texts(_card.canvas)
+check("the MINERAL DEPOSIT card shows that one, not the one being guided to",
+      "MINERAL" in _ct and _ct[_ct.index("MINERAL") + 1] == "Haematite", _ct[:6])
+
 tiny = drawn(RADAR_ROWS, size=(200, 200))
 check("a small scope still draws", len(tiny.calls) > 20)
 check("junk rows do not crash it",
@@ -898,8 +1085,9 @@ check("and tells you which keys log a find",
 bound = [str(kw.get("text", "")) for name, _a, kw in
          _drew(OV.STATUS, RADAR_ROWS, hotkey_location="CTRL+1",
                hotkey_deposit="CTRL+2").calls if name == "create_text"]
-check("in the keys this commander actually bound, not F9 and F10",
-      any("CTRL+1" in t for t in bound), bound)
+check("in the keys this commander actually bound, not the defaults",
+      any("ctrl+1 site" in t.lower() and "ctrl+2 dep" in t.lower()
+          for t in bound), bound)
 
 print("== every box is locked and unlocked together ==")
 class _StyleWindow(_FakeWindow):
@@ -1189,9 +1377,9 @@ check("cockpit puts every one of them back",
       (OV.ORANGE, OV.VOID, OV.RULE)
       == (OV.BASE_THEME["ORANGE"], OV.BASE_THEME["VOID"], OV.BASE_THEME["RULE"]),
       (OV.ORANGE, OV.VOID))
-check("a theme only has to name what differs",
-      OV.THEMES["elite"].get("VOID") is None
-      and OV.apply_theme("elite")["VOID"] == OV.BASE_THEME["VOID"])
+check("every theme is a whole palette, so nothing is left in the last one's colours",
+      all(set(OV.BASE_THEME) <= set(t) for t in OV.THEMES.values())
+      and OV.apply_theme("elite")["VOID"] == OV.PALETTES["elite"]["VOID"])
 OV.apply_theme("ice", accent="#ff00ff")
 check("a hand-picked colour overrides the theme's instrument colour",
       OV.ORANGE == "#ff00ff", OV.ORANGE)

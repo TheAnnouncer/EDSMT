@@ -118,9 +118,9 @@ check("with the sound off it still warns, silently",
       out["far"] and not quiet.sounds and quiet.said[-1][0].startswith("TOO FAR"))
 off = probe(limit=0)
 off.drop_rigs()
-out = off.watch_rigs(State(*dest(HOME[0], HOME[1], 0, 5000)))
+out = off.watch_rigs(State(*dest(HOME[0], HOME[1], 0, 4500)))
 check("a limit of 0 never warns, but still says where they are",
-      out and not out["far"] and not off.sounds and abs(out["range_m"] - 5000) < 5)
+      out and not out["far"] and not off.sounds and abs(out["range_m"] - 4500) < 5)
 check("and the hint says the warning is off", "off" in off.rigs_hint())
 junk = probe(limit="lots")
 check("a limit that is not a number is off, not a crash", junk.rig_limit() == 0.0)
@@ -138,11 +138,79 @@ gone.drop_rigs()
 check("and a new first rig on the next body is rig 1 again",
       [r["n"] for r in gone.rigs_at["rigs"]] == [1])
 
+print("== the last warning at 4.8 km, and a rig lost at 5 km ==")
+
+
+class InRhino(State):
+    def __init__(self, lat, lon, heading=0.0):
+        State.__init__(self, lat, lon, heading)
+        self.in_srv = True
+
+
+class _Overlay:
+    def __init__(self):
+        self.up, self.downs = [], 0
+    def alarm(self, title, detail=""):
+        self.up.append((title, detail))
+        return True
+    def end_alarm(self):
+        self.downs += 1
+    def flash(self, *a, **k):
+        return True
+
+
+last = probe(limit=3500)
+last.overlay = _Overlay()
+last.drop_rigs()                                    # rig 1 at HOME
+last.game = InRhino(*dest(HOME[0], HOME[1], 0, 200))
+last.drop_rigs()                                    # rig 2, 200 m north
+last.watch_rigs(InRhino(*dest(HOME[0], HOME[1], 180, 3700)))
+check("past the first warning: the banner and one sound, no alarm yet",
+      len(last.sounds) == 1 and not last.overlay.up, (last.sounds, last.overlay.up))
+state_48 = InRhino(*dest(HOME[0], HOME[1], 180, 4700), heading=0.0)
+out = last.watch_rigs(state_48)
+check("4.9 km from rig 2: the big warning goes up in the middle of the screen",
+      out and out["final"] and last.overlay.up
+      and last.overlay.up[-1][0].startswith("RIG 2"), last.overlay.up)
+check("and it sounds again", len(last.sounds) == 2, last.sounds)
+check("naming the loss distance and which way to turn back",
+      "LOST AT 5.00 km" in last.overlay.up[-1][1]
+      and "TURN BACK" in last.overlay.up[-1][1], last.overlay.up[-1])
+last.watch_rigs(InRhino(*dest(HOME[0], HOME[1], 180, 4750)))
+check("staying out there keeps it up without sounding every poll",
+      len(last.sounds) == 2 and len(last.overlay.up) >= 2)
+out = last.watch_rigs(InRhino(*dest(HOME[0], HOME[1], 180, 4880)))
+check("past 5 km from rig 2 in the Rhino, rig 2 is lost and dropped",
+      [r["n"] for r in last.rigs_at["rigs"]] == [1], last.rigs_at)
+check("and it says so", any("RIG 2 LOST" in t for t, _c in last.said), last.said[-3:])
+check("the big warning comes down with it", last.overlay.downs >= 1)
+out = last.watch_rigs(InRhino(*dest(HOME[0], HOME[1], 180, 5100)))
+check("rig 1 past 5 km as well: nothing left to watch, every warning cleared",
+      last.rigs_at is None and out is None, (last.rigs_at, out))
+check("and no warning comes back for rigs that are gone",
+      last.watch_rigs(InRhino(*dest(HOME[0], HOME[1], 180, 6000))) is None)
+ship = probe(limit=3500)
+ship.overlay = _Overlay()
+ship.drop_rigs()
+ship.watch_rigs(State(*dest(HOME[0], HOME[1], 90, 5200)))
+check("from the ship, 5 km from a rig is not the Rhino's 5 km: nothing is "
+      "dropped", ship.rigs_at and len(ship.rigs_at["rigs"]) == 1, ship.rigs_at)
+by_hand = probe(limit=3500)
+by_hand.overlay = _Overlay()
+by_hand.drop_rigs()
+by_hand.watch_rigs(InRhino(*dest(HOME[0], HOME[1], 90, 4900)))
+by_hand.rigs_up()
+check("ALL UP takes every warning down by hand",
+      by_hand.overlay.downs >= 1 and by_hand.rigs_at is None)
+check("the numbers are the game's: warned at 4 km, lost at 5, last call 4.8",
+      (A.RIG_FINAL_M, A.RIG_LOST_M) == (4800.0, 5000.0))
+
 print("== wired in ==")
 src = open(os.path.join(os.path.dirname(HERE), "edsmt.py"), encoding="utf-8").read()
 check("the key is registered from settings", A.EDSMT.wanted_hotkeys(
       dict(A.DEFAULT_SETTINGS, hotkey_rigs="F8")).get("rigs") == "F8")
-check("and the poll acts on it", 'elif action == "rigs":' in src and "self.drop_rigs()" in src)
+check("and the poll acts on it",
+      '"rigs": ("Rigs down", self.drop_rigs)' in src)
 check("redraw hands the rigs to the map and the overlay",
       "rigs = self.watch_rigs(state) if live else None" in src
       and src.count("rigs=rigs") >= 2)

@@ -30,13 +30,13 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Nothing in this job pushes, so the checkout token does not need
           # to stay in .git/config where a build step could read it.
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -54,6 +54,15 @@ jobs:
       - name: Install the API's dependencies too, so its suite is not skipped
         continue-on-error: true
         run: pip install -r server/requirements.txt
+
+      # The runner's desktop is 1024x768, too small for the checks about
+      # what fits in a 1400-pixel window. Ask for 1920x1080 first. Best
+      # effort: where the runner refuses, those checks say SKIP rather than
+      # fail, so a build is never red over the size of GitHub's screen.
+      - name: Give the desktop a normal screen size
+        continue-on-error: true
+        shell: pwsh
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
 
       # Nothing ships that has not passed. The suite needs no display and no
       # Elite Dangerous, which is the whole reason it can run here.
@@ -114,7 +123,7 @@ jobs:
           if (Test-Path site\edsmt.html) { Copy-Item site\edsmt.html upload\edsmt.html -Force }
           Get-ChildItem upload | Format-Table Name, Length
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: EDSMT-windows
           path: upload/*
@@ -132,20 +141,20 @@ jobs:
     steps:
       # Read-only checkout, for CHANGELOG.md: the release page carries the
       # same patch notes as the website, taken from the same entry.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
       - name: Patch notes for this version
         run: python3 build/release_notes.py "${GITHUB_REF_NAME}" > release-notes.md
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: EDSMT-windows
           path: upload
 
       - name: Attach to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: upload/*
           body_path: release-notes.md

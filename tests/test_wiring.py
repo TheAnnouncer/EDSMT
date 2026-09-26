@@ -266,6 +266,7 @@ def _land_app():
 WINDOWS = [
     ("FindWindow", lambda: A.FindWindow(_app())),
     ("LandWindow", lambda: A.LandWindow(_land_app())),
+    ("SitesWindow", lambda: A.SitesWindow(_app())),
     ("SettingsWindow", lambda: A.SettingsWindow(_app())),
     ("WelcomeWindow", lambda: A.WelcomeWindow(_app())),
     ("EditLocationWindow", lambda: A.EditLocationWindow(_app(), dict(ROW))),

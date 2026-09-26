@@ -31,6 +31,13 @@ except Exception as exc:                        # no Tk, or no display
 root.withdraw()
 
 import overlay as OV  # noqa: E402
+# These checks are about what the boxes draw, not about which window happens
+# to be in front of the machine running them. On Windows that is the console
+# or the test window, never the game, so the boxes would stand down and draw
+# nothing - which is right in play and meaningless here. "Cannot tell"
+# (None) is the one answer that leaves them up; the checks that are about
+# standing down set their own answer.
+OV.foreground_is_game = lambda: None
 
 
 def pump(times=3):
@@ -107,13 +114,14 @@ pump()
 # ---------------------------------------------------------------------------
 # The app's own windows
 # ---------------------------------------------------------------------------
-import json, tempfile, shutil
+import json, tempfile, shutil, time
 _HOME = tempfile.mkdtemp(prefix="edsmt-gui-")
 os.environ["HOME"] = _HOME
 os.environ["LOCALAPPDATA"] = _HOME
 root.destroy()                      # the app brings its own root
 import edsmt as A                   # noqa: E402
 from survey import fold as SV_fold  # noqa: E402
+import survey as SV  # noqa: E402
 A.DATA_DIR = _HOME
 A.SETTINGS_FILE = os.path.join(_HOME, "settings.json")
 # An empty settings folder is a first run, and a first run puts the sharing
@@ -122,9 +130,20 @@ A.SETTINGS_FILE = os.path.join(_HOME, "settings.json")
 # one it landed in the middle of them and every key went to it - six false
 # failures on Windows in 1.10028, with the type-ahead itself working. Here
 # the question has been answered; it gets its own checks at the end.
+#
+# And the journal folder is an empty one of the test's own. On Windows the
+# app asks Windows where Saved Games is, not HOME, so on a machine that plays
+# Elite this window read the commander's real journals: his real hold landed
+# in the Earnings checks, and a real station's price on the strip.
+_JOURNALS = os.path.join(_HOME, "journals")
+os.makedirs(_JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-    json.dump({"asked_to_share": True}, _f)
+    json.dump({"asked_to_share": True, "journal_dir": _JOURNALS}, _f)
 app = A.EDSMT()
+check("the window reads the test's own empty journal folder, never a real one",
+      os.path.normcase(os.path.abspath(str(getattr(app.watcher, "directory", "") or "")))
+      == os.path.normcase(os.path.abspath(_JOURNALS)),
+      getattr(app.watcher, "directory", None))
 app.geometry("1400x900+0+0")
 root = app
 # Nothing in here asks the live site whether there is a newer version.
@@ -134,6 +153,24 @@ def settle(times=4):
     for _ in range(times):
         app.update_idletasks()
         app.update()
+
+
+# GitHub's Windows runner has a 1024x768 desktop. A check about what fits in
+# a 1400-pixel window cannot be answered on a screen that cannot hold one,
+# and failing it there reported a layout bug that did not exist - the red X
+# on 1.10028. On a screen too small it says SKIP and why, out loud, like
+# every other check here that cannot run.
+WIDE_SCREEN = 1440
+
+
+def check_wide(label, cond_fn, extra_fn=lambda: ""):
+    width, height = app.winfo_screenwidth(), app.winfo_screenheight()
+    if width < WIDE_SCREEN:
+        print("  SKIP  %s   (this screen is %dx%d - too small for a "
+              "1400-pixel window)" % (label, width, height))
+        return
+    ok = bool(cond_fn())
+    check(label, ok, "" if ok else extra_fn())
 
 def inside(widget, window):
     """Is the whole of `widget` inside `window`'s visible area?"""
@@ -194,8 +231,9 @@ def _text_of(w):
         return ""
 _score = [w for w in finder.table.winfo_children()
           if _text_of(w).startswith("Score")]
-check("on a 1400-pixel window every column is on screen without scrolling",
-      _score and inside(_score[0], finder.scroller.canvas), "Score is off the edge")
+check_wide("on a 1400-pixel window every column is on screen without scrolling",
+           lambda: _score and inside(_score[0], finder.scroller.canvas),
+           lambda: "Score is off the edge")
 finder.geometry("820x600")
 settle(6)
 check("squeezed narrow, the table scrolls sideways instead of losing columns",
@@ -301,6 +339,26 @@ press(entry_of(rigs), "Tab")
 check("Tab with a list open takes the choice and moves on",
       rigs.get() == "4" and app.focus_get() == order[2], (rigs.get(), str(app.focus_get())))
 
+print("== pick with the mouse, then Tab: the keyboard stays with the boxes ==")
+# Reported: "When selecting the deposit stuff I need to be able to click it
+# and tab as well". Picking from a box's arrow list left the keyboard
+# nowhere, so the next Tab went off the rail instead of to the next box.
+amount = app.fields["amount"]
+order[0].focus_force(); settle(3)
+amount._dropdown_callback("High")
+settle(4)
+check("a value picked from the arrow list goes in",
+      amount.get() == "High", amount.get())
+check("and the keyboard is in that box straight after",
+      app.focus_get() == order[2], str(app.focus_get()))
+check("with its type-ahead list shut, so the next key is not swallowed",
+      not amount.suggest.visible())
+app.focus_get().event_generate("<Tab>", when="now"); settle(3)
+check("so Tab goes on to Density", app.focus_get() == order[3], str(app.focus_get()))
+for _k in ("amount", "rigs"):
+    entry_of(app.fields[_k]).delete(0, "end")
+settle(2)
+
 print("== Settings: the rig warning distance is a number or it is refused ==")
 _sw = A.SettingsWindow(app)
 settle(4)
@@ -312,16 +370,77 @@ app.apply_settings = lambda data: _saved.append(data)
 _sw.fields["rig_warn_m"].delete(0, "end"); _sw.fields["rig_warn_m"].insert(0, "a long way")
 _sw.save(); settle(2)
 check("a distance that is not a number is refused with a reason",
-      not _saved and _said and "metres" in _said[-1], _said[-1:])
+      not _saved and _said and "3.5 km" in _said[-1], _said[-1:])
 _sw.fields["rig_warn_m"].delete(0, "end"); _sw.fields["rig_warn_m"].insert(0, "1,500")
 _sw.save(); settle(2)
 check("1,500 is saved as 1500 metres",
       _saved and _saved[-1].get("rig_warn_m") == 1500.0, _saved[-1:] and _saved[-1].get("rig_warn_m"))
+# Reported: "it didnt save unless he put .00 at the end".
+for _typed, _metres_ in (("3950", 3950.0), ("3950 m", 3950.0), ("3.95 km", 3950.0)):
+    _sw.fields["rig_warn_m"].delete(0, "end"); _sw.fields["rig_warn_m"].insert(0, _typed)
+    _sw.save(); settle(2)
+    check("%r saves as %d m" % (_typed, _metres_),
+          _saved and _saved[-1].get("rig_warn_m") == _metres_,
+          _saved[-1:] and _saved[-1].get("rig_warn_m"))
+check("and the box shows it back as whole metres",
+      _sw.fields["rig_warn_m"].get() == "3950", _sw.fields["rig_warn_m"].get())
+check("and the status line says what was understood",
+      _said and "3.95 km" in _said[-1], _said[-1:])
 app.apply_settings = _real_apply
+
+print("== Settings: the key boxes are dots until Show, safe on stream ==")
+_FAKE = "not-a-real-key-0123456789"
+for _k in ("inara_api_key", "community_token"):
+    _box = _sw.fields[_k]
+    _box.delete(0, "end"); _box.insert(0, _FAKE); settle(2)
+    check("%s is dots" % _k, entry_of(_box).cget("show") == A.MASK,
+          repr(entry_of(_box).cget("show")))
+    check("%s still holds the real text underneath" % _k, _box.get() == _FAKE)
+    check("%s has a Show button beside it" % _k,
+          _sw.secrets[_k].cget("text") == "Show" and _sw.secrets[_k].winfo_ismapped())
+    _sw.secrets[_k].invoke(); settle(2)
+    check("%s: Show shows it" % _k,
+          entry_of(_box).cget("show") == "" and _sw.secrets[_k].cget("text") == "Hide")
+    _sw.secrets[_k].invoke(); settle(2)
+    check("%s: Hide hides it again" % _k,
+          entry_of(_box).cget("show") == A.MASK and _sw.secrets[_k].cget("text") == "Show")
+check("the other boxes are left as plain text",
+      entry_of(_sw.fields["rig_warn_m"]).cget("show") == "")
+_real_reveal = A.REVEAL_S
+A.REVEAL_S = 0.3
+_sw.secrets["inara_api_key"].invoke(); settle(2)
+check("shown...", entry_of(_sw.fields["inara_api_key"]).cget("show") == "")
+_t_end = time.time() + 2.0
+while time.time() < _t_end and entry_of(_sw.fields["inara_api_key"]).cget("show") != A.MASK:
+    settle(1); time.sleep(0.05)
+check("...and back to dots by itself, nobody has to remember",
+      entry_of(_sw.fields["inara_api_key"]).cget("show") == A.MASK
+      and _sw.secrets["inara_api_key"].cget("text") == "Show")
+A.REVEAL_S = _real_reveal
+_sw.secrets["community_token"].invoke(); settle(2)
+_sw.load(); settle(2)
+check("reloading Settings puts a shown box back to dots",
+      entry_of(_sw.fields["community_token"]).cget("show") == A.MASK)
+_sw.secrets["community_token"].invoke(); settle(2)
+
+print("== a find copied as a line, and pasted back in ==")
+_share = ("EDSMT find | Synuefe XR-H d11-102 | Synuefe XR-H d11-102 2 b | "
+          "signal 4 | Bromellite | rigs 3 | amount High | density ? | 12.34567, 45.67891")
+app.clipboard_clear(); app.clipboard_append("from my mate:\n" + _share); settle(2)
+_said.clear()
+_before = len(app.store.deposits)
+_pasted = _sw.paste_shared(); settle(2)
+check("Paste shared finds adds what was copied",
+      _pasted and _pasted["taken"] == 1 and len(app.store.deposits) == _before + 1, _pasted)
+check("and says so", _said and _said[-1].startswith("Added 1 find"), _said[-1:])
+app.selected = app.store.deposits[-1]
+_copied = app.copy_selected(); settle(2)
+check("Copy to share puts that find back on the clipboard as the same line",
+      _copied == _share and app.clipboard_get() == _share, (_copied, app.clipboard_get()))
 try:
     _sw.destroy()
-except Exception:
-    pass
+except Exception as _e:
+    check("closing Settings with a box shown is not an error", False, _e)
 settle(2)
 
 print("== each rig is on the map, numbered, red past the limit ==")
@@ -346,17 +465,42 @@ check("and the map zooms out far enough to show the far one", _inside)
 app.plan.show([], caption="")
 settle(2)
 
+print("== the map is the signal you are at, not the one the box was left on ==")
+def _drow(r, b, i, what, loc):
+    return {"range_m": float(r), "bearing": float(b),
+            "deposit": {"id": i, "commodity": what, "rigs": "2", "location": loc,
+                        "system": "S", "body": "B"}}
+_old = [_drow(36055, 56.3, "o%d" % n, "Gold", "1") for n in range(3)]
+_mine = [_drow(420, 200, "m1", "Haematite", "5"), _drow(610, 240, "m2", "Samarium", "5")]
+app.plan.show(_old + _mine, caption="stale", signal="1", anchor=(30000.0, 20000.0))
+app.plan.update_idletasks()
+_map_text = [app.plan.itemcget(i, "text") for i in app.plan.find_all()
+             if app.plan.type(i) == "text"]
+check("the footer says where the signal in the box is",
+      any("signal 1 is 36 km ENE" in t for t in _map_text), _map_text)
+check("and the view is the ground round you, not 15 km of nothing",
+      app.plan._auto_extent < 2000, app.plan._auto_extent)
+app.plan.show(_mine, caption="at it", signal="5", anchor=(-300.0, -400.0))
+app.plan.update_idletasks()
+_map_text = [app.plan.itemcget(i, "text") for i in app.plan.find_all()
+             if app.plan.type(i) == "text"]
+check("at the signal, no such line",
+      not any("signal 5 is" in t for t in _map_text), _map_text)
+app.plan.show([], caption="")
+settle(2)
+
 print("== the deposit UPDATE button and the new-build button are two buttons ==")
 # They shared the name btn_update, so an update announcement relabelled the
 # deposit button UPDATE AVAILABLE and moved it.
 check("the top bar's button is the new-build one",
       app.btn_update.cget("text") == "UPDATE AVAILABLE", app.btn_update.cget("text"))
-check("the rail's is the deposit one",
-      app.btn_update_deposit.cget("text") == "UPDATE", app.btn_update_deposit.cget("text"))
+check("the rail's is the deposit one, with its key under it",
+      app.btn_update_deposit.cget("text") == "UPDATE\nAlt+6",
+      app.btn_update_deposit.cget("text"))
 app.announce_update("EDSMT 9.99999 is out.")
 settle(3)
 check("announcing a build leaves the deposit button alone",
-      app.btn_update_deposit.cget("text") == "UPDATE"
+      app.btn_update_deposit.cget("text") == "UPDATE\nAlt+6"
       and app.btn_update.winfo_ismapped(), app.btn_update_deposit.cget("text"))
 app.btn_update.pack_forget()
 settle(2)
@@ -411,8 +555,8 @@ check("and the readout still has room for a long system and body",
 check("because the buttons went under the readouts, not over them",
       app._top_stacked is True)
 app.geometry("1400x900+0+0"); settle(6)
-check("given the width back, the buttons go back beside the readouts",
-      app._top_stacked is False)
+check_wide("given the width back, the buttons go back beside the readouts",
+           lambda: app._top_stacked is False)
 lander = app.open_land()
 settle(6)
 check("the window opens on the system you are in",
@@ -447,9 +591,14 @@ lander.show_all.set(False); lander._paint(); settle(4)
 lander.sort_by(A.LAND_HEADERS.index("Ls")); settle(4)
 check("sorting on Ls puts the nearest first",
       [r["short"] for r in lander._sorted(list(lander._rows))][0] == "A 2")
-check("on a 1400-pixel window the whole table fits without scrolling sideways",
-      lander.scroller.inner.winfo_reqwidth() <= lander.scroller.canvas.winfo_width(),
-      (lander.scroller.inner.winfo_reqwidth(), lander.scroller.canvas.winfo_width()))
+check_wide("on a 1400-pixel window the whole table fits without scrolling sideways",
+           lambda: lander.scroller.inner.winfo_reqwidth()
+           <= lander.scroller.canvas.winfo_width(),
+           lambda: str((lander.scroller.inner.winfo_reqwidth(),
+                        lander.scroller.canvas.winfo_width())))
+check_wide("and no empty sideways scrollbar is left drawn under it",
+           lambda: not lander.scroller.hbar.winfo_ismapped()
+           and not lander.scroller.hbar.winfo_manager())
 check("and what it is worth and why are the first things after the body",
       A.LAND_HEADERS[:3] == ("Body", "Est. value", "Why"), A.LAND_HEADERS)
 lander.geometry("820x500"); settle(6)
@@ -457,6 +606,15 @@ check("squeezed, the table scrolls sideways rather than losing columns",
       lander.scroller.hbar.winfo_ismapped(), lander.scroller.inner.winfo_reqwidth())
 check("and the footnote is still on screen",
       inside(lander.footnote, lander), lander.footnote.winfo_rooty())
+lander.geometry("1400x600"); settle(8)
+check_wide("given the width back, the sideways scrollbar goes",
+           lambda: not lander.scroller.hbar.winfo_ismapped())
+# The toolkit re-applies a widget's last grid() whenever it rescales, which
+# Windows makes it do at start-up. With grid_remove that brought back a
+# full-width scrollbar with nothing to scroll, on every table.
+lander.scroller.hbar._set_scaling(1.0, 1.0); settle(4)
+check_wide("and a rescale does not bring it back",
+           lambda: not lander.scroller.hbar.winfo_ismapped())
 check("Copy all gives a block with a header line",
       lander.as_text().splitlines()[1].startswith("Body | Est. value | Why"), lander.as_text()[:80])
 _BODIES.append({"body": _SYS + " A 7", "landable": True, "distance_ls": 5.0,
@@ -471,6 +629,129 @@ check("a body the DSS maps while it is open appears without a click",
 lander.destroy(); settle(4)
 check("closing it is noticed and nothing keeps polling a dead window",
       (app.follow_land(), app.lander)[1] is None)
+
+print("== My sites: every place logged, on every body ==")
+# "how to find a list of the planets and spots I've logged ... so I can
+# return to them?"
+_R = 1_800_000.0
+app.store.set_location("Col 285 Sector AB-C d1-2", "Col 285 Sector AB-C d1-2 4 a",
+                       "3", lat=4.0, lon=5.0, radius_m=_R,
+                       commodities=["Bromellite", "Tellurium"])
+app.store.add_deposit(system="Col 285 Sector AB-C d1-2",
+                      body="Col 285 Sector AB-C d1-2 4 a", location="3",
+                      commodity="Bromellite", rigs="5", amount="High",
+                      lat="4.001", lon="5.001")
+check("the button is in the top bar", _find_button(app, "My sites") is not None)
+_sites = app.open_sites(); settle(6)
+_cells = texts_in(_sites.table)
+check("it lists a body that is not the one you are on",
+      any("Col 285 Sector AB-C d1-2 4 a" in t for t in _cells), _cells[:12])
+check("with what is there and what is still offered",
+      any("Bromellite" in t and "offers Tellurium" in t for t in _cells), _cells[:20])
+check("asking again brings the same window forward, re-read",
+      app.open_sites() is _sites)
+_sites.filter_box.insert(0, "col 285"); _sites._paint(); settle(4)
+check("the filter narrows it to that system",
+      len(_sites._rows) == 1 and _sites._rows[0]["signal"] == "3",
+      [r["body"] for r in _sites._rows])
+_sites.filter_box.delete(0, "end"); _sites._paint(); settle(4)
+check_wide("on a 1400-pixel window the table fits without scrolling sideways",
+           lambda: _sites.scroller.inner.winfo_reqwidth()
+           <= _sites.scroller.canvas.winfo_width(),
+           lambda: str((_sites.scroller.inner.winfo_reqwidth(),
+                        _sites.scroller.canvas.winfo_width())))
+check("the footnote says how to get back there",
+      "galaxy map" in _sites.footnote.cget("text"))
+_sites.destroy(); settle(4)
+
+print("== Earnings: both holds, and where to take them from here ==")
+# Reported: the earnings showed nothing with ore already in the ship or the
+# SRV, and "Sapphire is showing 127k - is this average galactic price? Call
+# up the system someone is in to show the real sale price."
+import time as _time
+
+
+class _Asks:
+    """The real client, except that asking for a price is recorded."""
+    can_read = True
+
+    def __init__(self, real):
+        self._real, self.calls = real, []
+
+    def sell(self, **k):
+        self.calls.append(k)
+        return True
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+_real_comm = app.community
+app.community = _Asks(_real_comm)
+app.watcher.holds = {"Ship": {"Haematite": 30}, "SRV": {"Sapphire": 2}}
+app.watcher.cargo = {"Sapphire": 2}
+app.watcher.system = "HR 7280"
+app.watcher.star_pos = (1.0, 2.0, 3.0)
+_run = app.earnings.start("HR 7280", "HR 7280 A 1", "Jameson")
+_run["mined"] = "Rhodplumsite:61;Ruby:11"
+_run["transferred"] = "Rhodplumsite:61;Ruby:11"
+_run["trips"] = "2"
+app.earnings.save()
+# A run an older build wrote - a landing and a sale of Tea - sits in the same
+# file and must not be on the tab.
+_old = {k: "" for k in SV.SESSION_FIELDS}
+_old.update({"id": "old1", "started": "2026-09-20T10:00:00Z",
+             "ended": "2026-09-20T11:00:00Z", "closed": "2026-09-20T11:00:00Z",
+             "system": "Trade Hub", "body": "", "sold": "Tea:40",
+             "credits": "40000"})
+app.earnings.sessions.insert(0, _old)
+app.earnings.save()
+app.open_earnings()
+_end = _time.time() + 2.0
+while _time.time() < _end:
+    settle(1); _time.sleep(0.05)
+ledger = app.ledger
+_holding = ledger.holding.cget("text")
+check("the hold line names the SRV and the ship, each with its tonnes",
+      "SRV 2t" in _holding and "ship 30t" in _holding, _holding)
+check("opening it with ore aboard asks where to sell it, most valuable first",
+      [k.get("commodity") for k in app.community.calls] == ["Sapphire", "Haematite"],
+      app.community.calls)
+check("asked from the system I am in",
+      all(k.get("near_system") == "HR 7280" for k in app.community.calls),
+      app.community.calls)
+app.take_quote(True, json.dumps({"commodity": "Sapphire", "market": [
+    {"station": "Mandi Port", "system": "Ten Mandi", "sell": 648000,
+     "distance_ly": 8.2, "seen": "2026-09-23T10:00:00Z"}], "community": [
+    {"station": "Home Dock", "system": "HR 7280", "sell": 301000,
+     "seen": "2026-09-24T09:00:00Z"}]}))
+settle(4)
+_cells = texts_in(ledger.quote_table)
+check("the best price is drawn, with where and how far",
+      "648,000" in _cells and "Mandi Port, Ten Mandi (8.2 Ly)" in _cells, _cells)
+check("beside what this system pays", "301,000" in _cells, _cells)
+check("and what the hold's worth of it fetches there", "1,296,000 Cr" in _cells, _cells)
+check("the main strip quotes it too, and says what is not priced yet",
+      "up to 1,296,000 Cr within 100 Ly (1 of 2 priced)"
+      in app.t_earnings.cget("text"), app.t_earnings.cget("text"))
+_ledger_text = " ".join(texts_in(ledger.table))
+check("the session says what the Rhino mined and what went to the ship",
+      "72t: Rhodplumsite 61, Ruby 11" in _ledger_text
+      and "(2 trips)" in _ledger_text, _ledger_text[:400])
+check("and only Rhino sessions are on the tab - not an older build's Tea run",
+      "Trade Hub" not in _ledger_text and "Tea" not in _ledger_text,
+      _ledger_text[:400])
+check("the multi-session box and End session are on the window",
+      "End session" in texts_in(ledger)
+      and any("Multi-session" in t for t in texts_in(ledger)),
+      texts_in(ledger)[:30])
+_check_btn = next((b for b in texts_in(ledger) if b == "Check prices"), None)
+check("Check prices is on the window", _check_btn == "Check prices")
+app.earnings.finish()
+ledger.destroy()
+app.community = _real_comm
+app.watcher.holds, app.watcher.cargo = {}, {}
+settle()
 
 print("== first run: the sharing question holds the keyboard until answered ==")
 app.settings["asked_to_share"] = False

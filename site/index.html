@@ -199,7 +199,7 @@ footer a:hover{color:var(--signal)}
 </nav>
 
 <div class="strip">
-  <span>EDSMT <!--VERSION-->1.10028<!--/VERSION--></span>
+  <span>EDSMT <!--VERSION-->1.10030<!--/VERSION--></span>
   <span>Elite Dangerous 4.4.1.1</span>
   <span>GPL-3.0 &middot; Windows</span>
 </div>
@@ -222,21 +222,37 @@ footer a:hover{color:var(--signal)}
   </header>
 
   <section class="panel">
-    <h2>Two keys. That is the whole tool.</h2>
-    <p class="sub">The workflow the game actually uses</p>
+    <h2>Six keys, in the order you work.</h2>
+    <p class="sub">Left Alt and the number row &middot; the number is the step</p>
 
     <div class="keys">
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>F9</kbd>
-        <p><b>Inside a mining location signal.</b> The game has just listed what
-        might be in it. One press records the signal, its position and
-        everything it offered &mdash; including anything already marked
-        depleted.</p></div>
+        <kbd>Alt+1</kbd>
+        <p><b>In the middle of the signal.</b> Logs the signal and sets the
+        centre of the survey. No commodities needed &mdash; they come with the
+        deposits.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>F10</kbd>
-        <p><b>Where the scanner pinged.</b> One press per deposit. Rigs can be
-        left blank &mdash; you do not know the count until you are stood on it,
-        so fill it in when you do.</p></div>
+        <kbd>Alt+2</kbd>
+        <p><b>At the location's edge line.</b> Hold the mineral scanner all the
+        way out and while you map. The border: the map and the scope shade the
+        ground you have swept inside it.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+3</kbd>
+        <p><b>Stood on a deposit.</b> One press per deposit. Rigs can be left
+        blank &mdash; you do not know the count until you are on it.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+4</kbd>
+        <p><b>As each rig goes down.</b> Numbered, and drawn on the scope and
+        the compass in the colour of what it is mining.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+5</kbd>
+        <p><b>Rigs back up.</b> Clears them from the scope and the
+        compass, and clears every rig warning.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>Alt+6</kbd>
+        <p><b>Back at a deposit you marked.</b> Writes the Amount going down, or
+        the rig count you now know, onto it instead of adding a second
+        copy.</p></div>
     </div>
 
     <div class="cols2">
@@ -248,9 +264,9 @@ footer a:hover{color:var(--signal)}
           &mdash; which is the number you want with your hands on the wheel, and
           it means nothing has to be pressed before a find can be recorded.</p>
         </div>
-        <p>Both hotkeys are system-wide, so they work with the game in front,
-        and the position is taken the instant you press the key. Both are
-        rebindable.</p>
+        <p>The keys are system-wide, so they work with the game in front,
+        and the position is taken the instant you press one. Every one can be
+        changed in Settings.</p>
       </div>
       <div class="readout">
         <div class="cap">Live &middot; SRV Telemetry</div>
@@ -280,8 +296,11 @@ footer a:hover{color:var(--signal)}
         overlay useless the moment you drive past something. Labels that would
         collide stack onto separate rows, because deposits cluster, and a
         cluster is exactly when there is most to read.</p>
-        <p>Unlock it to drag it where you want, lock it again and clicks pass
-        straight through to the game.</p>
+        <p>It is one of six boxes &mdash; compass, scope, targets, status,
+        the deposit you are on, and a guide that shows the next step and its
+        key &mdash; each switched on or off on its own. Unlock to drag them
+        where you want, lock again and clicks pass straight through to the
+        game.</p>
         <div class="callout warn">
           <span class="hud-label">Borderless or windowed, not fullscreen</span>
           <p>No overlay of any kind can draw over a game in exclusive
@@ -425,35 +444,32 @@ footer a:hover{color:var(--signal)}
 
   <section class="panel" id="whatsnew">
     <h2>What changed</h2>
-    <p class="sub">Latest build &middot; <!--VERSION-->1.10028<!--/VERSION--></p>
+    <p class="sub">Latest build &middot; <!--VERSION-->1.10030<!--/VERSION--></p>
     <!--WHATSNEW-->
-    <h3>Fixed — an update could wipe your settings</h3>
-    <p>Updating to the last build reset some commanders&#x27; overlay layout, hotkeys and switches to the defaults. The cause was two things together: settings were written straight over the old file, and a settings file that could not be read at that moment was replaced with the defaults.</p>
-    <p>Both are gone. Every save now goes to a temporary file and replaces the old one only once it is complete, the last good copy is kept beside it as <code>settings.json.bak</code>, and a file that cannot be read is set aside and the backup used instead — never overwritten. If that ever happens, the status line says so. Only one copy of EDSMT can run at a time now, and the installer waits for it to close rather than updating it underneath itself.</p>
-    <h3>New — updates fetch themselves</h3>
-    <p>When a new version is out, EDSMT downloads it in the background from radioraxxla.com, and keeps it only if it matches the checksum published beside it, byte for byte. The button in the title bar then reads <b>INSTALL UPDATE</b>. Nothing is installed until you press it, so it never closes on you mid-run. Press it and EDSMT closes, updates, and opens again with everything as it was. Settings → <i>This build</i> has the switch if you would rather it asked first.</p>
-    <p>This build is the last one you fetch from the website by hand.</p>
-    <h3>New — Where to land</h3>
-    <p>A <b>Where to land</b> button in the title bar lists every landable body in the system, best first, and fills itself in as you scan: honk, resolve bodies in the FSS, map one with the DSS, and it keeps up without a click. Each body shows an estimated value and one line saying why — known sites still intact, mining locations nobody has shared yet, not mapped, or nothing found — with the DSS count, what that kind of ground usually carries, what has already been shared there, your own finds, and how much you have surveyed.</p>
-    <p>What a kind of ground usually carries comes from everyone&#x27;s shared finds once there are enough of them, and from the commodity tables until then. The list says which, every time.</p>
-    <h3>New — Survey area: know you have covered all of it</h3>
-    <p>Press <b>CENTRE</b> in the middle of an area and <b>BORDER</b> at its edge. The map draws the circles to drive, spaced so the scanner&#x27;s reach overlaps, and shades everywhere your SRV has covered. The Survey area panel and the STATUS box show <b>AREA SWEPT</b> as a percentage, and it reads 100% only when all of it is. Kept per body, saved as you go, so you can finish tomorrow.</p>
-    <h3>New — Rig down, and TOO FAR FROM RIG</h3>
-    <p>Press <b>RIG DOWN</b> — or its key — as you drop each rig. One key for all six: they are numbered for you and drawn on the map and the scope. STATUS shows how many are down and how far the farthest is. Drive past your limit from any of them (1,000 m unless you change it in Settings) and every overlay box you have open says <b>TOO FAR FROM RIG</b> with its number, in red, with a warning sound if you want one. It sounds once per trip out, not every second you are over the line. <b>ALL UP</b> when you have collected them.</p>
-    <h3>New — everyone&#x27;s finds on your map and overlay</h3>
-    <p>Arrive on a body and the finds other commanders have shared there appear on the map, the scope and the deposit card as diamonds, so yours and theirs are never confused. Click one to see who shared it and when. A shared find sitting on one of your own is shown once, as yours.</p>
-    <h3>New — UPDATE a deposit instead of marking it twice</h3>
-    <p><b>UPDATE</b> sits beside MARK DEPOSIT. On a deposit you have already marked, it writes what the boxes say onto that deposit — the Amount going down as you work it, the rig count once you know it — and stamps the note with when. If you share, the shared copy is updated too. MARK now asks first if you already have that commodity marked within 100 m; press it again to add a separate one.</p>
-    <h3>Fixed — the lists open as you click and type, and Tab works</h3>
-    <p>Every box with a list — commodity, rigs, amount, density, and the ones in the edit windows — now opens it as soon as you click in or start typing, narrows it as you type, and takes the highlighted choice on Enter or Tab. Tab moves down the boxes in order. Tabbing through a box without typing leaves it as it was.</p>
-    <h3>Fixed — windows that cut information off</h3>
-    <p>The Find table dropped its last columns — <b>Found by</b> included — on anything but a very wide screen, and cut long commodity lists after 34 letters. The table now scrolls sideways when it has to and wraps long cells instead. The edit windows size themselves to what is in them, so Save is never off the bottom, and a long body name is shown whole. On a narrow window the title bar buttons move under the readouts rather than squashing the system name and your commander name.</p>
-    <h3>Fixed — an overlay box could crash the app</h3>
-    <p>A box closed out from under the overlay took the app down on the next redraw. It is now put back where it was instead. Reported by <b>Raizo/Drakain [IHCF]</b> with a crash log — thank you.</p>
-    <h3>Fixed — a protected Saved Games folder</h3>
-    <p>When Windows refuses to let EDSMT read the journal folder, the title bar now says <b>NO ACCESS</b> in red, instead of the app sitting there waiting for a game it cannot see.</p>
-    <h3>Also</h3>
-    <ul><li>Staff: with your token set, the finds you share are verified in your name as they go up. Settings has the switch.</li><li>The installer puts only the program, this README and the licence on your PC.</li><li>Thanks to everyone who sent in feedback on the last build — most of this release is your list.</li></ul>
+    <h3>Fixed — Alt+1 to Alt+6 work in the game</h3>
+    <p>Two faults, both found by the testers. After <b>Save</b> in Settings every key went dead: the old key thread still held the keys when the new one asked for them, so Windows refused them and they were never registered. Saving now waits for the old thread to let go. And with <b>Num Lock on</b>, Settings read every key pressed as <b>Alt+</b> that key — so nothing could be bound without Alt, and Alt+F1 went to an NVIDIA screenshot. Settings now reads Alt properly and takes <b>any key</b>, with or without Ctrl, Alt or Shift. The keys are also read ten times a second on their own, and a fault anywhere else in the app can no longer stop them being heard.</p>
+    <h3>New — EDSMT names keys other programs own</h3>
+    <p>Pick a key NVIDIA, AMD, Windows, Steam, Discord or the game uses by default — Alt+F1, Alt+F9, Alt+Z, Alt+R, Win+ keys, Shift+Tab, F10, F12 — and Settings says who owns it the moment you press it. You can still keep it.</p>
+    <h3>Fixed — the compass and scope keep up with the Rhino</h3>
+    <p>They redraw ten times a second from Status.json instead of every 0.7 s. Out setting the border the scope keeps you in the picture out to 8 km, instead of freezing at 1.5 km round the centre with you pinned to the rim — and pinned to the rim or not, your chevron turns with the Rhino. The swept ground is no longer a solid teal plate before there is a border; inside a border it is a see-through mesh.</p>
+    <h3>Fixed — changing the overlay theme no longer moves the boxes</h3>
+    <p>The boxes were measured while Windows had them hidden — whenever EDSMT&#x27;s own window was in front — and that was saved. They are now saved only when you drop one. <b>The default layout is new</b>: compass across the top, scope and guide down the left, targets on the right, status along the bottom. Layouts from 1.10029 are put on it once, because that build could have scrambled them.</p>
+    <h3>Changed — Earnings is Rhino sessions only</h3>
+    <p>A session starts when the Rhino leaves the ship and ends when it comes back aboard. Every tonne it refines counts, every transfer to the ship counts, and when you sell what it dug up the credits go against it. Trading, exploration and asteroid mining no longer appear. <b>Multi-session</b> keeps one session going across trips to a station and back; <b>End session</b> closes one by hand. After every transfer the overlay flashes what is in the ship and the room left, and STATUS shows the ship and Rhino holds for the whole session.</p>
+    <h3>Changed — logging a signal</h3>
+    <p>No commodities needed: they come with the deposits. The signal number is picked for you — the one the game has targeted, or the number in the box, or the one you are standing in, or the next free number — so a new signal never lands on top of one logged elsewhere. Pressing the key again at the same signal keeps its centre. The message says to <b>hold the mineral scanner</b> out to the location&#x27;s edge line, press Alt+2 there, and keep holding it while you map the area.</p>
+    <h3>Changed — the guide starts at the jump</h3>
+    <p>Jump in and honk, click Where to land, map the body, pick a signal, land, deploy the Rhino. <b>Deploy</b> only shows once you are out of glide and under 30 m; until then it says you are gliding, or how high you are.</p>
+    <h3>New — a big warning on high-gravity bodies</h3>
+    <p>Arrive at a body at or over 2 g (Settings) and a warning triangle takes the middle of the screen, once; the GUIDE and STATUS boxes carry a red bar for as long as you are there. Where to land marks those bodies in red.</p>
+    <h3>New — the last rig warning at 4.8 km</h3>
+    <p>The game warns at 4 km and destroys a rig at 5 km. At 4.8 km a big warning triangle goes up in the middle of the screen and the warning sounds again. Past 5 km the rig is gone: EDSMT drops it and clears the warnings. <b>Alt+5</b> (ALL UP) clears every rig warning by hand.</p>
+    <h3>Changed — MARK on a spot already marked with another commodity</h3>
+    <p>It asks: <b>Alt+6</b> renames the deposit already there — position, history and tonnes kept — and <b>Alt+3</b> again adds the new commodity as a deposit of its own. No more second find at 0 m.</p>
+    <h3>New — finds filed under the wrong signal number show at the signal</h3>
+    <p>Anything within 5 km of the signal you are on, filed under another number, is listed under it with a button that puts the number right.</p>
+    <h3>Changed</h3>
+    <ul><li>The top bar: Find, My sites, Where to land and Earnings on the left; Overlay, Unlock and Settings on the right.</li><li>A commodity picked from its list with the mouse closes the list.</li><li>Beta testers: welcome <b>CMDR Rumphrend</b>.</li></ul>
     <!--/WHATSNEW-->
   </section>
 
@@ -498,7 +514,7 @@ footer a:hover{color:var(--signal)}
   </section>
 
   <footer>
-    <span>Radio Raxxla &middot; EDSMT <!--VERSION-->1.10028<!--/VERSION--> &middot; GPL-3.0</span>
+    <span>Radio Raxxla &middot; EDSMT <!--VERSION-->1.10030<!--/VERSION--> &middot; GPL-3.0</span>
     <span>Not affiliated with Frontier Developments. Elite Dangerous is a trademark of Frontier Developments plc.</span>
   </footer>
 

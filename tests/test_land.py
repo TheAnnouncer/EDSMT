@@ -126,6 +126,12 @@ ranked = S.rank_bodies(SYSTEM, bodies, GROUNDS, SITES, {}, MINE, PLACES,
 names = [r["short"] for r in ranked]
 row = {r["short"]: r for r in ranked}
 check("names are shortened to the body's own part", "A 1" in names, names)
+check("each body says everything it carries: its ground's whole mix and what "
+      "was found there, not only the few bets shown",
+      {"monazite", "haematite", "jadeite"} <= set(row["A 1"]["carries"]),
+      row["A 1"]["carries"])
+check("your own finds count as carried", "olivine" in row["A 5"]["carries"],
+      row["A 5"]["carries"])
 check("not landable and the star are left out by default",
       "A 4" not in names and "A" not in names, names)
 check("A 1 leads: a verified intact site plus two locations nobody shared",

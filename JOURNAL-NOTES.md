@@ -91,8 +91,15 @@ last. Sorting by modification time is the only ordering that survives both.
 | `Docked`, `Undocked` | `StationName`, `MarketID`. Undocking is what banks a run, but only once something has been sold — undocking with nothing sold is a stop on the way |
 | `CargoTransfer` | `Transfers[]` of `Type`, `Count`, `Direction` ∈ `tocarrier` / `toship` / `tosrv`. `Type_Localised` is **not** documented inside the Transfers array |
 | `Liftoff` | ends the surface part of a run |
+| `LaunchSRV`, `DockSRV`, `SRVDestroyed` | a Rhino session starts and ends. `SRVType` `mev_rhino` is the Rhino |
+| `Loadout` | `CargoCapacity` - the ship's hold, shown against what is in it |
+| `FSSDiscoveryScan`, `FSSAllBodiesFound` | the honk - the guide's first step |
 
 ## What a run is worth, and the three ways of getting it wrong
+
+(Since 1.10030 the books count Rhino sessions from `MiningRefined`,
+`CargoTransfer` and `DockSRV` - see "A Rhino session" below. The reader still
+works out hold gains as described here, and still holds both holds.)
 
 **Cargo.json describes ONE VESSEL at a time.** It carries a `Vessel` field of
 `"Ship"` or `"SRV"`. Move forty tonnes of ore from the SRV into the ship and
@@ -239,6 +246,66 @@ because that is what the game does.
 Frontier also framed the community question themselves in the same dev log:
 whether players would share their finds or hide them. This tool is a bet on
 sharing.
+
+## Checked against a commander's real journals, September 2026
+
+Twelve journals, read for shapes and counts only. What they settle:
+
+- **One `MiningRefined` per tonne, in the SRV too.** It carries `Type`
+  (`$rhodplumsite_name;`) and `Type_Localised`, and nothing else - no
+  position, no body. The SRV's `Cargo` count rises with it, up to a second
+  late: 47 refined against 46 in the hold, 67 against 67, 3 against 3. The
+  tonne is placed by where the SRV is at that moment, and by-products arrive
+  under their own names (Rhodplumsite 56 with Iridium 11 off one site).
+- **`MiningRefined` must not name the deposit.** It is what came out, and a
+  by-product would re-file the next deposit marked. It goes to the books only.
+- **The journal's `Cargo` event lists an `Inventory` only in the first one of
+  a file** (17 of 2,301 for the ship, 2 of 425 for the SRV). The rest say
+  Cargo.json was rewritten. That first one is the only record of the ship's
+  hold while the commander is out in the SRV.
+- **Mining locations**: `"Type": "$PlanetaryMiningLocation_Name;"` in
+  `FSSBodySignals` and `SAASignalsFound`, with a `Count`.
+- **No rig event of any kind.** Deploying a rig writes nothing, so RIG DOWN
+  stays a key.
+- **`Touchdown` and `Liftoff` carried no `NearestDestination`** in any of 36.
+- **`LaunchSRV`** names the Rhino as `"SRVType": "mev_rhino"`.
+- **`CargoTransfer`**: `Transfers[]` of `Type`, `Count`, `Direction`, exactly
+  as documented; seen `toship`.
+
+Not settled by the journals, because Status.json is not journaled: a targeted
+mining location in `Status.json` → `Destination.Name` has been reported as
+`$SAA_Unknown_Signal:#index=15;`. EDSMT reads the number when it is there and
+writes every distinct destination name of that kind to the event log, so the
+real shape can be checked.
+
+## A Rhino session, checked against 135 more journals on 4.4.x, 25 Sep 2026
+
+Read-only, for shapes and counts only, never a commander's identity. What
+they settle, and what Earnings is now built on:
+
+- **A session is `LaunchSRV` to `DockSRV`.** Both carry `"SRVType":
+  "mev_rhino"` and `"SRVType_Localised": "SRV Rhino"`; `LaunchSRV` adds
+  `Loadout`, `ID` and `PlayerControlled`.
+- **The Rhino empties into the ship without boarding.** `CargoTransfer` with
+  `Direction: "toship"` - 72 t at a time in the sessions read, several per
+  session - and the Rhino goes straight back to mining. `DockSRV` comes once,
+  at the end, and a `Cargo` for `Vessel: "Ship"` follows it with the ship's
+  total.
+- **A relog in the Rhino** starts a new journal with `Location` carrying
+  `"InSRV": true` and no `LaunchSRV` before it - so a login in the Rhino
+  carries the session on.
+- **`MiningRefined` is also the ship mining asteroids** - thousands of them in
+  the same journals - so a tonne only counts while the Rhino is out.
+- **Several tonnes share one second.** Three `MiningRefined` for the same
+  commodity inside one second is normal, so each is numbered by the reader
+  and a restart can tell a third tonne from the same tonne read again.
+- **What a mining location holds is not in any journal event.**
+  `SAASignalsFound` and `FSSBodySignals` give a count of
+  `Planetary Mining Location` and nothing else; no 4.4 event lists the
+  commodities the game shows when one is targeted. EDSMT logs every distinct
+  `Status.json` `Destination` to the event log, in case a later build puts
+  them there.
+- **New in 4.4 journals, never seen before them:** nothing mining-related.
 
 ## Versions
 
