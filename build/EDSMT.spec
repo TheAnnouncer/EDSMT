@@ -23,6 +23,10 @@ ICON = os.path.join(ROOT, "radioraxxla.ico")
 
 datas = collect_data_files("customtkinter")
 datas += [(ICON, ".")]
+# The rig warning sounds. A folder of their own inside the bundle, found
+# at run time through sys._MEIPASS like the icon.
+datas += [(os.path.join(ROOT, "sounds", name), "sounds")
+          for name in ("rig-warning.wav", "rig-warning-profane.wav")]
 
 hiddenimports = collect_submodules("customtkinter")
 hiddenimports += ["survey", "planview", "journal", "edonline", "overlay"]

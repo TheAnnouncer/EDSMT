@@ -96,9 +96,13 @@ Worth knowing before you decide whether any of the above matters.
   gap, and the build is not yet signed — see above. If you would rather
   fetch every build by hand, switch *Download new versions by myself* off in
   Settings and the button just downloads on request.
-- **Global hotkeys.** F9 and F10 by default, rebindable. They are registered
-  with Windows so they work with the game in front. They capture a keypress,
-  not what you type.
+- **Global hotkeys.** Left Alt+1 to Alt+6 by default, every one rebindable.
+  They are registered with Windows so they work with the game in front. They
+  capture those key combinations only, not what you type.
+- **Your Inara key and staff token** are kept in `settings.json` in your own
+  `%LOCALAPPDATA%` and sent only to Inara and the community server
+  respectively. Settings shows both as dots until you press **Show**, and
+  hides them again after 20 seconds, so Settings can be opened on stream.
 
 ## What leaves your machine
 

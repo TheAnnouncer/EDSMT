@@ -43,7 +43,7 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10028"
+APP_VERSION = "1.10030"
 # An honest, contactable User-Agent. Bot filters at the edge judge
 # unattended clients on exactly this, and a bare name with no way to
 # reach anyone reads as something worth blocking.
@@ -983,7 +983,7 @@ class CommunityClient:
         return True
 
     def sell(self, commodity: str, near_system: str = "", limit: int = 20,
-             near=None, within_ly: float = 0) -> bool:
+             near=None, within_ly: float = 0, tag: str = "sell") -> bool:
         """Best sell price for ONE commodity, our figures and the upstream's.
 
         Kept apart from best_prices rather than folded into it because the
@@ -1003,8 +1003,10 @@ class CommunityClient:
                                     ("limit", limit)) if v}
         params.update(self._near(near, within_ly))
         url = f"{self.base_url}/v1/sell?" + urllib.parse.urlencode(params)
+        # The tag says who asked: the Find window, or the hold's own lookup
+        # in the earnings, which is answered somewhere else entirely.
         self.worker.submit(
-            "sell", lambda: json.dumps(get_json(url, headers=self._headers())))
+            tag, lambda: json.dumps(get_json(url, headers=self._headers())))
         return True
 
     @staticmethod
@@ -1064,12 +1066,25 @@ def canonical_commodity(name):
     return SURFACE_LOOKUP.get(fold(name))
 
 
-def parse_market(data: dict, only_surface: bool = True) -> dict:
+def commodity_symbol(raw) -> str:
+    """"$sapphire_name;" -> "sapphire". The same in every language."""
+    text = str(raw or "").strip().strip("$;")
+    if text.lower().endswith("_name"):
+        text = text[:-5]
+    return text
+
+
+def parse_market(data: dict, only_surface: bool = True, namer=None) -> dict:
     """Turn a Market.json document into something worth uploading.
 
     Written defensively on purpose. Frontier have not published a schema for
     the new commodities, so every field is treated as optional and anything
     unrecognised is skipped rather than guessed at.
+
+    The symbol ("$sapphire_name;") is matched first and the localised name
+    only after it. Localised first meant a French client's "Saphir" matched
+    nothing, so their markets were never priced at all. namer, when given,
+    names what is not one of ours - the app passes survey.english_name.
     """
     if not isinstance(data, dict):
         return {}
@@ -1081,10 +1096,18 @@ def parse_market(data: dict, only_surface: bool = True) -> dict:
     for item in items:
         if not isinstance(item, dict):
             continue
-        raw = item.get("Name_Localised") or item.get("Name") or ""
-        known = canonical_commodity(raw)
+        symbol = commodity_symbol(item.get("Name"))
+        local = str(item.get("Name_Localised") or "")
+        known = (canonical_commodity(symbol) if symbol else None) \
+            or canonical_commodity(local)
         if only_surface and not known:
             continue
+        if known:
+            raw = known
+        elif namer is not None:
+            raw = namer(item.get("Name"), local)
+        else:
+            raw = local or symbol
         try:
             sell = int(item.get("SellPrice") or 0)
             buy = int(item.get("BuyPrice") or 0)

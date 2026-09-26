@@ -76,7 +76,7 @@ def _staff_from_env(raw):
 
 
 STAFF = _staff_from_env(os.environ.get("RR_STAFF", ""))
-APP_VERSION = "1.10028"
+APP_VERSION = "1.10030"
 SCHEMA_ID = "radioraxxla/surfacemining/1"
 DEPLETION_SCHEMA = "radioraxxla/surfacemining-depletion/1"
 MARKET_SCHEMA = "radioraxxla/surfacemining-market/1"
@@ -1447,7 +1447,12 @@ def sell(commodity: str = "", near: str = "",
     sql = ("SELECT commodity, station, system, sell, demand, seen "
            "FROM prices WHERE sell > 0 AND commodity = ?")
     args: list = [known]
-    if near:
+    here = None if None in (near_x, near_y, near_z) else (near_x, near_y, near_z)
+    # With a position, `near` is only the centre the upstream measures from.
+    # Used as a name filter as well, asking from HR 7280 with a position
+    # threw away every price our own users had read anywhere but HR 7280 -
+    # the one answer the question was not about.
+    if near and here is None:
         sql += " AND system LIKE ?"
         args.append(prefix_pattern(near))
 
@@ -1456,7 +1461,6 @@ def sell(commodity: str = "", near: str = "",
     sql += cube
     args += cube_args
 
-    here = None if None in (near_x, near_y, near_z) else (near_x, near_y, near_z)
     sql += " ORDER BY sell DESC, seen DESC LIMIT ?"
     args.append(max(POOL_FLOOR, limit * POOL_MULTIPLIER) if here else limit)
     with closing(connect()) as c:
@@ -1491,7 +1495,8 @@ def search(commodity: str = "", system: str = "", planet: str = "",
     # silently keeps everything.
     sql = """SELECT d.*, COALESCE(s.depleted, '') AS depleted,
                     COALESCE(s.depleted_reporters, 0) AS depleted_reporters,
-                    COALESCE(s.depleted_last, '') AS depleted_last
+                    COALESCE(s.depleted_last, '') AS depleted_last,
+                    COALESCE(s.last_seen, '') AS site_last_seen
              FROM deposits d
              LEFT JOIN sites s
                ON s.system = d.system AND s.planet = d.planet AND s.spot = d.spot
@@ -1558,6 +1563,11 @@ def search(commodity: str = "", system: str = "", planet: str = "",
         emptied = r.pop("depleted", "") or ""
         reporters = r.pop("depleted_reporters", 0) or 0
         r.pop("depleted_last", None)
+        # When anyone last reported this patch - the find itself, or any
+        # later sighting of its site. The Find window's Last seen column.
+        site_seen = r.pop("site_last_seen", "") or ""
+        r["last_seen"] = max((stamp for stamp in (r.get("created"), site_seen)
+                              if stamp), key=to_epoch, default="")
         r["worked_out"] = bool(emptied)
         r["worked_out_reports"] = reporters
         # The honest figure, and only the honest figure: how long it has

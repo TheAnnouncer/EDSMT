@@ -76,6 +76,7 @@ class _W:
 # ---- tkinter ----
 tk = _mod("tkinter")
 tk.Tk = _W; tk.Frame = _W; tk.Canvas = _W; tk.Toplevel = _W; tk.Widget = _W
+tk.Label = _W
 tk.StringVar = _Var; tk.BooleanVar = _Var; tk.IntVar = _Var; tk.DoubleVar = _Var
 tk.Variable = _Var
 tk.TclError = type("TclError", (Exception,), {})

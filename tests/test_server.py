@@ -1206,6 +1206,15 @@ check("the cube's corners are dropped here as well",
 check("a name prefix still works, because that is what it always did",
       [p["system"] for p in sold(near="Sol")["community"]] == ["Sol"],
       [p["system"] for p in sold(near="Sol")["community"]])
+# Asked from the system the commander is in, by name AND position: the name
+# is for the market index, which measures only from a name. Used as a filter
+# on our own prices as well, it threw away every market but the one in the
+# system you are standing in - which is usually none.
+from_here = sold(near="Craterville", near_x=10, near_y=0, near_z=0,
+                 within_ly=50)
+check("with a position, the name does not filter our own prices",
+      [p["system"] for p in from_here["community"]] == ["Sol"],
+      [p["system"] for p in from_here["community"]])
 
 AT_ORIGIN = {"commodity": "Olivine", "near_x": 0, "near_y": 0, "near_z": 0,
              "within_ly": 50}

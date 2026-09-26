@@ -572,9 +572,15 @@ check("what this station does not buy counts as nothing, not as a guess",
                    {S.fold("Haematite"): 2800}) == 123200.0)
 check("an empty hold is worth nothing", S.hold_value({}, {"x": 1}) == 0.0)
 
-print("== a whole run, off synthetic files, with no game anywhere near it ==")
+print("== a Rhino session, off synthetic files shaped like a real 4.4.1.1 one ==")
+# Every event here is the shape it has in real 4.4.1.1 journals, read (and
+# never written) from the author's own game: LaunchSRV and DockSRV carry
+# SRVType "mev_rhino"; MiningRefined is one tonne; CargoTransfer "toship"
+# moves the Rhino's hold across without boarding; Cargo carries a Vessel.
 import json as _json
 import journal as JN
+import time
+import edonline as EDO
 
 GAME = os.path.join(TMP, "game"); os.makedirs(GAME)
 JN.EVENT_LOG = os.path.join(GAME, "events.log")
@@ -605,13 +611,29 @@ def at(minute, second=0):
     return "2026-09-17T%02d:%02d:%02dZ" % (18 + minute // 60, minute % 60, second)
 
 
+def refined(minute, second, name, times=1):
+    return [{"timestamp": at(minute, second), "event": "MiningRefined",
+             "Type": "$%s_name;" % name.lower(), "Type_Localised": name}
+            for _ in range(times)]
+
+
+RHINO_OUT = {"event": "LaunchSRV", "SRVType": "mev_rhino",
+             "SRVType_Localised": "SRV Rhino", "Loadout": "galactic", "ID": 103,
+             "PlayerControlled": True}
+RHINO_IN = {"event": "DockSRV", "SRVType": "mev_rhino",
+            "SRVType_Localised": "SRV Rhino", "ID": 103}
+
 put("Status.json", {"timestamp": at(0), "event": "Status", "Flags": 1 << 1 | 1 << 21,
                     "Latitude": 12.5, "Longitude": -45.5, "BodyName": "Ega 1",
                     "PlanetRadius": R})
 log({"timestamp": at(0), "event": "Fileheader", "part": 1, "gameversion": "4.4.1.1"},
     {"timestamp": at(0), "event": "Commander", "Name": "Jameson", "FID": "F1"},
     {"timestamp": at(0), "event": "Location", "StarSystem": "Ega",
-     "SystemAddress": 1234, "StarPos": [1.0, 2.0, 3.0], "Body": "Ega 1"})
+     "SystemAddress": 1234, "StarPos": [1.0, 2.0, 3.0], "Body": "Ega 1"},
+    {"timestamp": at(0), "event": "Loadout", "Ship": "panthermkii",
+     "CargoCapacity": 256},
+    {"timestamp": at(0), "event": "Cargo", "Vessel": "Ship", "Count": 0,
+     "Inventory": []})
 
 watcher = JN.JournalWatcher(GAME)
 books = S.Earnings(os.path.join(TMP, "books"))
@@ -624,65 +646,76 @@ def tick():
 
 
 tick()
-check("nothing has happened yet, so there is no run", books.current is None)
-
-hold("Ship", at(0, 10))
-tick()
-check("an empty ship does not start one either", books.current is None)
+check("nothing has happened yet, so there is no session", books.current is None)
+check("the ship's cargo capacity is read off Loadout",
+      watcher.cargo_capacity == 256, watcher.cargo_capacity)
 
 log({"timestamp": at(2), "event": "Touchdown", "StarSystem": "Ega",
      "Body": "Ega 1", "PlayerControlled": True, "OnPlanet": True,
      "OnStation": False, "Latitude": 12.5, "Longitude": -45.5})
-check("touching down starts the run", "run started" in tick())
+tick()
+check("touching down is not a session - landing to scan or to look is not "
+      "mining", books.current is None, books.current)
+log(*refined(3, 0, "Painite", 4))
+tick()
+check("and a tonne refined with the Rhino still aboard - the ship mining "
+      "asteroids writes the same event - is not booked anywhere",
+      books.current is None and books.sessions == [], books.sessions)
+
+log(dict(RHINO_OUT, timestamp=at(5)))
+lines = tick()
+check("the Rhino leaving the ship starts the session",
+      "Rhino session started" in lines, lines)
 check("on the body the journal named",
       (books.current["system"], books.current["body"]) == ("Ega", "Ega 1"),
       books.current)
 check("crediting the commander the journal named, never one typed in",
       books.current["cmdr"] == "Jameson")
+check("it is a Rhino session", books.current["kind"] == S.RHINO)
 check("and it is on disk the moment it opens, not when it closes",
       os.path.exists(books.path))
 
-hold("SRV", at(2, 10))
-tick()
-check("climbing into an empty SRV is not a haul",
-      books.current["mined"] == "", books.current["mined"])
+log(*(refined(10, 1, "Rhodplumsite", 3) + refined(10, 2, "Ruby", 2)
+      + refined(11, 0, "Rhodplumsite", 1)))
+lines = tick()
+check("every tonne refined in the Rhino is counted, three in one second "
+      "included", S.unpack_counts(books.current["mined"])
+      == {"Rhodplumsite": 4, "Ruby": 2}, books.current["mined"])
+check("and none of them puts a line on screen", not any(lines), lines)
 
-hold("SRV", at(10), haematite=20)
-tick()
-check("what turns up in the hold is the haul",
-      books.current["mined"] == "Haematite:20", books.current["mined"])
+log({"timestamp": at(20), "event": "CargoTransfer", "Transfers": [
+    {"Type": "rhodplumsite", "Count": 4, "Direction": "toship"},
+    {"Type": "ruby", "Count": 2, "Direction": "toship"}]})
+lines = tick()
+check("a transfer to the ship is counted as moved, not mined again",
+      S.unpack_counts(books.current["transferred"])
+      == {"Rhodplumsite": 4, "Ruby": 2}
+      and S.unpack_counts(books.current["mined"])
+      == {"Rhodplumsite": 4, "Ruby": 2}, books.current)
+check("and says so, for the ship's hold to be flashed",
+      any(line and line.startswith("to ship") for line in lines), lines)
+check("the reader moved it into the ship's hold",
+      watcher.holds.get("Ship") == {"Rhodplumsite": 4, "Ruby": 2},
+      watcher.holds)
 
-hold("SRV", at(25), haematite=44, copper=6)
+log(*refined(25, 0, "Rhodplumsite", 5))
 tick()
-check("and it keeps adding up",
-      S.unpack_counts(books.current["mined"]) == {"Haematite": 44, "Copper": 6},
-      books.current["mined"])
-
-# The one that silently doubles every figure in the file: the same ore
-# arriving in the ship after being moved out of the SRV.
-log({"timestamp": at(30), "event": "CargoTransfer", "Transfers": [
-    {"Type": "haematite", "Count": 44, "Direction": "toship"},
-    {"Type": "copper", "Count": 6, "Direction": "toship"}]})
-hold("Ship", at(30, 5), haematite=44, copper=6)
-tick()
-check("moving it into the ship does not mine it a second time",
-      S.unpack_counts(books.current["mined"]) == {"Haematite": 44, "Copper": 6},
-      books.current["mined"])
-
-log({"timestamp": at(35), "event": "Liftoff", "StarSystem": "Ega",
-     "Body": "Ega 1", "PlayerControlled": True, "OnStation": False})
-tick()
-check("lifting off does not end the run - the money is not in yet",
-      books.current is not None)
+log(dict(RHINO_IN, timestamp=at(30)))
+lines = tick()
+check("the Rhino coming back aboard ends the session",
+      "Rhino session done" in lines and books.current is None, lines)
+done = books.sessions[-1]
+check("it ran from the launch to the dock",
+      (done["started"], done["ended"]) == (at(5), at(30)),
+      (done["started"], done["ended"]))
+check("with every tonne in it",
+      S.unpack_counts(done["mined"]) == {"Rhodplumsite": 9, "Ruby": 2},
+      done["mined"])
 
 log({"timestamp": at(50), "event": "Docked", "StationName": "Reilly Terminal",
      "StationType": "Coriolis", "StarSystem": "Ega", "SystemAddress": 1234,
      "MarketID": 3228883456})
 tick()
-check("docking records where the sale is about to happen",
-      (books.current["station"], books.current["sold_in"])
-      == ("Reilly Terminal", "Ega"), books.current)
-
 put("Market.json", {"timestamp": at(50, 5), "event": "Market",
                     "MarketID": 3228883456, "StationName": "Reilly Terminal",
                     "StarSystem": "Ega", "Items": [
@@ -698,42 +731,40 @@ check("and kept afterwards, so a hold can still be priced against it",
       watcher.market)
 
 log({"timestamp": at(51), "event": "MarketSell", "MarketID": 3228883456,
-     "Type": "haematite", "Count": 44, "SellPrice": 2800,
-     "TotalSale": 123200, "AvgPricePaid": 0},
-    {"timestamp": at(51, 30), "event": "MarketSell", "MarketID": 3228883456,
-     "Type": "copper", "Count": 6, "SellPrice": 774,
-     "TotalSale": 4644, "AvgPricePaid": 0})
+     "Type": "rhodplumsite", "Count": 9, "SellPrice": 100000,
+     "TotalSale": 900000, "AvgPricePaid": 0},
+    {"timestamp": at(51), "event": "MarketSell", "MarketID": 3228883456,
+     "Type": "ruby", "Count": 2, "SellPrice": 50000,
+     "TotalSale": 100000, "AvgPricePaid": 0},
+    {"timestamp": at(52), "event": "MarketSell", "MarketID": 3228883456,
+     "Type": "tea", "Count": 40, "SellPrice": 1000,
+     "TotalSale": 40000, "AvgPricePaid": 900})
 tick()
-check("both sales are credited",
-      books.current["credits"] == "127844", books.current["credits"])
-check("and counted", books.current["sales"] == "2")
-check("what was sold matches what came out of the ground",
-      S.unpack_counts(books.current["sold"])
-      == S.unpack_counts(books.current["mined"]),
-      (books.current["sold"], books.current["mined"]))
-check("the journal's own lowercase is tidied to one spelling",
-      "Haematite" in books.current["sold"])
-
-live = books.current
-log({"timestamp": at(52), "event": "Undocked", "StationName": "Reilly Terminal",
-     "MarketID": 3228883456})
-check("selling up and leaving banks the run", "run banked" in tick())
-check("and nothing is open afterwards", books.current is None)
-check("one run, start to finish", len(books.sessions) == 1, len(books.sessions))
-check("it ran from the landing to the last thing that happened in it",
-      (live["started"], live["ended"]) == (at(2), at(52)), (live["started"], live["ended"]))
-check("fifty minutes of it", abs(S.hours_between(live["started"], live["ended"])
-                                 - 50 / 60.0) < 1e-9)
-check("so the rate is on the row, ready to read in a spreadsheet",
-      abs(int(live["cr_hr"]) - 127844 / (50 / 60.0)) <= 1, live["cr_hr"])
-check("nothing was ever paid for any of it", live["cost"] == "0")
+check("what the Rhino dug up, sold, is credited to its session",
+      done["credits"] == "1000000", done["credits"])
+check("both sales, in one second",
+      S.unpack_counts(done["sold"]) == {"Rhodplumsite": 9, "Ruby": 2},
+      done["sold"])
+check("a trader's Tea is not - it came out of no Rhino session",
+      "Tea" not in done["sold"] and len(books.sessions) == 1, books.sessions)
+check("and no session opened for it", books.current is None)
+check("the station it sold at is on the row",
+      (done["station"], done["sold_in"]) == ("Reilly Terminal", "Ega"), done)
+check("the drive to the station is not mining time: it still ended at the "
+      "dock", done["ended"] == at(30), done["ended"])
+check("so the rate is over the mining, ready to read in a spreadsheet",
+      abs(int(done["cr_hr"]) - 1000000 / (25 / 60.0)) <= 1, done["cr_hr"])
 
 print("== the files the game rewrites can be caught half-written ==")
+hold("Ship", at(54), rhodplumsite=4, ruby=2)
+tick()
 put("Cargo.json", '{"timestamp": "%s", "event": "Cargo", "Vessel": "Ship", "Inv'
     % at(55))
 tick()
+# Named in English off the symbol, not left as the raw symbol - and never
+# the localised text, which is in whatever language the client runs in.
 check("a torn Cargo.json is not an error, it is just this tick",
-      watcher.cargo == {"haematite": 44, "copper": 6}, watcher.cargo)
+      watcher.cargo == {"Rhodplumsite": 4, "Ruby": 2}, watcher.cargo)
 put("Market.json", '{"timestamp": "x", "Items": [{"Name": "$magn')
 tick()
 check("and neither is a torn Market.json",
@@ -741,130 +772,187 @@ check("and neither is a torn Market.json",
 put("Cargo.json", "")
 tick()
 check("an empty one is the same story", watcher.cargo != {})
-hold("Ship", at(56), haematite=44, copper=6, gold=3)
-log({"timestamp": at(56), "event": "Touchdown", "StarSystem": "Ega",
-     "Body": "Ega 1", "PlayerControlled": True, "OnStation": False})
-tick()
-check("and the next good read carries on from the last good one",
-      S.unpack_counts(books.current["mined"]) == {"Gold": 3},
-      books.current["mined"])
-books.finish(at(57))
 
-print("== starting the app halfway through a run does not invent a haul ==")
-# The hold already has ore in it the first time the app ever looks. Counting
-# what is already aboard as freshly dug up would credit the run with a haul
-# nobody watched arrive - and would do it to every trade ship as well.
-MIDWAY = os.path.join(TMP, "midway"); os.makedirs(MIDWAY)
-with open(os.path.join(MIDWAY, "Journal.2026-09-17T180000.01.log"), "w",
+
+def now_at(minutes_ago):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                         time.gmtime(time.time() - minutes_ago * 60))
+
+
+print("== a restart replays the journal, and the books must not pay twice ==")
+# Every start of the app reads the current journal from the top. Without
+# remembering how far they had got, the books booked a sale twice and the
+# three tonnes refined inside one second came back as three more.
+AGAIN = os.path.join(TMP, "again"); os.makedirs(AGAIN)
+AGAIN_BOOKS = os.path.join(TMP, "againbooks")
+_same_second = now_at(25)
+with open(os.path.join(AGAIN, "Journal.2026-09-17T180000.01.log"), "w",
           encoding="utf-8") as fh:
-    fh.write(_json.dumps({"timestamp": at(0), "event": "Touchdown",
-                          "StarSystem": "Ega", "Body": "Ega 1",
-                          "PlayerControlled": True, "OnStation": False}) + "\n")
-with open(os.path.join(MIDWAY, "Cargo.json"), "w", encoding="utf-8") as fh:
-    fh.write(_json.dumps({"timestamp": at(0), "event": "Cargo", "Vessel": "SRV",
-                          "Count": 30, "Inventory": [
-                              {"Name": "haematite", "Count": 30, "Stolen": 0}]}))
-mid = JN.JournalWatcher(MIDWAY)
-midbooks = S.Earnings(os.path.join(TMP, "midbooks"))
-mid.poll()
-for _note in mid.drain_runs():
-    midbooks.observe(_note)
-check("a run is open", midbooks.current is not None)
-check("but what was already in the hold is the baseline, not the haul",
-      midbooks.current["mined"] == "", midbooks.current["mined"])
-with open(os.path.join(MIDWAY, "Cargo.json"), "w", encoding="utf-8") as fh:
-    fh.write(_json.dumps({"timestamp": at(5), "event": "Cargo", "Vessel": "SRV",
-                          "Count": 40, "Inventory": [
-                              {"Name": "haematite", "Count": 40, "Stolen": 0}]}))
-mid.poll()
-for _note in mid.drain_runs():
-    midbooks.observe(_note)
-check("only what arrives after it is counted",
-      midbooks.current["mined"] == "Haematite:10", midbooks.current["mined"])
+    for _event in ([dict(RHINO_OUT, timestamp=now_at(40))]
+                   + [{"timestamp": _same_second, "event": "MiningRefined",
+                       "Type": "$gold_name;", "Type_Localised": "Gold"}] * 3
+                   + [{"timestamp": now_at(24), "event": "MiningRefined",
+                       "Type": "$silver_name;", "Type_Localised": "Silver"}] * 2
+                   + [dict(RHINO_IN, timestamp=now_at(22)),
+                      {"timestamp": now_at(20), "event": "Docked",
+                       "StationName": "Reilly", "StarSystem": "Ega"},
+                      {"timestamp": now_at(15), "event": "MarketSell",
+                       "Type": "gold", "Count": 3, "SellPrice": 1000,
+                       "TotalSale": 3000, "AvgPricePaid": 0},
+                      {"timestamp": now_at(15), "event": "MarketSell",
+                       "Type": "silver", "Count": 2, "SellPrice": 500,
+                       "TotalSale": 1000, "AvgPricePaid": 0}]):
+        fh.write(_json.dumps(_event) + "\n")
 
-print("== what starts a run, and what only looks like it does ==")
+
+def restart():
+    reader = JN.JournalWatcher(AGAIN)
+    ledger = S.Earnings(AGAIN_BOOKS)
+    reader.poll()
+    for _note in reader.drain_runs():
+        ledger.observe(_note)
+    return reader, ledger
+
+
+_reader, first = restart()
+check("three tonnes in one second are three tonnes",
+      (first.sessions[-1]["mined"], first.sessions[-1]["credits"])
+      == ("Gold:3;Silver:2", "4000"),
+      (first.sessions[-1]["mined"], first.sessions[-1]["credits"]))
+_reader, second = restart()
+check("restarting the app books none of it again",
+      [(r["mined"], r["credits"]) for r in second.sessions]
+      == [("Gold:3;Silver:2", "4000")],
+      [(r["mined"], r["credits"]) for r in second.sessions])
+check("and still knows the ship is on the pad", second._docked)
+check("and that the Rhino is aboard", second._in_rhino is False)
+os.makedirs(os.path.join(TMP, "future"))
+_future = S.Earnings(os.path.join(TMP, "future"))
+with open(_future.seen_path, "w", encoding="utf-8") as fh:
+    _json.dump({"at": S._epoch("2099-01-01T00:00:00Z"), "keys": []}, fh)
+_future = S.Earnings(os.path.join(TMP, "future"))
+check("a mark from the future is ignored rather than stopping the books",
+      _future._seen_at == 0, _future._seen_at)
+
+print("== logging in sitting in the Rhino carries the session on ==")
+# His own journal: a relog halfway through a session starts a new journal
+# with a Location that says InSRV. The launch is in the last file, which a
+# freshly started app never reads.
+RELOG = os.path.join(TMP, "relog"); os.makedirs(RELOG)
+with open(os.path.join(RELOG, "Journal.2026-09-17T190000.01.log"), "w",
+          encoding="utf-8") as fh:
+    for _event in [{"timestamp": now_at(30), "event": "Location",
+                    "StarSystem": "Ega", "Body": "Ega 1", "Docked": False,
+                    "Latitude": 12.5, "Longitude": -45.5, "InSRV": True}] + \
+            [{"timestamp": now_at(29), "event": "MiningRefined",
+              "Type": "$ruby_name;", "Type_Localised": "Ruby"}] * 2:
+        fh.write(_json.dumps(_event) + "\n")
+relog_reader = JN.JournalWatcher(RELOG)
+relog_books = S.Earnings(os.path.join(TMP, "relog-books"))
+relog_reader.poll()
+relog_lines = [relog_books.observe(n) for n in relog_reader.drain_runs()]
+check("a session is picked up from the login",
+      relog_books.current is not None and relog_books.current["kind"] == S.RHINO,
+      relog_books.sessions)
+check("and the tonnes after it are counted",
+      relog_books.current["mined"] == "Ruby:2", relog_books.current)
+_login_elsewhere = S.Earnings(os.path.join(TMP, "relog-ship"))
+_login_elsewhere.observe({"event": "Location", "when": now_at(5),
+                          "landed": True, "in_srv": False, "system": "Ega",
+                          "body": "Ega 1"})
+check("logging in in the ship on the ground is not a session",
+      _login_elsewhere.current is None)
+
+print("== multi-session: one session across trips to a station ==")
+multi = S.Earnings(os.path.join(TMP, "multi"))
+multi.multi = True
+
+
+def saw(ledger, event, **note):
+    return ledger.observe(dict(note, event=event))
+
+
+saw(multi, "SRVLaunch", when=at(0), rhino=True, system="Ega", body="Ega 1")
+saw(multi, "Refined", when=at(1), commodity="Painite", n=1)
+saw(multi, "SRVDock", when=at(10))
+check("with the box ticked, the Rhino coming aboard does not end it",
+      multi.current is not None, multi.sessions)
+saw(multi, "Docked", when=at(40), station="Reilly", system="Ega")
+saw(multi, "MarketSell", when=at(41), commodity="painite", count=1,
+    total=500000, station="Reilly", system="Ega")
+saw(multi, "SRVLaunch", when=at(70), rhino=True, system="Ega", body="Ega 1")
+saw(multi, "Refined", when=at(71), commodity="Painite", n=1)
+check("the flight, the sale and the next trip are all one session",
+      len(multi.sessions) == 1 and multi.current["trips"] == "2"
+      and multi.current["mined"] == "Painite:2"
+      and multi.current["credits"] == "500000", multi.sessions)
+check("and its time runs across the lot",
+      multi.current["ended"] == at(71), multi.current["ended"])
+multi.multi = False
+saw(multi, "SRVDock", when=at(80))
+check("unticked, the next time the Rhino comes aboard ends it",
+      multi.current is None and len(multi.sessions) == 1, multi.sessions)
+
+print("== what starts a session, and what only looks like it does ==")
 policy = S.Earnings(os.path.join(TMP, "policy"))
-
-
-def saw(event, **note):
-    return policy.observe(dict(note, event=event))
-
-
-saw("Touchdown", when=at(0), system="Ega", body="Ega 1", on_station=True)
-check("putting the ship on a landing pad is not a mining run",
-      policy.current is None)
-saw("Touchdown", when=at(0), system="Ega", body="Ega 1", player=False)
-check("and neither is a ship that landed itself", policy.current is None)
-saw("Touchdown", when=at(1), system="Ega", body="Ega 1")
-check("touching down on a body is", policy.current is not None)
+saw(policy, "SRVLaunch", when=at(0), rhino=False, system="Ega", body="Ega 1")
+check("a Scarab going out is not a Rhino session", policy.current is None)
+saw(policy, "SRVLaunch", when=at(1), rhino=True, system="Ega", body="Ega 1")
 first = policy.current
-saw("Touchdown", when=at(2), system="Ega", body="Ega 1")
-check("bouncing on the same body does not start a second",
-      policy.current is first and len(policy.sessions) == 1)
-saw("Touchdown", when=at(3), system="Ega", body="Ega 5")
-check("landing on a different body banks the last one and opens a new one",
-      len(policy.sessions) == 2 and policy.current is not first)
-check("and the one it banked is closed", first["closed"], first)
+saw(policy, "SRVLaunch", when=at(2), rhino=True, system="Ega", body="Ega 1")
+check("a second launch on the same body with the first still open carries "
+      "it on", policy.current is first and first["trips"] == "2")
+saw(policy, "SRVLaunch", when=at(3), rhino=True, system="Ega", body="Ega 5")
+check("on another body it banks the last one and opens a new one",
+      len(policy.sessions) == 2 and policy.current is not first
+      and first["closed"], policy.sessions)
+saw(policy, "SRVLost", when=at(4))
+check("losing the Rhino ends it too, and says so",
+      policy.current is None and "lost" in policy.sessions[-1]["notes"],
+      policy.sessions[-1])
+saw(policy, "MarketSell", when=at(5), commodity="gold", count=5, total=5)
+check("a sale of something no session dug up opens nothing",
+      policy.current is None and len(policy.sessions) == 2)
 
-print("== a run only ends when the money is in ==")
-policy.observe({"event": "Undocked", "when": at(4)})
-check("undocking with nothing sold is a stop on the way, not the end",
-      policy.current is not None)
-policy.observe({"event": "MarketSell", "when": at(5), "commodity": "ruby",
-                "count": 10, "total": 1100000, "avg_paid": 0,
-                "station": "Reilly Terminal", "system": "Ega"})
-check("the sale is credited", policy.current["credits"] == "1100000")
-policy.observe({"event": "Undocked", "when": at(6)})
-check("undocking after it is the end", policy.current is None)
-check("and the station it sold at is on the row",
-      policy.sessions[-1]["station"] == "Reilly Terminal")
+print("== a sale goes against the session that dug it up, newest first ==")
+split = S.Earnings(os.path.join(TMP, "split"))
+saw(split, "SRVLaunch", when=at(0), rhino=True, system="Ega", body="Ega 1")
+for _n in range(3):
+    saw(split, "Refined", when=at(1), commodity="Gold", n=_n + 1)
+saw(split, "SRVDock", when=at(5))
+saw(split, "SRVLaunch", when=at(10), rhino=True, system="Ega", body="Ega 1")
+for _n in range(2):
+    saw(split, "Refined", when=at(11), commodity="Gold", n=_n + 1)
+saw(split, "SRVDock", when=at(15))
+saw(split, "MarketSell", when=at(30), commodity="gold", count=4, total=4000)
+check("the newest session is filled first, the rest goes to the one before",
+      [r["sold"] for r in split.sessions] == ["Gold:2", "Gold:2"]
+      and [r["credits"] for r in split.sessions] == ["2000", "2000"],
+      [(r["sold"], r["credits"]) for r in split.sessions])
+saw(split, "MarketSell", when=at(31), commodity="gold", count=9, total=9000)
+check("and nothing is sold twice: only the one tonne left is booked",
+      [r["sold"] for r in split.sessions] == ["Gold:3", "Gold:2"],
+      [r["sold"] for r in split.sessions])
 
-print("== credits are never dropped on the floor ==")
-# Start the app after the mining is done and the first thing it ever sees is
-# a sale. Refusing it because no run was open loses real money out of the file.
-late = S.Earnings(os.path.join(TMP, "late"))
-late.observe({"event": "MarketSell", "when": at(10), "commodity": "magnesite",
-              "count": 100, "total": 3819800, "avg_paid": 0, "system": "Ega"})
-check("a sale with no run open opens one rather than being thrown away",
-      late.current is not None and late.current["credits"] == "3819800")
-check("its hourly rate is zero rather than infinite - it has no length",
-      late.current["cr_hr"] == "0", late.current["cr_hr"])
-
-print("== a run that goes quiet is over, and ended when it went quiet ==")
+print("== a session that goes quiet is over, and ended when it went quiet ==")
 quiet = S.Earnings(os.path.join(TMP, "quiet"))
-quiet.observe({"event": "Touchdown", "when": "2026-09-10T10:00:00Z",
-               "system": "Ega", "body": "Ega 1"})
+saw(quiet, "SRVLaunch", when="2026-09-10T10:00:00Z", rhino=True,
+    system="Ega", body="Ega 1")
 abandoned = quiet.current
-quiet.observe({"event": "Touchdown", "when": "2026-09-17T10:00:00Z",
-               "system": "Deciat", "body": "Deciat 6"})
-check("a week later, the old run is not still collecting",
+saw(quiet, "SRVLaunch", when="2026-09-17T10:00:00Z", rhino=True,
+    system="Ega", body="Ega 1")
+check("a week later, the old session is not still collecting",
       abandoned["closed"] != "" and quiet.current is not abandoned)
 check("and it ended when it last did something, not a week afterwards",
       abandoned["ended"] == "2026-09-10T10:00:00Z", abandoned["ended"])
 check("with a note saying why", "quiet" in abandoned["notes"], abandoned["notes"])
-quiet.observe({"event": "Shutdown", "when": "2026-09-17T11:00:00Z"})
-check("quitting the game banks whatever was open", quiet.current is None)
-
-print("== cargo loaded at a station is a purchase, not a haul ==")
-bought = S.Earnings(os.path.join(TMP, "bought"))
-bought.observe({"event": "Touchdown", "when": at(0), "system": "Ega",
-                "body": "Ega 1"})
-bought.observe({"event": "Docked", "when": at(1), "station": "Reilly Terminal",
-                "system": "Ega"})
-bought.observe({"event": "Cargo", "when": at(2), "gained": {"Tea": 100}})
-check("a hold that fills on a pad is not ore", bought.current["mined"] == "",
-      bought.current["mined"])
-bought.observe({"event": "Undocked", "when": at(3)})
-bought.observe({"event": "Cargo", "when": at(4), "gained": {"Haematite": 5}})
-check("a hold that fills off it is", bought.current["mined"] == "Haematite:5")
-bought.observe({"event": "MarketSell", "when": at(5), "commodity": "tea",
-                "count": 100, "total": 30000, "avg_paid": 200, "system": "Ega"})
-check("and selling what was bought does not report the purchase as profit",
-      S.earned(bought.current) == 10000.0, S.earned(bought.current))
+saw(quiet, "Shutdown", when="2026-09-17T11:00:00Z")
+check("quitting the game does not end a session - a relog carries it on",
+      quiet.current is not None)
 
 print("== it survives a restart, and an older file ==")
 again = S.Earnings(books.folder)
-check("every run came back", len(again.sessions) == len(books.sessions))
+check("every session came back", len(again.sessions) == len(books.sessions))
 check("with the credits intact",
       [r["credits"] for r in again.sessions] == [r["credits"] for r in books.sessions])
 check("and the rate still agrees with the timestamps it was worked out from",
@@ -872,15 +960,14 @@ check("and the rate still agrees with the timestamps it was worked out from",
       [(r["cr_hr"], S.credits_per_hour(r)) for r in again.sessions])
 check("a backup of the previous file is kept, as everywhere else here",
       os.path.exists(books.path + ".bak"))
-check("newest run first, which is the order anybody reads them in",
-      again.recent()[0]["started"] >= again.recent()[-1]["started"])
-check("and they add up", again.totals()["credits"] == 127844.0,
+check("and they add up", again.totals(again.recent())["credits"] == 1000000.0,
       again.totals())
-check("totalling what came out of the ground across every run",
-      again.totals()["mined"] == {"Haematite": 44, "Copper": 6, "Gold": 3},
+check("totalling what came out of the ground across every session",
+      again.totals(again.recent())["mined"] == {"Rhodplumsite": 9, "Ruby": 2},
       again.totals()["mined"])
 
-# The realistic migration: columns added after somebody's file was written.
+# The realistic migration: rows an older build wrote, a run for every
+# landing and every sale. Kept in the file, never shown or added up.
 thin = os.path.join(TMP, "thin"); os.makedirs(thin)
 with open(os.path.join(thin, "sessions.csv"), "w", encoding="utf-8", newline="") as fh:
     _w = csv.writer(fh)
@@ -892,6 +979,8 @@ check("a file written before the later columns existed still loads",
 check("the missing columns read as blank rather than missing",
       set(older.sessions[0]) == set(S.SESSION_FIELDS))
 check("and nothing in it looks live", older.current is None)
+check("its old runs are kept but not shown - the tab is Rhino sessions only",
+      older.recent() == [] and len(older.recent(rhino_only=False)) == 1)
 older.save()
 check("saving it back gives it the full set of columns",
       open(os.path.join(thin, "sessions.csv"), encoding="utf-8"
@@ -912,6 +1001,113 @@ tidied = S.Earnings(stranded)
 check("only the last run can still be running",
       [bool(r["closed"]) for r in tidied.sessions] == [True, False],
       [r["closed"] for r in tidied.sessions])
+saw(tidied, "SRVLaunch", when=S.utc_now(), rhino=True, system="Ega",
+    body="Ega 1")
+check("and a run an older build left open is closed, not carried on, when "
+      "the Rhino next goes out", tidied.sessions[1]["closed"]
+      and tidied.current["kind"] == S.RHINO, tidied.sessions)
+
+print("== the reader still keeps both holds, in English ==")
+
+
+def holds_case(folder, events, cargo_json):
+    os.makedirs(folder)
+    with open(os.path.join(folder, "Journal.2026-09-17T180000.01.log"), "w",
+              encoding="utf-8") as fh:
+        for _event in events:
+            fh.write(_json.dumps(_event) + "\n")
+    if cargo_json is not None:
+        with open(os.path.join(folder, "Cargo.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(_json.dumps(cargo_json))
+    reader = JN.JournalWatcher(folder)
+    reader.poll()
+    return reader
+
+
+reader = holds_case(
+    os.path.join(TMP, "aboard"),
+    [{"timestamp": now_at(30), "event": "Fileheader", "part": 1},
+     {"timestamp": now_at(30), "event": "Location", "StarSystem": "Ega",
+      "Body": "Ega 1", "Docked": False, "Latitude": 12.5, "Longitude": -45.5,
+      "InSRV": True},
+     {"timestamp": now_at(29), "event": "Cargo", "Vessel": "Ship", "Count": 32,
+      "Inventory": [{"Name": "haematite", "Name_Localised": "Hématite",
+                     "Count": 30, "Stolen": 0},
+                    {"Name": "tea", "Name_Localised": "Thé", "Count": 2,
+                     "Stolen": 0}]},
+     {"timestamp": now_at(10), "event": "CargoTransfer", "Transfers": [
+         {"Type": "water", "Count": 4, "Direction": "toship"}]}],
+    {"timestamp": now_at(5), "event": "Cargo", "Vessel": "SRV", "Count": 6,
+     "Inventory": [{"Name": "water", "Name_Localised": "Eau", "Count": 6,
+                    "Stolen": 0}]})
+check("both holds are known, the ship's from the journal and the SRV's from "
+      "Cargo.json", reader.holds == {"Ship": {"Haematite": 30, "Tea": 2,
+                                              "Water": 4},
+                                     "SRV": {"Water": 6}}, reader.holds)
+check("and named in English whatever the client's language",
+      reader.cargo == {"Water": 6}, reader.cargo)
+
+print("== a transfer banked while catching up cannot swallow a real gain ==")
+STALE = os.path.join(TMP, "stale"); os.makedirs(STALE)
+with open(os.path.join(STALE, "Journal.2026-09-17T180000.01.log"), "w",
+          encoding="utf-8") as fh:
+    fh.write(_json.dumps({"timestamp": now_at(20), "event": "CargoTransfer",
+                          "Transfers": [{"Type": "haematite", "Count": 20,
+                                         "Direction": "tosrv"}]}) + "\n")
+
+
+def srv_hold(count, minutes_ago):
+    with open(os.path.join(STALE, "Cargo.json"), "w", encoding="utf-8") as fh:
+        fh.write(_json.dumps({"timestamp": now_at(minutes_ago), "event": "Cargo",
+                              "Vessel": "SRV", "Count": count,
+                              "Inventory": [{"Name": "haematite",
+                                             "Count": count, "Stolen": 0}]}))
+
+
+srv_hold(20, 15)
+stale_reader = JN.JournalWatcher(STALE)
+stale_reader.poll()
+stale_reader.drain_runs()
+srv_hold(32, 1)
+stale_reader.poll()
+_gains = [n.get("gained") for n in stale_reader.drain_runs()
+          if n.get("event") == "Cargo"]
+check("twelve tonnes arriving after the app started are twelve tonnes",
+      _gains == [{"Haematite": 12}], _gains)
+
+print("== a market in any language prices the hold ==")
+FRENCH_MARKET = {"timestamp": at(1), "event": "Market", "MarketID": 1,
+                 "StationName": "Reilly", "StarSystem": "Ega", "Items": [
+                     {"Name": "$sapphire_name;", "Name_Localised": "Saphir",
+                      "SellPrice": 127000, "BuyPrice": 0, "Demand": 50,
+                      "Stock": 0},
+                     {"Name": "$haematite_name;",
+                      "Name_Localised": "Hématite", "SellPrice": 2800,
+                      "BuyPrice": 0, "Demand": 50, "Stock": 0},
+                     {"Name": "$water_name;", "Name_Localised": "Eau",
+                      "SellPrice": 500, "BuyPrice": 0, "Demand": 50,
+                      "Stock": 0}]}
+shared = EDO.parse_market(FRENCH_MARKET)
+check("a French client's Sapphire is shared as Sapphire",
+      [row["commodity"] for row in shared.get("items", [])] == ["Sapphire"],
+      shared)
+whole_market = EDO.parse_market(FRENCH_MARKET, only_surface=False,
+                                namer=S.english_name)
+check("and the whole market is kept in English for pricing the hold",
+      sorted(row["commodity"] for row in whole_market["items"])
+      == ["Haematite", "Sapphire", "Water"], whole_market)
+check("so a hold of Haematite and Water is worth something",
+      S.hold_value({"Haematite": 10, "Water": 4},
+                   {row["commodity"]: row["sell"]
+                    for row in whole_market["items"]}) == 30000.0)
+_sale = JN.JournalWatcher(os.path.join(TMP, "books"))
+_sale._note_run("MarketSell", {"timestamp": at(0), "Type": "water",
+                               "Type_Localised": "Eau", "Count": 1,
+                               "SellPrice": 500, "TotalSale": 500})
+check("and a sale off a French client is booked as Water, not Eau",
+      _sale.pending_runs[-1]["commodity"] == "Water", _sale.pending_runs[-1])
+
 
 print("== the reader's queue cannot grow without bound ==")
 # Nothing in the app drains this yet. An unbounded list in a process that

@@ -1,15 +1,15 @@
 {
-  "version": "1.10028",
+  "version": "1.10030",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "Fixed \u2014 an update could wipe your settings",
+  "headline": "Fixed \u2014 Alt+1 to Alt+6 work in the game",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10028",
-    "sha256": "e91d6925f1c4c4ef6ec07d6f790c7445d94e871cb8ffdf4c0093c507d656fbc0",
-    "bytes": 11806051
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10030",
+    "sha256": "a676ee7dda024ceaba459501c19d5902de3352a3d7971e7b041952964b363662",
+    "bytes": 12743793
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10028",
-    "sha256": "79c85dc41cc2862468e7ba36b48f83cf244d9d5b5658eeeef8082874efea0f6f",
-    "bytes": 12819241
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10030",
+    "sha256": "22e50cdb1854fd4b05ca8519ce540c7b9ca1ed2fca5172b18935bc2dc6b849c2",
+    "bytes": 14068309
   }
 }

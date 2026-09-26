@@ -8,6 +8,10 @@ sys.path.insert(0, os.path.dirname(HERE))
 TMP = tempfile.mkdtemp(prefix="edsmt-app-")
 os.environ["LOCALAPPDATA"] = os.path.join(TMP, "appdata")
 import edsmt as A, survey as SV, journal as JN  # noqa
+# Copies go to the Windows clipboard directly on Windows. These checks
+# read what a window put on ITS clipboard, so they take the Tk path
+# everywhere - and never touch the real clipboard on the machine running them.
+A._windows_clipboard = lambda *args, **kwargs: False
 A.DATA_DIR = os.path.join(TMP, "data"); os.makedirs(A.DATA_DIR, exist_ok=True)
 A.SETTINGS_FILE = os.path.join(A.DATA_DIR, "settings.json")
 JN.EVENT_LOG = os.path.join(A.DATA_DIR, "events.log")
@@ -162,6 +166,13 @@ print("== a commodity nobody listed is still recorded ==")
 app.fields["commodity"].set("")
 app.fields["rigs"].set("")
 app.fields["commodity"].set("Unobtainium")
+app.mark_deposit()
+# Standing on the Olivine just marked: another commodity on the same spot
+# is asked about first - UPDATE renames, MARK again adds one of its own.
+check("another commodity on the same spot is asked about, not added",
+      not any(d["commodity"] == "Unobtainium"
+              for d in app.store.at("Ega", "Ega 1"))
+      and "rename" in messages[-1], messages[-1:])
 app.mark_deposit()
 check("recorded anyway",
       any(d["commodity"] == "Unobtainium" for d in app.store.at("Ega", "Ega 1")))
@@ -861,6 +872,19 @@ c = _Comm(); w = _Find(c)
 w.query.set("Sol"); w.commodity.set("Ruby"); w.search_prices()
 check("typing a system still means near there instead of near me",
       c.calls[-1][1].get("near_system") == "Sol", c.calls[-1])
+check("and near there is not measured from where I am",
+      c.calls[-1][1].get("near") is None, c.calls[-1])
+
+# E4. Nothing typed used to send no system name at all, and the market index
+# only measures distance from a name - so the answer was the best price in
+# the galaxy, hundreds of light years off, with no distance on it.
+c = _Comm(); w = _Find(c)
+w.app.watcher = type("W", (), {"system": "HR 7280"})()
+w.commodity.set("Sapphire"); w.search_prices()
+check("with nothing typed, prices are asked for near the system I am in, "
+      "by name", c.calls[-1][1].get("near_system") == "HR 7280", c.calls[-1])
+check("and by position as well",
+      c.calls[-1][1].get("near") == (0.0, 0.0, 0.0), c.calls[-1])
 
 PRICES = json.dumps({"prices": [
     {"commodity": "Ruby", "station": "Far Money", "system": "Distant",
@@ -1103,9 +1127,10 @@ check("with the scrollbar's pixels on top, not taken out of the controls",
 
 print("== the people who broke it first are credited ==")
 check("there is a list, and it is a constant",
-      isinstance(A.BETA_TESTERS, list) and len(A.BETA_TESTERS) == 4,
+      isinstance(A.BETA_TESTERS, list) and len(A.BETA_TESTERS) == 5,
       A.BETA_TESTERS)
-for name in ("CMDR MJH430", "CMDR StarTopaz", "CMDR Flossy", "CMDR Gamer Joe"):
+for name in ("CMDR MJH430", "CMDR StarTopaz", "CMDR Flossy", "CMDR Gamer Joe",
+             "CMDR Rumphrend"):
     check("%s is on it" % name, name in A.BETA_TESTERS)
 settings = src.split("class SettingsWindow")[1].split("\nclass ")[0]
 check("Settings has a beta testers section", '"Beta testers"' in settings)
@@ -1515,6 +1540,7 @@ def _ticked(fail):
         # One note every tick, so the books are always given something to
         # do and a failure in them has somewhere to come from.
         "drain_runs": staticmethod(lambda: [{"event": "Docked"}]),
+        "poll_status": staticmethod(lambda: False),
     })()
     app.earnings = type("E", (), {"observe": staticmethod(
         _boom("sessions.csv is read-only", OSError) if fail == "earnings"
@@ -1529,9 +1555,21 @@ def _ticked(fail):
     app.hotkeys = type("H", (), {"drain": staticmethod(
         _boom("hotkey thread died", OSError) if fail == "hotkey"
         else (lambda: ["deposit"]))})()
+    app.marked = []
     app.mark_deposit = (_boom("rigs is not a number", ValueError)
-                        if fail == "mark" else (lambda: None))
-    app.tick()
+                        if fail == "mark" else (lambda: app.marked.append(1)))
+    app.flash_said = lambda: None
+    # The keys live on the fast loop now, not at the end of tick.
+    if fail in ("hotkey", "mark", "keys-after-journal"):
+        if fail == "keys-after-journal":
+            app.watcher.poll = staticmethod(_boom("journal folder has gone",
+                                                  IOError))
+            app.tick()
+        app.fast_tick()
+        if fail == "keys-after-journal":
+            return app.marked
+    else:
+        app.tick()
     return app.said[-1] if app.said else ""
 
 check("a journal failure is still called a journal failure",
@@ -1544,6 +1582,15 @@ check("nor the hotkey thread",
       _ticked("hotkey").startswith("Hotkey problem"), _ticked("hotkey"))
 check("and F10 blowing up says F10, not the journal",
       _ticked("mark").startswith("Mark deposit problem"), _ticked("mark"))
+check("a journal failing every tick no longer silences the keys - they are "
+      "read on their own loop", _ticked("keys-after-journal") == [1])
+_fast = src.split("def fast_tick")[1].split("\n    def ")[0]
+check("that loop runs every FAST_TICK_MS, a tenth of a second",
+      "self.after(FAST_TICK_MS, self.fast_tick)" in _fast
+      and A.FAST_TICK_MS <= 100, A.FAST_TICK_MS)
+_tick = src.split("    def tick(self)")[1].split("\n    def ")[0]
+check("and tick itself no longer drains them",
+      "hotkeys.drain" not in _tick)
 # The books are the newest thing in tick and the first thing that would
 # have been blamed on the reader, because the reader is what runs before
 # them. Both halves - the bookkeeping and the readout it feeds - say
@@ -1585,6 +1632,7 @@ _cs = A.SettingsWindow.__new__(A.SettingsWindow)
 _cs.status = _ctkstub.ctk.CTkLabel(None)
 _cs.fields, _cs.toggles, _cs.choices = {}, {}, {}
 _cs.binders, _cs.bindings, _cs.colours = {}, {}, {}
+_cs.secrets, _cs._hide_timers = {}, {}
 _cs.app = type("App", (), {"settings": dict(A.DEFAULT_SETTINGS)})()
 _cs._colour(_ctkstub.ctk.CTkFrame(None), "overlay_colour", "Overlay colour",
             [("Orange", A.ORANGE), ("Cyan", A.CYAN)], "pick or type one")
@@ -1857,7 +1905,7 @@ check("and the readout is on the scale, not at body size",
       "font=F_READOUT" in _build)
 _top = src.split("def _telemetry")[1].split("\n    def ")[0]
 check("the header strip is ruled off from the rail and the map",
-      "fg_color=RULE" in _top and "columnspan=3" in _top)
+      "fg_color=RULE" in _top and "columnspan=4" in _top)
 check("the rail and the map are still side by side under it",
       "centre.grid(row=1, column=1" in src and "frame.grid(row=1, column=0" in src)
 check("bind_all is still nowhere near this file",
@@ -2114,8 +2162,9 @@ check("it lists what that signal offers",
       _note.location_note.cget("text"))
 _note.location_box.set("29")
 _note.refresh_location_note()
-check("and a signal never logged says how to log it",
-      "F9" in _note.location_note.cget("text"),
+check("and a signal never logged says how to log it, with the key it has",
+      A.key_text(A.DEFAULT_SETTINGS["hotkey_location"])
+      in _note.location_note.cget("text"),
       _note.location_note.cget("text"))
 
 print("== F9 puts what the scanner named into the signal's own list ==")
@@ -2753,12 +2802,28 @@ said.clear()
 g = up.game
 g.lat, g.lon, g.in_srv = 37.2, -44.6, True
 _deg = 57.29577951308232 / R            # degrees per metre of latitude
+# Pressed out of order - at the edge first - the point is kept, not refused,
+# and becomes the border the moment there is a centre to measure it from.
+g.lat = 37.2 + 5000 * _deg
 up.set_survey_border()
-check("BORDER before CENTRE says to set the centre first",
-      said and "centre first" in said[-1].lower(), said[-1:])
+check("BORDER before CENTRE keeps the point and says what to do next",
+      said and "border point kept" in said[-1].lower() and "Alt+1" in said[-1],
+      said[-1:])
+check("and sets no border yet", up.cmap.border_m in (None, 0), up.cmap.border_m)
+g.lat = 37.2
 up.set_survey_centre()
 check("CENTRE takes where you are standing",
       up.cmap.centre == (37.2, -44.6), up.cmap.centre)
+check("and the border pressed first is measured from it",
+      up.cmap.border_m and abs(up.cmap.border_m - 5000) < 5, up.cmap.border_m)
+check("and it says so", said and "border you pressed first" in said[-1]
+      and "5.00 km" in said[-1], said[-1:])
+check("a kept border is used once, not again",
+      up._border_after_centre(up.cmap) is None)
+up._border_waiting = ("somewhere", "else", 37.3, -44.6)
+check("a border kept on another body is not used on this one",
+      up._border_after_centre(up.cmap) is None and up._border_waiting is not None)
+up._border_waiting = None
 g.lat = 37.2 + 6000 * _deg
 up.set_survey_border()
 check("BORDER is the distance driven out from the centre",

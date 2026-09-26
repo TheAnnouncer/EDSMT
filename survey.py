@@ -29,6 +29,7 @@ model is testable without a display.
 
 import os
 import csv
+import json
 import math
 import time
 import shutil
@@ -57,6 +58,10 @@ DEPOSIT_FIELDS = [
     "recorded",
     "cmdr",
     "notes",
+    "mined",           # "Rhodplumsite:56;Iridium:11" - tonnes refined here
+                       # since it was last worked out, by-products included
+    "cycles",          # "2026-09-20=56;2026-10-02=48" - its own commodity's
+                       # tonnes each time it was worked out: what it held
 ]
 
 LOCATION_FIELDS = [
@@ -177,6 +182,25 @@ def local_offset(from_lat, from_lon, to_lat, to_lon, radius_m):
     metres = surface_range_m(from_lat, from_lon, to_lat, to_lon, radius_m)
     theta = math.radians(bearing_deg(from_lat, from_lon, to_lat, to_lon))
     return metres * math.sin(theta), metres * math.cos(theta)
+
+
+def nearest_signal(locations, lat, lon, radius_m, within_m):
+    """The logged signal you are standing in, or None.
+
+    The nearest of `locations` whose logged spot is within `within_m` of
+    you. One with no position (logged from orbit, typed in) cannot be stood
+    in, and is passed over rather than guessed at.
+    """
+    best = None
+    for row in locations or []:
+        try:
+            apart = surface_range_m(float(lat), float(lon), float(row["lat"]),
+                                    float(row["lon"]), float(radius_m))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if apart <= float(within_m) and (best is None or apart < best[0]):
+            best = (apart, row)
+    return best[1] if best else None
 
 
 def relative_bearing(heading, bearing):
@@ -327,6 +351,47 @@ def canonical(name):
     if known:
         return known
     return text.replace("_", " ").strip().title()
+
+
+def symbol_of(name):
+    """"$sapphire_name;" -> "sapphire". The symbol is the same in every language."""
+    text = str(name or "").strip().strip("$;")
+    if text.lower().endswith("_name"):
+        text = text[:-5]
+    return text
+
+
+def known_commodity(name):
+    """The list's own spelling of a commodity, or "" if it is not on it."""
+    text = symbol_of(name)
+    return _LOOKUP.get(fold(text), "") if text else ""
+
+
+def english_name(symbol, localised=None):
+    """What to call a commodity the game named, whatever language it is in.
+
+    Name_Localised / Type_Localised is in the commander's own language. A
+    French client writes "Eau" for Water, and that is how "Eau" turned up in
+    the shared data - and why a French client's market never priced a
+    Sapphire, because "Saphir" matches nothing. The symbol ("water",
+    "$sapphire_name;") is the same in every language, so:
+
+      1. a symbol on the list gives the list's spelling;
+      2. the localised text is used only when it is plainly the same word as
+         the symbol - "Hydrogen Fuel" for "hydrogenfuel" - which is what an
+         English client sends;
+      3. otherwise the symbol itself, tidied.
+    """
+    raw = symbol_of(symbol)
+    local = str(localised or "").strip()
+    if raw:
+        known = known_commodity(raw)
+        if known:
+            return known
+        if local and fold(local) == fold(raw):
+            return local
+        return canonical(raw)
+    return known_commodity(local) or local
 
 
 def remember(name):
@@ -686,6 +751,8 @@ def rank_bodies(system, bodies, grounds=None, sites=None, prices=None,
         if isinstance(found, dict) and mine(found) and found.get("body"):
             row = entry(found["body"])
             row["your_deposits"] += 1
+            if found.get("commodity"):
+                row.setdefault("your_types", set()).add(str(found["commodity"]))
             if is_depleted(found.get("amount")):
                 row["your_worked"] += 1
             if not row["planet_class"] and found.get("planet_class"):
@@ -709,6 +776,13 @@ def rank_bodies(system, bodies, grounds=None, sites=None, prices=None,
         row["per_site"] = round(sum(share * price_of(name, prices)
                                     for name, share in mix), 0)
         row["bets"] = sorted(mix, key=lambda pair: -pair[1] * price_of(pair[0], prices))[:LAND_BETS]
+        # Everything this body is known or expected to carry - the whole mix
+        # for its ground, not just the few shown, plus what has been found
+        # there - so a filter by commodity keeps every body worth landing on
+        # for it.
+        row["carries"] = sorted({fold(name) for name, share in mix if share > 0}
+                                | {fold(t) for t in row["known_types"]}
+                                | {fold(t) for t in row.pop("your_types", set())})
         unshared = 0
         if row["locations"] is not None:
             unshared = max(0, row["locations"] - row["known"])
@@ -883,6 +957,46 @@ class Survey:
                 return row
         return None
 
+    def credit_refined(self, system, body, lat, lon, radius_m, commodity,
+                       tonnes=1, within_m=None):
+        """Add refined tonnes to the deposit they came off. The row, or None.
+
+        The game writes one MiningRefined per tonne and says nothing of
+        where, so the tonne goes to the marked deposit nearest the SRV at
+        that moment - one of the same commodity before a nearer one that is
+        not, because a deposit's by-products are refined standing at it too.
+        Outside `within_m` of every marked deposit it belongs to none.
+        Held in memory; save_deposits() writes it, which the app does every
+        few seconds rather than once a tonne.
+        """
+        within = REFINED_WITHIN_M if within_m is None else within_m
+        try:
+            lat, lon, radius = float(lat), float(lon), float(radius_m)
+        except (TypeError, ValueError):
+            return None
+        if not radius:
+            return None
+        wanted = fold(canonical(commodity))
+        best = None
+        for row in self.at(system, body):
+            try:
+                metres = surface_range_m(lat, lon, float(row["lat"]),
+                                         float(row["lon"]), radius)
+            except (TypeError, ValueError, KeyError):
+                continue
+            if metres > within:
+                continue
+            rank = (fold(row.get("commodity")) != wanted, metres)
+            if best is None or rank < best[0]:
+                best = (rank, row)
+        if best is None:
+            return None
+        row = best[1]
+        tally = unpack_counts(row.get("mined"))
+        add_counts(tally, {canonical(commodity): int(tonnes)})
+        row["mined"] = pack_counts(tally)
+        return row
+
     def backup_to(self, folder):
         """Copy everything worth keeping into one dated zip.
 
@@ -1009,6 +1123,64 @@ class Survey:
             out = [d for d in out if _same(d["location"], location)]
         return out
 
+    # -- every place you have been -----------------------------------------
+
+    def sites(self):
+        """Every signal you have logged or marked a find in, on every body.
+
+        One row per system, body and signal number: what the game said it
+        offers, what you found there and what is left, the rigs still to be
+        had, the tonnes taken out, and when you were last there. It is the
+        answer to "where were those two spots I logged" - the main window
+        only ever shows the body you are on.
+
+        A signal logged with nothing marked yet is a row; so is a find whose
+        signal was never logged. Neither is left out for lack of the other.
+        """
+        places = {}
+
+        def place(system, body, number):
+            key = (fold(system), fold(body), str(number or "").strip())
+            if key not in places:
+                places[key] = {"system": str(system or "").strip(),
+                               "body": str(body or "").strip(),
+                               "signal": str(number or "").strip(),
+                               "offers": [], "depleted": [], "logged": False,
+                               "finds": 0, "intact": 0, "rigs": 0,
+                               "types": {}, "mined": {}, "last": ""}
+            return places[key]
+
+        for row in self.locations:
+            if not (row.get("system") and row.get("body")):
+                continue
+            site = place(row["system"], row["body"], row.get("location"))
+            site["logged"] = True
+            site["offers"] = self.offered(row)
+            site["depleted"] = self.worked_out(row)
+            site["last"] = max(site["last"], str(row.get("recorded") or ""))
+        for row in self.deposits:
+            if not (row.get("system") and row.get("body")):
+                continue
+            site = place(row["system"], row["body"], row.get("location"))
+            site["finds"] += 1
+            site["last"] = max(site["last"], str(row.get("recorded") or ""))
+            own, _others = own_tonnes(row)
+            own += sum(cycle_tonnes(row))
+            if own:
+                add_counts(site["mined"], {canonical(row.get("commodity") or "") or "unknown": own})
+            if str(row.get("amount") or "").strip().lower() == "depleted":
+                continue
+            site["intact"] += 1
+            name = str(row.get("commodity") or "").strip() or "unknown"
+            site["types"][name] = site["types"].get(name, 0) + 1
+            try:
+                site["rigs"] += max(0, int(float(row.get("rigs") or 0)))
+            except (TypeError, ValueError):
+                pass
+        return sorted(places.values(),
+                      key=lambda s: (s["last"], s["system"], s["body"]),
+                      reverse=True)
+
     # -- what is near you ------------------------------------------------
 
     def near(self, system, body, lat, lon, radius_m, limit=None):
@@ -1048,6 +1220,7 @@ SESSION_FIELDS = [
     "station",         # where it was sold
     "sold_in",         # and the system that station is in
     "mined",           # "Haematite:112;Copper:40" - what came out of the ground
+    "aboard",          # same shape: already in the holds when EDSMT first looked
     "sold",            # same shape, but what actually crossed the counter
     "credits",         # every TotalSale added up
     "cost",            # what was paid for any of it in the first place
@@ -1055,7 +1228,16 @@ SESSION_FIELDS = [
     "sales",           # how many times the sell button was pressed
     "cmdr",
     "notes",
+    # Added in 1.10030. Old rows read these as blank.
+    "kind",            # "rhino": a Rhino session. Anything else is an old run
+    "transferred",     # same shape as mined: what went across to the ship
+    "trips",           # how many times the Rhino went out in this session
 ]
+
+# What a session is. Only Rhino sessions are shown and added up: the books
+# used to open a "run" on any landing and for any sale, so the Earnings tab
+# filled up with trading, exploration data and asteroid ore.
+RHINO = "rhino"
 
 # How long a live run may go quiet before it is written off as over.
 #
@@ -1065,6 +1247,20 @@ SESSION_FIELDS = [
 # the takings of the next three. Six hours is well past any single sitting and
 # nowhere near a break for a cup of tea.
 RUN_IDLE_S = 6 * 3600
+
+# How far from a marked deposit a refined tonne is still counted into it.
+# The SRV collects what the rigs throw up, and that lands round the deposit
+# rather than on it; the game writes the tonne, not where it was picked up.
+REFINED_WITHIN_M = 250.0
+
+# The journal events the books are driven by. Every start of the app reads
+# the current journal from the top, so every one of these arrives again - and
+# without remembering which have been booked, a restart after selling doubled
+# the sale. What the reader works out from Cargo.json is not in here: that is
+# never replayed, because the first sight of a hold is always a baseline.
+REPLAYED_EVENTS = {"Touchdown", "Liftoff", "Docked", "Undocked", "MarketSell",
+                   "Shutdown", "Location", "SRVLaunch", "SRVDock", "SRVLost",
+                   "Refined", "CargoTransfer"}
 
 
 def pack_counts(counts):
@@ -1100,6 +1296,46 @@ def unpack_counts(text):
         except ValueError:
             continue
     return out
+
+
+def own_tonnes(row):
+    """(its own commodity's tonnes this time, the by-products' tally).
+
+    A deposit's own tonnes are the ones that say what it holds; by-products
+    come off it too, and are shown beside, never added in."""
+    tally = unpack_counts(row.get("mined"))
+    mine = fold(canonical(row.get("commodity") or ""))
+    own = sum(count for name, count in tally.items() if fold(name) == mine)
+    others = {name: count for name, count in tally.items() if fold(name) != mine}
+    return own, others
+
+
+def cycle_tonnes(row):
+    """Its own commodity's tonnes each time it was worked out, oldest first."""
+    out = []
+    for chunk in str(row.get("cycles") or "").split(";"):
+        _when, _, count = chunk.rpartition("=")
+        try:
+            tonnes = int(count.strip())
+        except ValueError:
+            continue
+        if tonnes > 0:
+            out.append(tonnes)
+    return out
+
+
+def close_cycle(row, when=None):
+    """Worked out: file this time's own tonnes as a cycle and start again.
+
+    Returns the (cycles, mined) values to write, or None when nothing of its
+    own was counted this time - a second MINED OUT, or one pressed before any
+    tonne came off it, adds nothing."""
+    own, _others = own_tonnes(row)
+    if own <= 0:
+        return None
+    stamp = str(when or utc_now())[:10]
+    earlier = [c for c in str(row.get("cycles") or "").split(";") if c.strip()]
+    return ";".join(earlier + ["%s=%d" % (stamp, own)]), ""
 
 
 def add_counts(into, more):
@@ -1221,7 +1457,104 @@ class Earnings:
         # to stop a cargo load at a station reading as ore, and after a
         # restart the next Docked or Undocked says which it is.
         self._docked = False
+        # The last thing the game said before the reader caught up was that
+        # it shut down: whatever Cargo.json still says is last night's hold.
+        self._shut = False
+        # How far through the journal the books have got - see
+        # REPLAYED_EVENTS. The newest timestamp booked, and a fingerprint of
+        # everything booked at exactly that second, because a commander who
+        # sells four commodities can do it inside one.
+        self.seen_path = os.path.join(folder, "sessions-seen.json")
+        self._seen_at, self._seen_keys = 0, set()
+        # Whether the Rhino is out. Worked out from the journal - LaunchSRV,
+        # DockSRV, and a login that puts you in it - and only while it is
+        # out does a refined tonne count: MiningRefined is also what the
+        # ship writes mining asteroids, and that is not a Rhino session.
+        self._in_rhino = False
+        # One session across several trips, for hauling back and forth to a
+        # station: set from the Earnings window's box, kept in settings.
+        self.multi = False
+        self._load_seen()
         self.load()
+
+    def _load_seen(self):
+        try:
+            with open(self.seen_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            at = int(data.get("at") or 0)
+            keys = set(str(key) for key in data.get("keys") or [])
+        except (OSError, ValueError, TypeError, AttributeError):
+            return
+        # A mark from the future - a clock put right, a test file left
+        # behind - would silently stop the books for as long as it takes to
+        # catch up with it. Nothing can legitimately be ahead of now.
+        if at > _epoch(utc_now()) + 86400:
+            return
+        self._seen_at, self._seen_keys = at, keys
+
+    def _save_seen(self):
+        try:
+            os.makedirs(self.folder, exist_ok=True)
+            temp = self.seen_path + ".tmp"
+            with open(temp, "w", encoding="utf-8") as handle:
+                json.dump({"at": self._seen_at,
+                           "keys": sorted(self._seen_keys)}, handle)
+            os.replace(temp, self.seen_path)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _fingerprint(note):
+        # Where the reader thought it was is left out. On a restart the whole
+        # journal is read before Status.json, so the body can differ from
+        # what it was the first time through without the event differing.
+        # So is anything read off Status.json rather than the journal line:
+        # a restart reads the journal before Status.json, so a tonne
+        # replayed carries no position where the live one carried one.
+        return json.dumps({key: value for key, value in note.items()
+                           if key not in ("system", "body", "cmdr", "lat",
+                                          "lon", "radius_m", "in_srv",
+                                          "ship_t")},
+                          sort_keys=True, default=str)
+
+    def _replayed(self, note):
+        """True for a journal event these books have already been given."""
+        if note.get("event") not in REPLAYED_EVENTS:
+            return False
+        at = _epoch(note.get("when"))
+        if not at or not self._seen_at:
+            return False
+        if at < self._seen_at:
+            return True
+        return at == self._seen_at and self._fingerprint(note) in self._seen_keys
+
+    def _mark_seen(self, note):
+        if note.get("event") not in REPLAYED_EVENTS:
+            return
+        at = _epoch(note.get("when"))
+        if not at or at < self._seen_at:
+            return
+        if at > self._seen_at:
+            self._seen_at, self._seen_keys = at, set()
+        self._seen_keys.add(self._fingerprint(note))
+        self._save_seen()
+
+    def _track(self, name, note):
+        """Where the ship is, and whether the Rhino is out - both have to be
+        right even for an event already booked, so a replay rebuilds them."""
+        if name == "Docked":
+            self._docked = True
+        elif name == "Undocked":
+            self._docked = False
+        elif name == "Location":
+            self._docked = bool(note.get("docked"))
+            self._in_rhino = bool(note.get("in_srv")) and bool(note.get("landed"))
+        elif name == "SRVLaunch":
+            self._in_rhino = bool(note.get("rhino"))
+        elif name in ("SRVDock", "SRVLost"):
+            self._in_rhino = False
+        if name in REPLAYED_EVENTS:
+            self._shut = name == "Shutdown"
 
     def load(self):
         self.sessions = _read(self.path, SESSION_FIELDS)
@@ -1257,20 +1590,33 @@ class Earnings:
                 return row
         return None
 
-    def recent(self, limit=None):
-        """Runs newest first, which is the order anybody wants to read them."""
-        rows = sorted(self.sessions,
-                      key=lambda row: _epoch(row.get("started")), reverse=True)
+    def recent(self, limit=None, rhino_only=True):
+        """Rhino sessions newest first, which is the order anybody wants.
+
+        Only Rhino sessions unless asked: rows written by older builds -
+        a run for every landing and every sale - stay in the file, because
+        nothing of the commander's is ever deleted, but they are not shown
+        or added up."""
+        rows = [row for row in self.sessions
+                if not rhino_only or row.get("kind") == RHINO]
+        rows = sorted(rows, key=lambda row: _epoch(row.get("started")),
+                      reverse=True)
         return rows[:limit] if limit else rows
+
+    @property
+    def rhino(self):
+        """The Rhino session in progress, if there is one."""
+        row = self.current
+        return row if row is not None and row.get("kind") == RHINO else None
 
     # -- keeping the books -----------------------------------------------
 
-    def start(self, system="", body="", cmdr="", when=None):
+    def start(self, system="", body="", cmdr="", when=None, kind=RHINO):
         when = str(when or "").strip() or utc_now()
         row = {key: "" for key in SESSION_FIELDS}
         row.update({"id": new_id(), "started": when, "ended": when,
                     "system": str(system or ""), "body": str(body or ""),
-                    "cmdr": str(cmdr or ""),
+                    "cmdr": str(cmdr or ""), "kind": kind, "trips": "0",
                     "credits": "0", "cost": "0", "sales": "0", "cr_hr": "0"})
         self.sessions.append(row)
         self.save()
@@ -1287,34 +1633,6 @@ class Earnings:
         row["mined"] = pack_counts(tally)
         for name in tally:
             remember(name)
-        self._touch(row, when)
-        self.save()
-        return row
-
-    def note_sale(self, commodity, count, total, avg_paid=0, station="",
-                  system="", when=None):
-        """Credit a sale to the run in progress."""
-        row = self.current
-        if row is None:
-            return None
-        name = canonical(commodity)
-        try:
-            count = int(count or 0)
-        except (TypeError, ValueError):
-            count = 0
-        if name and count:
-            tally = unpack_counts(row.get("sold"))
-            add_counts(tally, {name: count})
-            row["sold"] = pack_counts(tally)
-            remember(name)
-        row["credits"] = "%d" % (_number(row.get("credits")) + _number(total))
-        row["cost"] = "%d" % (_number(row.get("cost"))
-                              + _number(avg_paid) * count)
-        row["sales"] = "%d" % (_number(row.get("sales")) + 1)
-        if station:
-            row["station"] = str(station)
-        if system:
-            row["sold_in"] = str(system)
         self._touch(row, when)
         self.save()
         return row
@@ -1363,89 +1681,174 @@ class Earnings:
         if not isinstance(note, dict):
             return None
         name = str(note.get("event") or "")
+        self._track(name, note)
+        if self._replayed(note):
+            return None
+        line = self._apply(name, note)
+        self._mark_seen(note)
+        return line
+
+    def _apply(self, name, note):
+        """The policy: what starts a session, what counts in it, what ends it.
+
+        Checked against real 4.4.1.1 journals, a Rhino session reads:
+        LaunchSRV (mev_rhino) - MiningRefined, one per tonne, into the
+        Rhino - CargoTransfer "toship" when the Rhino is full, again and
+        again without boarding - DockSRV. So the session is LaunchSRV to
+        DockSRV, a tonne counts only while the Rhino is out, and a sale
+        counts only for what a Rhino session dug up. With `multi` on, one
+        session runs across trips - out, fill the ship, fly to a station,
+        sell, come back - until the box is unticked.
+        """
         when = str(note.get("when") or "").strip() or utc_now()
 
-        # Whatever arrives next, a run that has been silent for hours is
+        # Whatever arrives next, a session that has been silent for hours is
         # over, and it ended when it went silent - not now.
         row = self.current
         if row is not None:
             last = _epoch(row.get("ended")) or _epoch(row.get("started"))
             if last and (_epoch(when) - last) > RUN_IDLE_S:
-                self.finish(row.get("ended"), "closed - the run went quiet")
+                self.finish(row.get("ended"), "closed - the session went quiet")
                 row = None
+        # A run an older build left open is never carried on by this one.
+        if row is not None and row.get("kind") != RHINO:
+            self.finish(row.get("ended"), "closed - only Rhino sessions now")
+            row = None
 
-        if name == "Touchdown":
-            # Putting the ship on a landing pad is not the start of a mining
-            # run, and neither is a ship that landed without you in it.
-            if note.get("on_station") or note.get("player") is False:
+        if name == "SRVLaunch":
+            if not note.get("rhino"):
                 return None
-            body = str(note.get("body") or "")
-            if row is not None and not _same(row.get("body"), body):
-                self.finish(when)
-                row = None
-            if row is None:
-                self.start(note.get("system"), body, note.get("cmdr"), when)
-                return "run started"
-            self._touch(row, when)
+            if row is not None and (self.multi or
+                                    _same(row.get("body"), note.get("body"))):
+                row["trips"] = "%d" % (_number(row.get("trips")) + 1)
+                self._touch(row, when)
+                self.save()
+                return "Rhino out - trip %s of this session" % row["trips"]
+            if row is not None:
+                self.finish(row.get("ended"))
+            row = self.start(note.get("system"), note.get("body"),
+                             note.get("cmdr"), when)
+            row["trips"] = "1"
             self.save()
+            return "Rhino session started"
+
+        if name == "Location":
+            # Logged in sitting in the Rhino. The session carries on - or,
+            # when the launch was in a journal the app never read, starts
+            # here. Anywhere else, a login changes nothing.
+            if not (note.get("in_srv") and note.get("landed")):
+                return None
+            if row is not None:
+                self._touch(row, when)
+                self.save()
+                return None
+            self.start(note.get("system"), note.get("body"), note.get("cmdr"),
+                       when)
+            return "Rhino session picked up"
+
+        if name == "Refined":
+            if not self._in_rhino:
+                return None
+            commodity = canonical(note.get("commodity") or "")
+            if not commodity:
+                return None
+            if row is None:
+                self.start(note.get("system"), note.get("body"),
+                           note.get("cmdr"), when)
+            self.note_mined({commodity: 1}, when)
+            # Nothing on screen: a line a tonne would bury everything else.
             return None
 
-        if name == "Cargo":
-            # A hold that fills at a station is a purchase, not a haul.
-            if row is None or self._docked:
-                return None
-            gained = note.get("gained") or {}
-            if not gained:
-                return None
-            self.note_mined(gained, when)
-            return "mined " + pack_counts(gained)
-
-        if name == "Docked":
-            self._docked = True
+        if name == "CargoTransfer":
             if row is None:
                 return None
+            moved = {}
+            for key, count in dict(note.get("moved") or {}).items():
+                key = canonical(key)
+                count = int(_number(count))
+                if key and count > 0:
+                    moved[key] = moved.get(key, 0) + count
+            if not moved:
+                return None
+            tally = unpack_counts(row.get("transferred"))
+            add_counts(tally, moved)
+            row["transferred"] = pack_counts(tally)
+            self._touch(row, when)
+            self.save()
+            return "to ship: " + pack_counts(moved).replace(";", ", ")
+
+        if name in ("SRVDock", "SRVLost"):
+            if row is None:
+                return None
+            if self.multi:
+                self._touch(row, when)
+                self.save()
+                return "Rhino aboard - the session carries on (multi-session)"
+            self.finish(when, "the Rhino was lost" if name == "SRVLost" else "")
+            return "Rhino session done"
+
+        if name == "MarketSell":
+            return self._sell(note, when)
+
+        if name == "Docked" and row is not None and self.multi:
             row["station"] = str(note.get("station") or "")
             row["sold_in"] = str(note.get("system") or "")
             self._touch(row, when)
             self.save()
-            return None
-
-        if name == "MarketSell":
-            # Credits with nowhere to go are credits lost. A sale that turns
-            # up with no run open - the app was started after the mining was
-            # done - opens one at the moment of the sale rather than being
-            # dropped on the floor.
-            if row is None:
-                self.start(note.get("system"), note.get("body"),
-                           note.get("cmdr"), when)
-            self.note_sale(note.get("commodity"), note.get("count"),
-                           note.get("total"), note.get("avg_paid") or 0,
-                           note.get("station") or "",
-                           note.get("system") or "", when)
-            return "sold " + str(note.get("commodity") or "")
-
-        if name == "Undocked":
-            self._docked = False
-            # Sold up and leaving: that is the run finished. Undocking with
-            # nothing sold is just a stop on the way, so it is left running.
-            if row is not None and _number(row.get("sales")) > 0:
-                self.finish(when)
-                return "run banked"
-            return None
-
-        if name == "Shutdown":
-            if row is not None:
-                self.finish(when)
-                return "run banked"
-            return None
-
-        if name == "Liftoff":
-            if row is not None:
-                self._touch(row, when)
-                self.save()
-            return None
-
         return None
+
+    def _sell(self, note, when):
+        """Put a sale against the Rhino sessions that dug it up.
+
+        Newest first: what is sold is nearly always what was just mined,
+        and yesterday's tonnes still showing unsold were most likely sold
+        with the app shut. A sale of anything no Rhino session dug up -
+        trade goods, exploration, asteroid ore - is not booked at all.
+        """
+        commodity = canonical(note.get("commodity") or "")
+        try:
+            count = int(note.get("count") or 0)
+        except (TypeError, ValueError):
+            count = 0
+        if not commodity or count <= 0:
+            return None
+        each = _number(note.get("total")) / float(count)
+        left = count
+        rows = sorted((row for row in self.sessions if row.get("kind") == RHINO),
+                      key=lambda row: _epoch(row.get("started")), reverse=True)
+        for row in rows:
+            if left <= 0:
+                break
+            unsold = (unpack_counts(row.get("mined")).get(commodity, 0)
+                      - unpack_counts(row.get("sold")).get(commodity, 0))
+            if unsold <= 0:
+                continue
+            take = min(unsold, left)
+            self._book_sale(row, commodity, take, each * take, note, when)
+            left -= take
+        if left == count:
+            return None
+        self.save()
+        return "sold %d %s" % (count - left, commodity)
+
+    def _book_sale(self, row, commodity, count, credits_, note, when):
+        tally = unpack_counts(row.get("sold"))
+        add_counts(tally, {commodity: count})
+        row["sold"] = pack_counts(tally)
+        remember(commodity)
+        row["credits"] = "%d" % round(_number(row.get("credits")) + credits_)
+        row["sales"] = "%d" % (_number(row.get("sales")) + 1)
+        if note.get("station"):
+            row["station"] = str(note["station"])
+        if note.get("system"):
+            row["sold_in"] = str(note["system"])
+        # A finished session keeps the time it was mined in: the drive to
+        # the station is not mining, and counting it would halve the Cr/hr.
+        # A multi-session is still going, so the haul is part of it.
+        if str(row.get("closed") or "").strip():
+            self._rate(row)
+        else:
+            self._touch(row, when)
 
     # -- adding it up -----------------------------------------------------
 

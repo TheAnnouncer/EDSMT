@@ -23,6 +23,13 @@ CHECKS = [
     ("where to land", "test_land.py"),
     ("updates download, install on a click", "test_update.py"),
     ("rigs down, and too far from them", "test_rigs.py"),
+    ("the map opens on the signal, keys and flashes", "test_signal_view.py"),
+    ("what is aboard, and where to sell it", "test_hold.py"),
+    ("the guide, rig types and the targeted signal", "test_guide.py"),
+    ("themes for the app and the overlay", "test_themes.py"),
+    ("UK English, everywhere it is read", "test_spelling.py"),
+    ("my sites, on every body", "test_sites.py"),
+    ("what the testers hit on 1.10029", "test_field.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
 # The checks on the documents that describe the live server live beside

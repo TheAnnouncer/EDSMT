@@ -242,13 +242,13 @@ they have to discover.
 | # | Question | Status |
 |---|---|---|
 | 3.1 | Does any surface-mining-specific journal event exist? | **UNKNOWN.** None observed to 17 Sep 2026. |
-| 3.2 | The `Type` string for a mining location signal | **UNKNOWN.** See §2.1. |
+| 3.2 | The `Type` string for a mining location signal | **OBSERVED** in real journals, September 2026: `FSSBodySignals` and `SAASignalsFound` carry `"Type": "$PlanetaryMiningLocation_Name;"`, `"Type_Localised": "Planetary Mining Location"`, with a `Count` (19 and 21 on two bodies). |
 | 3.3 | Does the journal record an individual deposit at all — position, commodity, size? | **UNKNOWN.** Currently only the commander sees it, on screen. |
-| 3.4 | Rig deployment, extraction and collection | **UNKNOWN.** No event observed. **REPORTED** as absent by a community member. |
+| 3.4 | Rig deployment, extraction and collection | **OBSERVED ABSENT** for deployment: twelve journals from a commander who deployed rigs carry no rig event of any name. Collection is 3.7. |
 | 3.5 | Deposit density: the field name | **UNKNOWN.** See §5.2. |
 | 3.6 | Deposit density: the tier vocabulary | **UNKNOWN.** The game shows tiers; nothing says what the journal would call them. |
-| 3.7 | Whether extracted material arrives as `MiningRefined`, as a direct `Cargo.json` change, or otherwise | **UNKNOWN.** |
-| 3.8 | Whether `$commodity_name;` symbol forms appear for the new commodities | **INFERRED** that they might; handled defensively, never observed. |
+| 3.7 | Whether extracted material arrives as `MiningRefined`, as a direct `Cargo.json` change, or otherwise | **OBSERVED:** both. In the SRV each tonne collected writes one `MiningRefined` (`Type` as a `$symbol_name;`, `Type_Localised`, nothing else - no position, no body) and the SRV's `Cargo` count rises with it: 47 refined against 46 in the hold a second later, 67 against 67, 3 against 3. By-products arrive under their own names - Rhodplumsite 56 with Iridium 11 off one site. |
+| 3.8 | Whether `$commodity_name;` symbol forms appear for the new commodities | **OBSERVED:** `$rhodplumsite_name;`, `$periclasedunite_name;`, `$monazite_name;`, `$uraninite_name;`, `$haematite_name;` in `MiningRefined`. |
 
 **REPORTED** by a community member: surface deposit sites are deterministic, generated
 by a PRNG seeded on the body address, with latitude, longitude, radius and

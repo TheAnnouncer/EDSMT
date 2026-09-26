@@ -97,6 +97,39 @@ CHECKS = [
  (53, "other commanders' finds on the map",  lambda: wired("want_shared") and wired("take_shared")),
  (54, "rig down key, each rig, TOO FAR",      lambda: wired("drop_rigs") and wired("watch_rigs")
         and wired("sound_alarm") and "def _rig_banner" in OV and "TOO FAR FROM RIG" in OV and "def _rig_marks" in OV),
+ # 1.10029
+ (58, "keys Alt+1..Alt+6, one table",        lambda: '"hotkey_location": "ALT+1"' in OV and "WORK_KEYS" in APP
+        and "KEYS_LEVEL = 4" in APP and wired("upgrade_hotkeys")),
+ (59, "GUIDE box, step by step",             lambda: wired("guide_card") and "def draw_guide" in OV),
+ (60, "rig down shows what it mines",        lambda: wired("rig_commodity") and "rigtype" in OV),
+ (61, "Basic settings first",                lambda: '"Basic settings"' in APP and wired("save_and_restart")),
+ (62, "ten or more themes, app and overlay", lambda: "PALETTES" in OV and wired("apply_app_theme")),
+ (63, "tonnes mined per deposit",            lambda: wired("credit_refined") and "def credit_refined" in SV),
+ (64, "cargo aboard, no double count",       lambda: "sessions-seen.json" in SV and wired("hold_now")),
+ (65, "where to sell from here",             lambda: wired("quote_hold") and wired("take_quote")),
+ (66, "Find paged, Last seen",               lambda: "last_seen" in SRV and "def last_seen" in APP),
+ (67, "names from symbols (Eau)",            lambda: "def english_name" in SV and "hold_label" in JN),
+ (68, "targeted signal picked",              lambda: wired("follow_target") and "#index=" in JN),
+ (69, "scope is the signal you are at",      lambda: wired("follow_arrival") and "near_m=PV.SIGNAL_REACH_M" in OV
+        and "SIGNAL_AT_M" in PV),
+ (70, "key boxes hidden with Show",          lambda: wired("reveal") and wired("hide_secrets") and "REVEAL_S" in APP),
+ (71, "My sites",                            lambda: wired("open_sites") and "class SitesWindow" in APP
+        and "def sites(self)" in SV),
+ (72, "UK English enforced",                 lambda: os.path.exists("tests/test_spelling.py")),
+ (73, "share a find, distance from centre",  lambda: wired("copy_selected") and wired("paste_shared")
+        and wired("take_share_lines") and wired("from_centre")),
+ (74, "CI green on a small runner",          lambda: "Set-DisplayResolution" in src(".github/workflows/build.yml")),
+ (75, "scope labels never overlap",          lambda: "def free_spot" in OV and "def _scope_labels" in OV),
+ (76, "no empty sideways scrollbar",         lambda: "grid_forget()" in APP and "place_forget()" in APP),
+ (77, "deposit you drive onto is picked",    lambda: wired("follow_deposit") and "self.follow_deposit(state)" in APP),
+ (78, "guide to a picked deposit",           lambda: wired("guide_to") and "_target_id" in OV and '"GO"' in OV),
+ (79, "own tonnes, cycles, holds and left",  lambda: wired("tonnes_lines") and "def close_cycle" in SV
+        and '"cycles"' in SV),
+ (80, "tonnes shown when the laser pauses",  lambda: wired("show_tonnes") and "TONNES_QUIET_S" in APP),
+ (81, "border before centre kept",           lambda: wired("_border_after_centre")),
+ (82, "Where to land Carrying filter",       lambda: wired("land_carrying") and '"carries"' in SV),
+ (83, "clipboard survives closing",          lambda: wired("put_on_clipboard") and "CF_UNICODETEXT" in APP),
+ (85, "worked-out age shown",                lambda: wired("worked_out_age")),
  # journal rules
  ("J1","sticky EOF handled",                 lambda: "seek" in JN and "SEEK_END" in JN),
  ("J2","no mtime gate on Status.json",       lambda: "st_mtime" not in JN.split("def _read_status")[1][:900] if "def _read_status" in JN else True),
