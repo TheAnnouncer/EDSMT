@@ -1,280 +1,208 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDSMT — Surface Mining Survey — Radio Raxxla</title>
+<title>EDSMT // Radio Raxxla</title>
 <meta name="description" content="EDSMT maps Rhino SRV surface mining deposits straight from your Elite Dangerous journal, puts a compass overlay on your screen, and shares every find with the commanders running it. Free, open source, from Radio Raxxla.">
-<link rel="icon" href="radio-raxxla-badge.png">
-<meta property="og:title" content="EDSMT — Surface Mining Survey">
-<meta property="og:description" content="Map surface mining for the Rhino without typing a coordinate. Free, from Radio Raxxla.">
-<meta property="og:image" content="https://radioraxxla.com/edsmt/radio-raxxla-badge.png">
+<link rel="icon" type="image/png" href="/assets/img/badge-192.png">
+<link rel="apple-touch-icon" href="/assets/img/badge-192.png">
+<link rel="manifest" href="/manifest.json">
+<meta property="og:site_name" content="Radio Raxxla">
+<meta property="og:title" content="EDSMT // Radio Raxxla">
+<meta property="og:description" content="Map surface mining for the Rhino without typing a coordinate. Free, GPL-3.0, from Radio Raxxla.">
+<meta property="og:image" content="https://radioraxxla.com/EDSMT/radio-raxxla-badge.png">
+<meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#050505">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
+<link rel="stylesheet" href="/assets/css/raxxla.css?v=2026.10.01.1">
 <style>
-/* Radio Raxxla design system - tokens taken from the site's own styles.css
-   so this page belongs to it rather than merely resembling it. Deliberately
-   single-theme: it is a cockpit, it is not lit. */
-:root{
-  --void:#050505;
-  --hull:#0a0908;
-  --panel:#100e0b;
-  --signal:#ff7a18;
-  --signal-dim:#c45a10;
-  --paper:#ffb56a;
-  --mute:#c46e28;
-  --faint:#7a4518;
-  --line:rgba(255,122,24,.38);
-  --line-strong:rgba(255,122,24,.72);
-  --ok:#4ad991;
-  --warn:#ffd166;
-  --bad:#e0523c;
-  --display:'Rajdhani',ui-sans-serif,system-ui,sans-serif;
-  --mono:'Share Tech Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-}
-*{box-sizing:border-box}
-html{-webkit-font-smoothing:antialiased;background:var(--void);color:var(--paper);color-scheme:dark}
-body{
-  margin:0;background:var(--void);color:var(--paper);
-  font-family:var(--display);font-size:17px;line-height:1.6;font-weight:400;
-  padding-inline:20px;padding-block:0 0;overflow-x:hidden;
-}
-h1,h2,h3{text-wrap:balance;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin:0}
-p{text-wrap:pretty;margin:0 0 14px;max-width:66ch}
-p:last-child{margin-bottom:0}
-a{color:var(--signal)}
-::selection{background:rgba(255,122,24,.45);color:var(--void)}
-:focus-visible{outline:2px solid var(--signal);outline-offset:3px}
+/* EDSMT's own parts only. The header, status strip, footer, buttons, panels,
+   colours and type all come from the site's raxxla.css, so this page changes
+   when the site does. Everything here is scoped to .edsmt.
+   The ?v= on raxxla.css, config.js and raxxla.js must be the one the rest
+   of the site uses: upload this page after the site update that sets it. */
+.edsmt .wrap{max-width:calc(1560px + 2 * var(--gutter))}
+.edsmt p{max-width:66ch}
+.edsmt a{color:var(--signal)}
+.edsmt .page-head h1{font-size:clamp(3rem,1.5rem + 6vw,6.5rem)}
+.edsmt .lede strong{color:var(--signal);font-weight:600}
+.edsmt .ctas{display:flex;flex-wrap:wrap;gap:12px;margin:26px 0 14px}
+.edsmt a.btn{color:var(--void)}
+.edsmt a.btn.ghost{color:var(--signal)}
+.edsmt a.btn.ghost:hover{color:var(--void)}
+.edsmt .note{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;max-width:none}
+.edsmt .build{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:18px;max-width:none;
+  font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+.edsmt .build b{font-weight:400;color:var(--paper)}
+.edsmt .build a{text-decoration:none}
+.edsmt .build a:hover{color:var(--paper)}
 
-.wrap{max-width:1120px;margin:0 auto}
-.hud-label{font-family:var(--mono);font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:var(--mute)}
+.edsmt .section{border-top:1px solid var(--line-soft)}
+.edsmt .section + .section{padding-top:clamp(32px,4vw,56px)}
+.edsmt .sec-head{margin-bottom:22px}
+.edsmt .section h3{font-size:.95rem;color:var(--signal);letter-spacing:.14em;margin:18px 0 8px}
+.edsmt .section h3:first-child{margin-top:0}
 
-/* fixed overlays, exactly as the parent site carries them */
-.scanlines{pointer-events:none;position:fixed;inset:0;z-index:40;opacity:.45;
-  background:repeating-linear-gradient(to bottom,rgb(5 5 5/.22) 0,rgb(5 5 5/.22) 1px,transparent 1px,transparent 3px)}
-.vignette{pointer-events:none;position:fixed;inset:0;z-index:39;
-  background:radial-gradient(ellipse at center,transparent 38%,rgb(5 5 5/.72) 100%)}
+.edsmt .cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:34px}
+.edsmt .cols3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.edsmt .cols3 > div{background:var(--hull);padding:22px 24px}
+.edsmt .cols3 p{font-size:.95rem;color:var(--mute);margin:0}
 
-/* ---------- top bar ---------- */
-nav{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:center;
-  max-width:1120px;margin:0 auto;padding:16px 0 14px;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:12px;text-decoration:none;margin-right:auto}
-.brand img{width:40px;height:40px;display:block}
-.brand b{font-family:var(--display);font-size:15px;letter-spacing:.16em;color:var(--paper);
-  text-transform:uppercase;font-weight:600;display:block;line-height:1.15}
-.brand span{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--mute)}
-nav a.link{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
-  color:var(--mute);text-decoration:none}
-nav a.link:hover,nav a.link[aria-current]{color:var(--signal)}
+.edsmt .keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px;margin-bottom:22px}
+.edsmt .key kbd{font-family:var(--mono);font-size:26px;color:var(--signal);display:block;margin-bottom:8px;letter-spacing:.08em;
+  text-shadow:0 0 10px rgba(255,122,24,.45)}
+.edsmt .key p{font-size:.95rem;color:var(--mute);margin:0}
+.edsmt .key b{color:var(--paper);font-weight:600}
 
-/* status strip */
-.strip{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  max-width:1120px;margin:0 auto;padding:8px 0;border-bottom:1px solid var(--line);
-  font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+.edsmt .readout{align-self:start}
+.edsmt .kv .v.ok{color:var(--ok)}
+.edsmt .kv .v.warn{color:var(--warn)}
 
-/* ---------- hero ---------- */
-.hero{padding:64px 0 54px;position:relative}
-.hero h1{font-size:clamp(3rem,1.5rem + 6vw,7rem);line-height:.94;letter-spacing:.04em;
-  color:var(--paper);margin:14px 0 20px;
-  text-shadow:0 0 18px rgba(255,122,24,.55),0 4px 28px var(--void)}
-.hero .lede{font-size:clamp(1.05rem,.95rem + .5vw,1.35rem);color:var(--paper);max-width:56ch}
-.hero .lede strong{color:var(--signal);font-weight:600}
-
-.cta-row{display:flex;flex-wrap:wrap;gap:12px;margin:30px 0 16px}
-.cta{
-  font-family:var(--mono);font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;
-  text-decoration:none;padding:15px 26px;border:1px solid var(--signal);
-  background:linear-gradient(180deg,rgba(255,122,24,.22),rgba(255,122,24,.08));
-  color:var(--paper);display:inline-block;
-}
-.cta:hover{background:linear-gradient(180deg,rgba(255,122,24,.36),rgba(255,122,24,.16))}
-.cta.ghost{background:transparent;border-color:var(--line);color:var(--mute)}
-.cta.ghost:hover{border-color:var(--signal);color:var(--paper);background:rgba(255,122,24,.06)}
-.note-small{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--faint);
-  text-transform:uppercase;max-width:none}
-
-/* ---------- panels ---------- */
-section.panel{border-top:1px solid var(--line);padding:52px 0}
-section.panel > h2{font-size:clamp(1.4rem,1.1rem + 1vw,2rem);color:var(--signal);margin-bottom:6px}
-section.panel > .sub{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--faint);
-  text-transform:uppercase;margin-bottom:26px}
-
-.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:34px}
-.cols3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:var(--line)}
-.cols3 > div{background:var(--hull);padding:22px 24px}
-.cols3 h3{font-size:14px;color:var(--signal);letter-spacing:.14em;margin-bottom:8px}
-.cols3 p{font-size:15.5px;color:var(--mute);margin:0}
-
-/* keys */
-.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-bottom:22px}
-.key{border:1px solid var(--line);background:var(--hull);padding:20px 22px;position:relative}
-.key kbd{font-family:var(--mono);font-size:26px;color:var(--signal);display:block;margin-bottom:8px;
-  letter-spacing:.08em}
-.key p{font-size:15.5px;color:var(--mute);margin:0}
-.key b{color:var(--paper);font-weight:600}
-.hud-corner{pointer-events:none;position:absolute;width:1.05rem;height:1.05rem;
-  border-color:var(--signal);opacity:.9}
-.c-tl{top:-1px;left:-1px;border-top:2px solid;border-left:2px solid}
-.c-br{bottom:-1px;right:-1px;border-bottom:2px solid;border-right:2px solid}
-
-/* readout */
-.readout{border:1px solid var(--line);background:var(--panel);padding:20px 22px;font-family:var(--mono)}
-.readout .cap{font-size:10.5px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;
-  border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:13px}
-.readout .row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:4px 0}
-.readout .k{color:var(--faint);letter-spacing:.1em}
-.readout .v{color:var(--paper);text-align:right}
-.readout .v.ok{color:var(--ok)}
-.readout .v.warn{color:var(--warn)}
-
-/* status chips */
-.chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+.edsmt .chip{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;
   padding:3px 9px;border:1px solid currentColor;white-space:nowrap;display:inline-block}
-.chip.verified{color:var(--ok)}
-.chip.reported{color:var(--mute)}
-.chip.stale{color:var(--bad)}
+.edsmt .chip.verified{color:var(--ok)}
+.edsmt .chip.reported{color:var(--mute)}
+.edsmt .chip.stale{color:var(--bad)}
 
-/* table */
-.tablewrap{overflow-x:auto;border:1px solid var(--line);margin-top:18px}
-table{border-collapse:collapse;width:100%;min-width:640px;font-family:var(--mono);font-size:13px}
-th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line)}
-th{font-size:10.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;
-  background:var(--hull);font-weight:400}
-td{color:var(--paper)}
-tr:last-child td{border-bottom:none}
-td.dim{color:var(--faint)}
+.edsmt .tablewrap{overflow-x:auto;border:1px solid var(--line);margin-top:18px;background:rgba(10,9,8,.78)}
+.edsmt table{border-collapse:collapse;width:100%;min-width:640px;font-family:var(--mono);font-size:13px}
+.edsmt th,.edsmt td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft)}
+.edsmt th{font-size:.66rem;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;background:var(--hull);font-weight:400}
+.edsmt td{color:var(--paper)}
+.edsmt tr:last-child td{border-bottom:none}
+.edsmt td.dim{color:var(--faint)}
 
-.tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:18px}
-.tier{border:1px solid var(--line);background:var(--hull);padding:16px 18px}
-.tier .n{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--faint);
-  text-transform:uppercase;display:block;margin-bottom:6px}
-.tier p{font-size:15px;color:var(--mute);margin:0}
+.edsmt .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px;margin-top:18px;align-self:start}
+.edsmt .tier{border:1px solid var(--line);background:var(--hull);padding:16px 18px}
+.edsmt .tier .n{font-family:var(--mono);font-size:.7rem;letter-spacing:.2em;color:var(--signal);text-transform:uppercase;display:block;margin-bottom:6px}
+.edsmt .tier p{font-size:.95rem;color:var(--mute);margin:0}
 
-ul{margin:0 0 14px;padding-left:20px;max-width:66ch;color:var(--mute)}
-li{margin-bottom:6px}
-li::marker{color:var(--signal)}
-li b{color:var(--paper);font-weight:600}
-code{font-family:var(--mono);font-size:.88em;color:var(--signal);
-  background:rgba(255,122,24,.09);padding:1px 6px;border:1px solid var(--line)}
+.edsmt ul{margin:0 0 14px;padding-left:20px;max-width:66ch;color:var(--mute)}
+.edsmt li{margin-bottom:6px}
+.edsmt li::marker{color:var(--signal)}
+.edsmt li b{color:var(--paper);font-weight:600}
+.edsmt code{font-family:var(--mono);font-size:.88em;color:var(--signal);background:rgba(255,122,24,.09);
+  padding:1px 6px;border:1px solid var(--line-soft);overflow-wrap:anywhere}
 
-.callout{border-left:2px solid var(--signal);padding:4px 0 4px 18px;margin:20px 0}
-.callout .hud-label{display:block;margin-bottom:6px;color:var(--signal)}
-.callout.warn{border-left-color:var(--warn)}
-.callout.warn .hud-label{color:var(--warn)}
+.edsmt .callout{border-left:2px solid var(--signal);padding:4px 0 4px 18px;margin:20px 0}
+.edsmt .callout .label{display:block;margin-bottom:6px;color:var(--signal)}
+.edsmt .callout.warn{border-left-color:var(--warn)}
+.edsmt .callout.warn .label{color:var(--warn)}
 
-footer{border-top:1px solid var(--line);margin-top:20px;padding:26px 0 60px;
-  font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--faint);
-  text-transform:uppercase;display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between}
-footer a{color:var(--mute);text-decoration:none}
-footer a:hover{color:var(--signal)}
+.edsmt .faq{max-width:80ch}
+.edsmt .faq details{border-bottom:1px solid var(--line-soft);padding:12px 0}
+.edsmt .faq summary{cursor:pointer;font-weight:600;font-size:1.1rem;color:var(--paper);list-style:none}
+.edsmt .faq summary::-webkit-details-marker{display:none}
+.edsmt .faq summary::before{content:"+";display:inline-block;width:1.2em;color:var(--signal)}
+.edsmt .faq details[open] summary::before{content:"\2212"}
+.edsmt .faq details p{margin:8px 0 0 1.2em;color:var(--mute)}
 
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-@media (max-width:600px){
-  .hero{padding:44px 0 38px}
-  section.panel{padding:40px 0}
+@media (max-width:520px){
+  .edsmt .ctas .btn{flex:1 1 100%}
+  .edsmt .kv{flex-wrap:wrap}
+  .edsmt .kv .v{text-align:left}
 }
-.faq details{border-bottom:1px solid var(--line);padding:12px 0}
-.faq summary{cursor:pointer;font-family:var(--display);font-weight:600;
-  font-size:1.1rem;color:var(--paper);list-style:none}
-.faq summary::-webkit-details-marker{display:none}
-.faq summary::before{content:"+";display:inline-block;width:1.2em;color:var(--signal)}
-.faq details[open] summary::before{content:"\2212"}
-.faq details p{margin:8px 0 0 1.2em;color:var(--mute)}
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="starfield"></div><div class="vignette"></div><div class="scanlines"></div>
 
-<div class="scanlines"></div>
-<div class="vignette"></div>
+<header class="site-head">
+  <nav class="topbar" aria-label="Main">
+    <a class="brand" href="/">
+      <img src="/assets/img/logo-96.png" alt="" width="75" height="42">
+      <span><b>Radio Raxxla</b><small>Tools &middot; EDSMT</small></span>
+    </a>
+    <a class="link" href="/">Cockpit</a>
+    <a class="link" href="/frequency.html">Frequency</a>
+    <a class="link" href="/music.html">Music</a>
+    <a class="link" href="/streamers.html">Streamers</a>
+    <a class="link" href="/news.html">Elite News</a>
+    <a class="link" href="/tools.html" aria-current="page">Tools</a>
+    <a class="link" href="/announcer.html">The Announcer</a>
+    <a class="link" href="/comms.html">Comms</a>
+  </nav>
+  <div class="strip">
+    <span class="onair"><span class="dot" data-np-dot></span>On air <b data-np="station">Radio Raxxla</b><span class="sep">&middot;</span><span class="np-mini" data-np="title">--</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span></span>
+    <span class="clock"><span data-stardate></span> GST</span>
+    <span class="hide-sm"><span class="dot" data-galaxy-dot></span>Galaxy <b data-galaxy>--</b></span>
+  </div>
+</header>
 
-<nav>
-  <a class="brand" href="/">
-    <img src="radio-raxxla-badge.png" alt="Radio Raxxla">
-    <span><b>Radio Raxxla</b><span>Tooling &middot; EDSMT</span></span>
-  </a>
-  <!-- The site's own nav. Set these hrefs to the real paths. -->
-  <a class="link" href="/">Cockpit</a>
-  <a class="link" href="/announcer.html">The Announcer</a>
-  <a class="link" href="/streamers.html">Streamers</a>
-  <a class="link" href="/news.html">Elite News</a>
-  <a class="link" href="/frequency.html">Frequency</a>
-  <a class="link" href="/music.html">Music</a>
-  <a class="link" href="/comms.html">Comms</a>
-  <a class="link" href="/EDSMT/" aria-current="page">EDSMT</a>
-</nav>
-
-<div class="strip">
-  <span>EDSMT <!--VERSION-->1.10032<!--/VERSION--></span>
-  <span>Elite Dangerous 4.4.1.1</span>
-  <span>GPL-3.0 &middot; Windows</span>
-</div>
-
+<main id="main" class="edsmt">
 <div class="wrap">
 
-  <header class="hero">
-    <div class="hud-label">Vodel Rhino &middot; Surface Survey &middot; Test Build</div>
+  <header class="page-head">
+    <span class="label on">Vodel Rhino &middot; Surface Survey &middot; Test Build</span>
     <h1>EDSMT</h1>
     <p class="lede">Map surface mining for the Rhino <strong>without typing a
     single coordinate</strong>. It reads your journal, so the system, the body,
     your latitude and longitude and the commodity all come from the game.</p>
 
-    <div class="cta-row">
-      <a class="cta" href="EDSMT-Setup.exe">Download &middot; Installer</a>
-      <a class="cta ghost" href="EDSMT.exe">Portable .exe</a>
-      <a class="cta ghost" href="EDSMT-source.zip">Source (GPL-3.0)</a>
+    <div class="ctas">
+      <a class="btn" href="EDSMT-Setup.exe">Download &middot; Installer</a>
+      <a class="btn ghost" href="EDSMT.exe">Portable .exe</a>
+      <a class="btn ghost" href="EDSMT-source.zip">Source zip</a>
     </div>
-    <p class="note-small">Free &middot; No account &middot; Nothing is shared until you switch it on</p>
+    <p class="note">Free &middot; No account &middot; Nothing is shared until you switch it on</p>
+    <p class="build">
+      <span>Build <b><!--VERSION-->1.10032<!--/VERSION--></b></span>
+      <span>Elite Dangerous <b>4.4.1.1</b></span>
+      <span>Windows</span>
+      <span>Source: <a href="https://github.com/TheAnnouncer/EDSMT">github.com/TheAnnouncer/EDSMT</a> (GPL-3.0)</span>
+    </p>
   </header>
 
-  <section class="panel">
-    <h2>Keys, in the order you work.</h2>
-    <p class="sub">Left Alt and the number row &middot; the same number with AltGr takes it back</p>
+    <section class="section" id="keys">
+    <div class="sec-head"><div><span class="label on">Left Alt and the number row &middot; the same number with AltGr takes it back</span><h2>Keys, in the order you work.</h2></div></div>
 
     <div class="keys">
-      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+      <div class="key hud hud-pad">
         <kbd>Alt+1</kbd>
         <p><b>In the middle of the signal.</b> Logs the signal and sets the
         centre of the survey. No commodities needed &mdash; they come with the
         deposits.</p></div>
-      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+      <div class="key hud hud-pad">
         <kbd>Alt+2</kbd>
         <p><b>At the location's edge line.</b> Hold the mineral scanner all the
         way out and while you map. The border: the map and the scope shade the
         ground you have swept inside it.</p></div>
-      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+      <div class="key hud hud-pad">
         <kbd>Alt+3</kbd>
         <p><b>Stood on a deposit.</b> One press per deposit, with all four
         boxes filled in &mdash; commodity, rigs, amount and density &mdash; so
         what goes on the shared map can be trusted.</p></div>
-      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+      <div class="key hud hud-pad">
         <kbd>Alt+4 &ndash; 9</kbd>
         <p><b>Rig 1 to rig 6 down.</b> Each rig its own key, drawn on the scope
         and the compass in the colour of what it is mining. The first one down
         starts your earnings session.</p></div>
-      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+      <div class="key hud hud-pad">
         <kbd>AltGr+4 &ndash; 9</kbd>
         <p><b>That rig back up.</b> The last one up ends the session and stands
         every rig warning down. On a keyboard without AltGr it is
         Ctrl+Alt.</p></div>
-      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+      <div class="key hud hud-pad">
         <kbd>AltGr+3</kbd>
         <p><b>Back at a deposit you marked.</b> Writes the Amount going down, or
         the rig count you now know, onto it instead of adding a second
         copy.</p></div>
-      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+      <div class="key hud hud-pad">
         <kbd>AltGr+0</kbd>
         <p><b>Every rig up at once.</b> Clears them from the scope and the
         compass, and every rig warning with them.</p></div>
     </div>
-    <p class="note-small">None of these is used by any of the game's own
+    <p class="note">None of these is used by any of the game's own
     control schemes. Every one can be changed in Settings.</p>
 
     <div class="cols2">
       <div>
         <div class="callout">
-          <span class="hud-label">No centre to set. No bearing to work out.</span>
+          <span class="label">No centre to set. No bearing to work out.</span>
           <p>A deposit records where it <em>is</em>. How far it is and which way
           to turn are worked out live from wherever you happen to be standing
           &mdash; which is the number you want with your hands on the wheel, and
@@ -284,25 +212,24 @@ footer a:hover{color:var(--signal)}
         and the position is taken the instant you press one. Every one can be
         changed in Settings.</p>
       </div>
-      <div class="readout">
-        <div class="cap">Live &middot; SRV Telemetry</div>
-        <div class="row"><span class="k">System</span><span class="v">Ega</span></div>
-        <div class="row"><span class="k">Body</span><span class="v">Ega 1</span></div>
-        <div class="row"><span class="k">Class</span><span class="v">High metal content</span></div>
-        <div class="row"><span class="k">Gravity</span><span class="v">0.25 g</span></div>
-        <div class="row"><span class="k">Surface temp</span><span class="v">214 K</span></div>
-        <div class="row"><span class="k">DSS signals</span><span class="v">6 mining locations</span></div>
-        <div class="row"><span class="k">In signal</span><span class="v">3</span></div>
-        <div class="row"><span class="k">Nearest</span><span class="v">Haematite &nbsp; 896 m</span></div>
-        <div class="row"><span class="k">Turn</span><span class="v ok">Slightly left</span></div>
-        <div class="row"><span class="k">Amount</span><span class="v warn">Low</span></div>
-      </div>
+      <div class="hud readout"><div class="hud-head"><span class="label">Live &middot; SRV Telemetry</span></div>
+        <div class="hud-pad">
+        <div class="kv"><span class="k">System</span><span class="v">Ega</span></div>
+        <div class="kv"><span class="k">Body</span><span class="v">Ega 1</span></div>
+        <div class="kv"><span class="k">Class</span><span class="v">High metal content</span></div>
+        <div class="kv"><span class="k">Gravity</span><span class="v">0.25 g</span></div>
+        <div class="kv"><span class="k">Surface temp</span><span class="v">214 K</span></div>
+        <div class="kv"><span class="k">DSS signals</span><span class="v">6 mining locations</span></div>
+        <div class="kv"><span class="k">In signal</span><span class="v">3</span></div>
+        <div class="kv"><span class="k">Nearest</span><span class="v">Haematite &nbsp; 896 m</span></div>
+        <div class="kv"><span class="k">Turn</span><span class="v ok">Slightly left</span></div>
+        <div class="kv"><span class="k">Amount</span><span class="v warn">Low</span></div>
+      </div></div>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>The overlay</h2>
-    <p class="sub">Drive by the strip, not by alt-tab</p>
+  <section class="section" id="overlay">
+    <div class="sec-head"><div><span class="label on">Drive by the strip, not by alt-tab</span><h2>The overlay</h2></div></div>
     <div class="cols2">
       <div>
         <p>A compass tape across the top of your screen showing which way every
@@ -318,17 +245,17 @@ footer a:hover{color:var(--signal)}
         where you want, lock again and clicks pass straight through to the
         game.</p>
         <div class="callout warn">
-          <span class="hud-label">Borderless or windowed, not fullscreen</span>
+          <span class="label">Borderless or windowed, not fullscreen</span>
           <p>No overlay of any kind can draw over a game in exclusive
           fullscreen. That is DirectX, not this app.</p>
         </div>
       </div>
-      <div class="readout">
-        <div class="cap">Overlay &middot; Compass Tape</div>
-        <svg viewBox="0 0 340 112" width="100%" height="auto" role="img"
+      <div class="hud readout"><div class="hud-head"><span class="label">Overlay &middot; Compass Tape</span></div>
+        <div class="hud-pad">
+        <svg viewBox="0 0 352 112" width="100%" height="auto" role="img"
              aria-label="Compass tape showing north-west, north and north-east, a heading pointer, and three haematite deposits at 896 metres, 1.26 kilometres and 1.47 kilometres, the last one behind you.">
-          <rect x="0" y="0" width="340" height="112" fill="#0a0908"></rect>
-          <line x1="0" y1="34" x2="340" y2="34" stroke="#7a4518" stroke-width="1"></line>
+          <rect x="0" y="0" width="352" height="112" fill="#0a0908"></rect>
+          <line x1="0" y1="34" x2="352" y2="34" stroke="#7a4518" stroke-width="1"></line>
           <g stroke="#7a4518">
             <line x1="40" y1="28" x2="40" y2="34"></line>
             <line x1="100" y1="28" x2="100" y2="34"></line>
@@ -352,13 +279,12 @@ footer a:hover{color:var(--signal)}
             <text x="8" y="103" fill="#7a4518">v HAEMATITE 1.47km &mdash; behind you</text>
           </g>
         </svg>
-      </div>
+      </div></div>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Density and amount are different questions</h2>
-    <p class="sub">And conflating them throws away what the game tells you</p>
+  <section class="section" id="density">
+    <div class="sec-head"><div><span class="label on">And conflating them throws away what the game tells you</span><h2>Density and amount are different questions</h2></div></div>
     <div class="cols2">
       <div>
         <p>A site can be <b style="color:var(--paper)">high density</b> and
@@ -381,9 +307,8 @@ footer a:hover{color:var(--signal)}
     </div>
   </section>
 
-  <section class="panel">
-    <h2>The shared survey</h2>
-    <p class="sub">A hotspot list never goes stale. This one does.</p>
+  <section class="section" id="shared">
+    <div class="sec-head"><div><span class="label on">A hotspot list never goes stale. This one does.</span><h2>The shared survey</h2></div></div>
     <div class="cols2">
       <div>
         <p>Ring hotspots are permanent, so a hotspot database is written once
@@ -402,7 +327,7 @@ footer a:hover{color:var(--signal)}
         is any commander's find &mdash; just as welcome, and most of the
         database.</p>
         <div class="callout">
-          <span class="hud-label">Verification cannot be self-awarded</span>
+          <span class="label">Verification cannot be self-awarded</span>
           <p>The app cannot mark its own rows verified. The badge is granted by
           the server to a named person holding a staff key, and the database
           records who. An unaccountable badge is worth less than no badge.</p>
@@ -424,14 +349,13 @@ footer a:hover{color:var(--signal)}
         </tbody>
       </table>
     </div>
-    <p class="note-small" style="margin-top:14px">The third row is the point. On
+    <p class="note" style="margin-top:14px">The third row is the point. On
     raw numbers it is a good site. Nobody has seen it in two months, so it ranks
     below a smaller one confirmed last week.</p>
   </section>
 
-  <section class="panel">
-    <h2>What nobody else is collecting</h2>
-    <p class="sub">Two gaps in the community's data, and why they exist</p>
+  <section class="section" id="data">
+    <div class="sec-head"><div><span class="label on">Three gaps in the community's data, and why they exist</span><h2>What nobody else is collecting</h2></div></div>
     <div class="cols3">
       <div>
         <h3>Which worlds hold what</h3>
@@ -458,9 +382,8 @@ footer a:hover{color:var(--signal)}
     </div>
   </section>
 
-  <section class="panel" id="whatsnew">
-    <h2>What changed</h2>
-    <p class="sub">Latest build &middot; <!--VERSION-->1.10032<!--/VERSION--></p>
+  <section class="section" id="whatsnew">
+    <div class="sec-head"><div><span class="label on">Latest build &middot; <!--VERSION-->1.10032<!--/VERSION--></span><h2>What changed</h2></div></div>
     <!--WHATSNEW-->
     <h3>New — an estimate of what a deposit holds, before you work it</h3>
     <p>A deposit you have not worked out yet shows <b>est. holds</b> and <b>est. left</b>, from the deposits you have worked out with the same rig count and density — the tonnes the game itself counted off them, never a formula. It says how many it rests on, and it shows nothing when there is nothing like it to go on. A deposit you have worked out still shows its own measure.</p>
@@ -477,9 +400,8 @@ footer a:hover{color:var(--signal)}
     <!--/WHATSNEW-->
   </section>
 
-  <section class="panel" id="faq">
-    <h2>Questions</h2>
-    <p class="sub">The ones people ask first</p>
+  <section class="section" id="faq">
+    <div class="sec-head"><div><span class="label on">The ones people ask first</span><h2>Questions</h2></div></div>
     <div class="faq">
       <details><summary>Do I need an account, or to log in with Frontier?</summary>
         <p>No. EDSMT reads the journal files the game writes on your own PC for tools like this one. There is no account, and a Frontier login would not tell it anything about surface mining that the journal does not.</p></details>
@@ -510,9 +432,8 @@ footer a:hover{color:var(--signal)}
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Install</h2>
-    <p class="sub">Download, run, done</p>
+  <section class="section" id="install">
+    <div class="sec-head"><div><span class="label on">Download, run, done</span><h2>Install</h2></div></div>
     <div class="cols2">
       <div>
         <p><b style="color:var(--paper)">EDSMT-Setup.exe</b> is a normal
@@ -523,7 +444,7 @@ footer a:hover{color:var(--signal)}
         <b style="color:var(--paper)">EDSMT.exe</b> is the same program as one
         portable file. Save it anywhere and double-click it.</p>
         <div class="callout warn">
-          <span class="hud-label">Windows will warn you the first time</span>
+          <span class="label">Windows will warn you the first time</span>
           <p>"Windows protected your PC" &mdash; the build is not code signed,
           because a certificate costs several hundred a year and this is free.
           <b style="color:var(--paper)">More info &rarr; Run anyway.</b></p>
@@ -532,9 +453,9 @@ footer a:hover{color:var(--signal)}
         <code>%LOCALAPPDATA%\RadioRaxxla\EDSMT</code>, not the program folder,
         so updating never touches them. There is a backup button in Settings
         that writes one dated zip.</p>
-        <div class="cta-row">
-          <a class="cta" href="EDSMT-Setup.exe">Download &middot; Installer</a>
-          <a class="cta ghost" href="EDSMT.exe">Portable .exe</a>
+        <div class="ctas">
+          <a class="btn" href="EDSMT-Setup.exe">Download &middot; Installer</a>
+          <a class="btn ghost" href="EDSMT.exe">Portable .exe</a>
         </div>
       </div>
       <div>
@@ -544,17 +465,51 @@ footer a:hover{color:var(--signal)}
           <li><b>Your CMDR name is optional.</b> Share anonymously if you prefer.</li>
           <li><b>There is no account and no sign-up.</b></li>
           <li><b>No personal data is stored</b> &mdash; a deposit is a position, a commodity and a date.</li>
-          <li><b>It is GPL-3.0.</b> The source is on this page, so you can read exactly what it sends and when.</li>
+          <li><b>It is GPL-3.0.</b> The source is on this page and on <a href="https://github.com/TheAnnouncer/EDSMT">GitHub</a>, so you can read exactly what it sends and when.</li>
         </ul>
       </div>
     </div>
   </section>
 
-  <footer>
-    <span>Radio Raxxla &middot; EDSMT <!--VERSION-->1.10032<!--/VERSION--> &middot; GPL-3.0</span>
-    <span>Not affiliated with Frontier Developments. Elite Dangerous is a trademark of Frontier Developments plc.</span>
-  </footer>
-
 </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap cols">
+    <div>
+      <a class="brand" href="/"><img src="/assets/img/logo-96.png" alt="" width="75" height="42"><span><b>Radio Raxxla</b><small>The Signal</small></span></a>
+      <p class="small muted" style="margin-top:14px;max-width:22rem">Original music for commanders in the black. Safe to play on stream.</p>
+    </div>
+    <div>
+      <span class="label">Listen</span>
+      <ul>
+        <li><a data-link="spotify" href="#" target="_blank" rel="noopener">Spotify</a></li>
+        <li><a data-link="apple" href="#" target="_blank" rel="noopener">Apple Music</a></li>
+        <li><a data-link="amazon" href="#" target="_blank" rel="noopener">Amazon Music</a></li>
+        <li><a data-link="youtube" href="#" target="_blank" rel="noopener">YouTube</a></li>
+        <li><a data-link="twitch" href="#" target="_blank" rel="noopener">Twitch</a></li>
+        <li><a data-link="discord" href="#" target="_blank" rel="noopener">Discord</a></li>
+        <li><a data-link="x" href="#" target="_blank" rel="noopener">X</a></li>
+      </ul>
+    </div>
+    <div>
+      <span class="label">Site</span>
+      <ul>
+        <li><a href="/start.html">New to Elite</a></li>
+        <li><a href="/frequency.html">Frequency</a></li>
+        <li><a href="/music.html">Music</a></li>
+        <li><a href="/news.html">Elite News</a></li>
+        <li><a href="/tools.html">Tools</a></li>
+        <li><a data-link="edsmt" href="#">EDSMT</a></li>
+        <li><a data-link="shop" href="#" target="_blank" rel="noopener">Store</a></li>
+        <li><a href="/comms.html">Comms</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="legal"><div class="wrap">Radio Raxxla &middot; radioraxxla.com. Unofficial fan music inspired by Elite Dangerous. Not affiliated with Frontier Developments plc. Elite Dangerous is a trademark of Frontier Developments plc.</div></div>
+</footer>
+
+<script src="/assets/js/config.js?v=2026.10.01.1"></script>
+<script src="/assets/js/raxxla.js?v=2026.10.01.1"></script>
 </body>
 </html>
