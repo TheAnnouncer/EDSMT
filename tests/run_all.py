@@ -30,6 +30,8 @@ CHECKS = [
     ("UK English, everywhere it is read", "test_spelling.py"),
     ("my sites, on every body", "test_sites.py"),
     ("what the testers hit on 1.10029", "test_field.py"),
+    ("what 1.10031 adds", "test_110031.py"),
+    ("what 1.10032 adds", "test_110032.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
 # The checks on the documents that describe the live server live beside

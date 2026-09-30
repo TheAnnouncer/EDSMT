@@ -143,10 +143,16 @@ has not.
     %USERPROFILE%\Saved Games\...\Market.json
 
 Rewritten every time you open a commodity market. Read for the same reason
-the journal is: the thirteen 4.4.1.0 commodities are **missing from the
-community commodity-ID list** that the third-party market services key off,
-and none of those services expose a commodity search. So nothing out there can
-price them. Every player's own journal can.
+the journal is. At launch the thirteen 4.4.1.0 commodities were **missing from
+the community commodity-ID list** that the third-party market services key
+off; by the end of September 2026 they are in it (IDs 129046165 to 129046177),
+and the market services price them. Our users' own reads are kept anyway: a
+price seen today at a station is the freshest there is.
+
+**Demand 999,999 is a placeholder, not a market.** Community Goal stations
+carry it, and the Ega CG's 1,038,104 Cr showed as the top price for Iridium,
+Periclase Dunite and Thortveitite under it. Rows with that demand are left
+out of every "best price", on the server and in the app.
 
 Freshness is decided by the `timestamp` inside the file plus `MarketID`, not
 by mtime — same reason as Status.json. Only the surface-mining rows are kept;
@@ -155,6 +161,14 @@ everything else at the station is somebody else's problem.
 Parsing is deliberately defensive. Every field is optional, a row with no
 price is dropped, and an unrecognised commodity is skipped rather than
 guessed at.
+
+**`MeanPrice` is the game's galactic average** - the column the commodity
+screen shows as such, and the same at every market that lists the commodity.
+So any market opened gives the galactic average for everything on its board,
+in every language (the row is matched on its `$symbol_name;`, not the
+localised name). 1.10031 keeps these, as `means` on the reader, for the
+Earnings tab's galactic-average estimate; until a market has been opened it
+falls back to EDSMT's own table and says so.
 
 ## Density
 
@@ -306,6 +320,22 @@ they settle, and what Earnings is now built on:
   `Status.json` `Destination` to the event log, in case a later build puts
   them there.
 - **New in 4.4 journals, never seen before them:** nothing mining-related.
+
+## More than one SRV on a ship (1.10031)
+
+A ship can carry more than one SRV bay, and a multicrew crewmate can take one
+out. `LaunchSRV` then carries `"PlayerControlled": false` in the owner's
+journal, and every SRV has its own `ID` on `LaunchSRV` and on `DockSRV` /
+`SRVDestroyed`. The reader passes both on (`player`, `srv_id`); the books
+follow only the launch with `PlayerControlled` true (or absent, as in every
+single-SRV journal read), and only that SRV's `ID` coming aboard ends the
+session. The forum's journal examples show `PlayerControlled` on
+`LaunchSRV`; none of the journals read here had a second SRV, so this is
+built on the documented shape and tested on synthetic journals only.
+
+**There is still no journal event for a rig** going down or coming up. The
+rig keys are the only source, which is why a session now starts on the first
+rig key (or the first tonne refined in the Rhino) rather than on `LaunchSRV`.
 
 ## Versions
 

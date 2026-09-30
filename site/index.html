@@ -175,6 +175,13 @@ footer a:hover{color:var(--signal)}
   .hero{padding:44px 0 38px}
   section.panel{padding:40px 0}
 }
+.faq details{border-bottom:1px solid var(--line);padding:12px 0}
+.faq summary{cursor:pointer;font-family:var(--display);font-weight:600;
+  font-size:1.1rem;color:var(--paper);list-style:none}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::before{content:"+";display:inline-block;width:1.2em;color:var(--signal)}
+.faq details[open] summary::before{content:"\2212"}
+.faq details p{margin:8px 0 0 1.2em;color:var(--mute)}
 </style>
 </head>
 <body>
@@ -199,7 +206,7 @@ footer a:hover{color:var(--signal)}
 </nav>
 
 <div class="strip">
-  <span>EDSMT <!--VERSION-->1.10030<!--/VERSION--></span>
+  <span>EDSMT <!--VERSION-->1.10032<!--/VERSION--></span>
   <span>Elite Dangerous 4.4.1.1</span>
   <span>GPL-3.0 &middot; Windows</span>
 </div>
@@ -222,8 +229,8 @@ footer a:hover{color:var(--signal)}
   </header>
 
   <section class="panel">
-    <h2>Six keys, in the order you work.</h2>
-    <p class="sub">Left Alt and the number row &middot; the number is the step</p>
+    <h2>Keys, in the order you work.</h2>
+    <p class="sub">Left Alt and the number row &middot; the same number with AltGr takes it back</p>
 
     <div class="keys">
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
@@ -238,22 +245,31 @@ footer a:hover{color:var(--signal)}
         ground you have swept inside it.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
         <kbd>Alt+3</kbd>
-        <p><b>Stood on a deposit.</b> One press per deposit. Rigs can be left
-        blank &mdash; you do not know the count until you are on it.</p></div>
+        <p><b>Stood on a deposit.</b> One press per deposit, with all four
+        boxes filled in &mdash; commodity, rigs, amount and density &mdash; so
+        what goes on the shared map can be trusted.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>Alt+4</kbd>
-        <p><b>As each rig goes down.</b> Numbered, and drawn on the scope and
-        the compass in the colour of what it is mining.</p></div>
+        <kbd>Alt+4 &ndash; 9</kbd>
+        <p><b>Rig 1 to rig 6 down.</b> Each rig its own key, drawn on the scope
+        and the compass in the colour of what it is mining. The first one down
+        starts your earnings session.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>Alt+5</kbd>
-        <p><b>Rigs back up.</b> Clears them from the scope and the
-        compass, and clears every rig warning.</p></div>
+        <kbd>AltGr+4 &ndash; 9</kbd>
+        <p><b>That rig back up.</b> The last one up ends the session and stands
+        every rig warning down. On a keyboard without AltGr it is
+        Ctrl+Alt.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>Alt+6</kbd>
+        <kbd>AltGr+3</kbd>
         <p><b>Back at a deposit you marked.</b> Writes the Amount going down, or
         the rig count you now know, onto it instead of adding a second
         copy.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>AltGr+0</kbd>
+        <p><b>Every rig up at once.</b> Clears them from the scope and the
+        compass, and every rig warning with them.</p></div>
     </div>
+    <p class="note-small">None of these is used by any of the game's own
+    control schemes. Every one can be changed in Settings.</p>
 
     <div class="cols2">
       <div>
@@ -444,33 +460,54 @@ footer a:hover{color:var(--signal)}
 
   <section class="panel" id="whatsnew">
     <h2>What changed</h2>
-    <p class="sub">Latest build &middot; <!--VERSION-->1.10030<!--/VERSION--></p>
+    <p class="sub">Latest build &middot; <!--VERSION-->1.10032<!--/VERSION--></p>
     <!--WHATSNEW-->
-    <h3>Fixed — Alt+1 to Alt+6 work in the game</h3>
-    <p>Two faults, both found by the testers. After <b>Save</b> in Settings every key went dead: the old key thread still held the keys when the new one asked for them, so Windows refused them and they were never registered. Saving now waits for the old thread to let go. And with <b>Num Lock on</b>, Settings read every key pressed as <b>Alt+</b> that key — so nothing could be bound without Alt, and Alt+F1 went to an NVIDIA screenshot. Settings now reads Alt properly and takes <b>any key</b>, with or without Ctrl, Alt or Shift. The keys are also read ten times a second on their own, and a fault anywhere else in the app can no longer stop them being heard.</p>
-    <h3>New — EDSMT names keys other programs own</h3>
-    <p>Pick a key NVIDIA, AMD, Windows, Steam, Discord or the game uses by default — Alt+F1, Alt+F9, Alt+Z, Alt+R, Win+ keys, Shift+Tab, F10, F12 — and Settings says who owns it the moment you press it. You can still keep it.</p>
-    <h3>Fixed — the compass and scope keep up with the Rhino</h3>
-    <p>They redraw ten times a second from Status.json instead of every 0.7 s. Out setting the border the scope keeps you in the picture out to 8 km, instead of freezing at 1.5 km round the centre with you pinned to the rim — and pinned to the rim or not, your chevron turns with the Rhino. The swept ground is no longer a solid teal plate before there is a border; inside a border it is a see-through mesh.</p>
-    <h3>Fixed — changing the overlay theme no longer moves the boxes</h3>
-    <p>The boxes were measured while Windows had them hidden — whenever EDSMT&#x27;s own window was in front — and that was saved. They are now saved only when you drop one. <b>The default layout is new</b>: compass across the top, scope and guide down the left, targets on the right, status along the bottom. Layouts from 1.10029 are put on it once, because that build could have scrambled them.</p>
-    <h3>Changed — Earnings is Rhino sessions only</h3>
-    <p>A session starts when the Rhino leaves the ship and ends when it comes back aboard. Every tonne it refines counts, every transfer to the ship counts, and when you sell what it dug up the credits go against it. Trading, exploration and asteroid mining no longer appear. <b>Multi-session</b> keeps one session going across trips to a station and back; <b>End session</b> closes one by hand. After every transfer the overlay flashes what is in the ship and the room left, and STATUS shows the ship and Rhino holds for the whole session.</p>
-    <h3>Changed — logging a signal</h3>
-    <p>No commodities needed: they come with the deposits. The signal number is picked for you — the one the game has targeted, or the number in the box, or the one you are standing in, or the next free number — so a new signal never lands on top of one logged elsewhere. Pressing the key again at the same signal keeps its centre. The message says to <b>hold the mineral scanner</b> out to the location&#x27;s edge line, press Alt+2 there, and keep holding it while you map the area.</p>
-    <h3>Changed — the guide starts at the jump</h3>
-    <p>Jump in and honk, click Where to land, map the body, pick a signal, land, deploy the Rhino. <b>Deploy</b> only shows once you are out of glide and under 30 m; until then it says you are gliding, or how high you are.</p>
-    <h3>New — a big warning on high-gravity bodies</h3>
-    <p>Arrive at a body at or over 2 g (Settings) and a warning triangle takes the middle of the screen, once; the GUIDE and STATUS boxes carry a red bar for as long as you are there. Where to land marks those bodies in red.</p>
-    <h3>New — the last rig warning at 4.8 km</h3>
-    <p>The game warns at 4 km and destroys a rig at 5 km. At 4.8 km a big warning triangle goes up in the middle of the screen and the warning sounds again. Past 5 km the rig is gone: EDSMT drops it and clears the warnings. <b>Alt+5</b> (ALL UP) clears every rig warning by hand.</p>
-    <h3>Changed — MARK on a spot already marked with another commodity</h3>
-    <p>It asks: <b>Alt+6</b> renames the deposit already there — position, history and tonnes kept — and <b>Alt+3</b> again adds the new commodity as a deposit of its own. No more second find at 0 m.</p>
-    <h3>New — finds filed under the wrong signal number show at the signal</h3>
-    <p>Anything within 5 km of the signal you are on, filed under another number, is listed under it with a button that puts the number right.</p>
-    <h3>Changed</h3>
-    <ul><li>The top bar: Find, My sites, Where to land and Earnings on the left; Overlay, Unlock and Settings on the right.</li><li>A commodity picked from its list with the mouse closes the list.</li><li>Beta testers: welcome <b>CMDR Rumphrend</b>.</li></ul>
+    <h3>New — an estimate of what a deposit holds, before you work it</h3>
+    <p>A deposit you have not worked out yet shows <b>est. holds</b> and <b>est. left</b>, from the deposits you have worked out with the same rig count and density — the tonnes the game itself counted off them, never a formula. It says how many it rests on, and it shows nothing when there is nothing like it to go on. A deposit you have worked out still shows its own measure.</p>
+    <h3>New — the next rig pin on the compass tape</h3>
+    <p>The rig planner&#x27;s next pin is an amber diamond on the compass with its distance, pinned to the end with an arrow when it is behind you.</p>
+    <h3>Changed — a rig counts on a pin within half the spacing</h3>
+    <p>39 m at the default 78 m, instead of 20 m: a rig dropped a car&#x27;s length off the pin now ticks it off and moves you on to the next.</p>
+    <h3>New — delete a session from Earnings</h3>
+    <p>Every row on the Earnings tab has a <b>delete</b> button: press it, then press it again on the same row within six seconds. The file before is kept as <code>sessions.csv.bak</code>.</p>
+    <h3>Fixed — Community Goal prices are no longer &quot;the best price&quot;</h3>
+    <p>A station reading demand 999,999 is a Community Goal&#x27;s placeholder, not a market, and the Ega CG&#x27;s 1,038,104 Cr showed as the top price for Iridium, Periclase Dunite and Thortveitite under it. Such rows are left out, in the app and on the server. The commodity table&#x27;s average and top prices are refreshed to the community list&#x27;s 21 September figures, after the CG, and Methanol Crystals are listed on rocky ice worlds as well as icy bodies.</p>
+    <h3>Changed — shared finds come in through a box you can see</h3>
+    <p><b>Settings → Your finds</b> has a box: paste the shared lines, press <b>Import</b> or Enter. EDSMT no longer reads whatever is on the clipboard.</p>
     <!--/WHATSNEW-->
+  </section>
+
+  <section class="panel" id="faq">
+    <h2>Questions</h2>
+    <p class="sub">The ones people ask first</p>
+    <div class="faq">
+      <details><summary>Do I need an account, or to log in with Frontier?</summary>
+        <p>No. EDSMT reads the journal files the game writes on your own PC for tools like this one. There is no account, and a Frontier login would not tell it anything about surface mining that the journal does not.</p></details>
+      <details><summary>Does it touch the game?</summary>
+        <p>No. It reads the game's journal and status files and draws its boxes over the top. It never reads the game's memory, never injects anything and never presses a key in the game for you.</p></details>
+      <details><summary>The boxes do not show over the game.</summary>
+        <p>Set Elite to borderless or windowed. Nothing can draw over exclusive fullscreen &mdash; that is DirectX, not EDSMT.</p></details>
+      <details><summary>A key does nothing.</summary>
+        <p>Another program got it first &mdash; graphics-card overlays, Discord and Steam all grab keys. Pick another in Settings; EDSMT tells you when a key is taken. On UK and European keyboards AltGr is Ctrl+Alt to Windows, which is why the pick-up keys read AltGr there and Ctrl+Alt on a US keyboard.</p></details>
+      <details><summary>Alt+3 will not mark the deposit.</summary>
+        <p>All four boxes have to be filled in: commodity, rigs, amount and density. The scanner's density counts when the game names one. Half-filled finds were reaching the shared map without the two things somebody deciding whether to fly there needs most.</p></details>
+      <details><summary>Why is Find locked?</summary>
+        <p>Find reads the shared map, and it opens once you have put one deposit of your own on it: switch sharing on in Settings and mark one. It stays open from then on.</p></details>
+      <details><summary>What is shared, and what stays on my PC?</summary>
+        <p>Nothing leaves your PC until you switch sharing on. Then it is the deposits you mark and the prices at markets you open, with your commander name only if you leave name sharing on. Your sessions, settings and everything else stay in your own AppData folder.</p></details>
+      <details><summary>When does an earnings session start and stop?</summary>
+        <p>It starts with your first rig down, or your first tonne refined in the Rhino, or Start session. It ends when every rig is back up, when the Rhino comes back aboard, or on End session. Pause stops the clock for a break or the drive to a station. Only what the Rhino dug up is counted &mdash; cargo you bought or hauled is left out.</p></details>
+      <details><summary>Where do the sell prices come from?</summary>
+        <p>Three places, side by side: the game's own galactic average, read off any commodity market you open (an estimate until you do); prices EDSMT users have read at stations; and a public market index, for the best price within the distance you pick and the price in the system you are in.</p></details>
+      <details><summary>What are the rig planner and the wing link?</summary>
+        <p>Two betas, both off until you switch them on in Settings. The rig planner: press AltGr+2, drive the deposit's edge back to where you started, and a pin goes on the scope for each rig that fits, 78 m apart by default &mdash; the community's working figure, which you can change. The wing link: everyone types the same six-character code and sees each other's Rhinos and rigs on the scope &mdash; friends on one body, or crew off one ship with more than one Rhino. The server forgets you two minutes after you stop.</p></details>
+      <details><summary>The words in the boxes are too small.</summary>
+        <p>Settings has a text size for each box on its own, from 80% to 200%, without making the box itself any bigger. Unlock to drag a box or resize it by its corner.</p></details>
+      <details><summary>How do I update?</summary>
+        <p>EDSMT tells you when there is a new version and installs it on one click. Your deposits, sessions and settings are kept.</p></details>
+      <details><summary>Windows says it protected my PC.</summary>
+        <p>A new download trips SmartScreen until enough people have run it. More info, then Run anyway. The source is here too if you would rather read it first.</p></details>
+    </div>
   </section>
 
   <section class="panel">
@@ -514,7 +551,7 @@ footer a:hover{color:var(--signal)}
   </section>
 
   <footer>
-    <span>Radio Raxxla &middot; EDSMT <!--VERSION-->1.10030<!--/VERSION--> &middot; GPL-3.0</span>
+    <span>Radio Raxxla &middot; EDSMT <!--VERSION-->1.10032<!--/VERSION--> &middot; GPL-3.0</span>
     <span>Not affiliated with Frontier Developments. Elite Dangerous is a trademark of Frontier Developments plc.</span>
   </footer>
 

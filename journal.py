@@ -294,6 +294,31 @@ def find_journal_dir(override=None):
     return None
 
 
+def market_means(data):
+    """{commodity: galactic average} out of a Market.json.
+
+    MeanPrice is the game's own "galactic average" column, the same at every
+    market that lists the commodity, so any market read gives it for
+    everything on its board, in English whatever the client's language.
+    Never raises: an odd file gives nothing."""
+    means = {}
+    try:
+        for item in (data or {}).get("Items") or []:
+            try:
+                mean = int(item.get("MeanPrice") or 0)
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if mean <= 0:
+                continue
+            name = SV.english_name(item.get("Name"),
+                                   str(item.get("Name_Localised") or ""))
+            if name:
+                means[SV.fold(name)] = mean
+    except (TypeError, AttributeError):
+        return {}
+    return means
+
+
 class JournalWatcher:
     """Polled reader. Cheap enough to call straight off the Tk event loop."""
 
@@ -347,6 +372,7 @@ class JournalWatcher:
         self.unknown_events = set()    # every mining-ish event name this session
         self.pending_market = None     # a Market.json waiting to be shared
         self.market = None             # and the last one seen, kept not drained
+        self.means = {}                # commodity -> the game's galactic average
         self.docked = False
         self.station = ""              # where you are docked, for the sale
         self.cargo = {}                # what the current vessel is carrying
@@ -756,14 +782,23 @@ class JournalWatcher:
             # journals: LaunchSRV and DockSRV both carry SRVType "mev_rhino",
             # SRVType_Localised "SRV Rhino". A Rhino session is everything
             # between the two - the books need both ends.
+            # A ship can carry more than one SRV, and a crewmate can take
+            # one out: LaunchSRV then says PlayerControlled false, and each
+            # SRV has its own ID on the launch and the dock. The books follow
+            # the one the commander is driving - see Earnings._ours. Absent,
+            # PlayerControlled means the commander, as it always has.
             if name in SRV_EVENTS:
                 kind = str(event.get("SRVType") or "")
-                self._queue_run({"event": SRV_EVENTS[name],
-                                 "when": str(event.get("timestamp") or ""),
-                                 "srv": kind,
-                                 "rhino": is_rhino(kind, event.get("SRVType_Localised")),
-                                 "system": self.system, "body": self.body,
-                                 "cmdr": self.cmdr})
+                note = {"event": SRV_EVENTS[name],
+                        "when": str(event.get("timestamp") or ""),
+                        "srv": kind,
+                        "rhino": is_rhino(kind, event.get("SRVType_Localised")),
+                        "player": event.get("PlayerControlled") is not False,
+                        "system": self.system, "body": self.body,
+                        "cmdr": self.cmdr}
+                if event.get("ID") is not None:
+                    note["srv_id"] = event.get("ID")
+                self._queue_run(note)
                 continue
 
             if name == "Loadout":
@@ -1016,6 +1051,7 @@ class JournalWatcher:
                                         namer=SV.english_name)
         if whole_market:
             self.market = whole_market
+        self.means.update(market_means(data))
 
     # -- what a run is worth -------------------------------------------------
 

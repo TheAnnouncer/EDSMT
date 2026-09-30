@@ -108,6 +108,62 @@ ov.draw(ROWS, 10.0, body="Ega 1")
 pump()
 check("with no rigs down, nothing about rigs at all",
       not any(p.canvas.find_withtag("rigs") for p in ov.panels.values() if p.alive()))
+
+print("== 1.10031: the rig planner, the wing and text size on the real scope ==")
+_PLAN = {"tracing": False, "near": True, "spacing": 78.0, "done": 1, "next": 2,
+         "next_pin": {"n": 2, "range_m": 64.0, "offset": 30.0},
+         "outline": [(-120.0, -120.0), (120.0, -120.0), (120.0, 120.0),
+                     (-120.0, 120.0)],
+         "pins": [{"n": 1, "east": 0.0, "north": 0.0, "done": True, "range_m": 0.0},
+                  {"n": 2, "east": 40.0, "north": 50.0, "done": False,
+                   "range_m": 64.0}]}
+_WING = {"mates": [{"name": "CMDR Bee", "east": -60.0, "north": 20.0,
+                    "heading": 90.0, "in_srv": True,
+                    "rigs": [{"n": 1, "east": -70.0, "north": 30.0}]}]}
+ov.show()
+ov.draw(ROWS, 10.0, body="Ega 1", rigplan=_PLAN, wing=_WING)
+pump()
+_scope = ov.panels[OV.RADAR].canvas
+check("the plan's pins and traced edge are on the scope",
+      len(_scope.find_withtag("planmark")) >= 5, len(_scope.find_withtag("planmark")))
+check("and the wingmate's Rhino and rig, in their own colour",
+      len(_scope.find_withtag("wingmark")) >= 4
+      and any(_scope.itemcget(i, "text") == "CMDR Bee"
+              for i in _scope.find_withtag("wingmark")
+              if _scope.type(i) == "text"))
+_status_text = [ov.panels[OV.STATUS].canvas.itemcget(i, "text")
+                for i in ov.panels[OV.STATUS].canvas.find_all()
+                if ov.panels[OV.STATUS].canvas.type(i) == "text"]
+check("the compass tape points at the next pin too",
+      any(ov.panels[OV.STRIP].canvas.itemcget(i, "text").startswith("P2 64m")
+          for i in ov.panels[OV.STRIP].canvas.find_withtag("pintape")
+          if ov.panels[OV.STRIP].canvas.type(i) == "text"))
+check("STATUS names the next pin, how far and how many are done",
+      any(t.startswith("PIN 2") and "64m" in t and "(1/2)" in t
+          for t in _status_text), _status_text)
+
+
+def _sizes(panel):
+    canvas = ov.panels[panel].canvas
+    out = []
+    for item in canvas.find_all():
+        if canvas.type(item) == "text":
+            font = canvas.itemcget(item, "font")
+            try:
+                out.append(abs(int(str(font).split()[1])))
+            except (IndexError, ValueError):
+                pass
+    return out
+
+
+_before = max(_sizes(OV.STATUS) or [0])
+ov.settings["overlay_text_status"] = 150
+ov.draw(ROWS, 10.0, body="Ega 1")
+pump()
+check("STATUS at 150% draws its words half as big again, the box unchanged",
+      max(_sizes(OV.STATUS) or [0]) >= round(_before * 1.5) - 1,
+      (_before, max(_sizes(OV.STATUS) or [0])))
+ov.settings["overlay_text_status"] = 100
 ov.hide()
 pump()
 
@@ -207,6 +263,9 @@ SITES = {"count": 2, "sites": [
      "distinct_types": 1, "types": ["Haematite"], "updated": "2026-09-09T10:00:00Z",
      "age_days": 14.0, "uploader": "", "status": "reported", "worked_out": False,
      "score": 4.5, "intact_confidence": 1.0}]}
+# 1.10031: Find opens once the commander has shared a deposit of their own.
+# That gate has its own checks (test_110031); here it is open.
+app.settings["find_unlocked"] = True
 app.open_find()
 settle()
 finder = app.finder
@@ -426,13 +485,27 @@ _sw.secrets["community_token"].invoke(); settle(2)
 print("== a find copied as a line, and pasted back in ==")
 _share = ("EDSMT find | Synuefe XR-H d11-102 | Synuefe XR-H d11-102 2 b | "
           "signal 4 | Bromellite | rigs 3 | amount High | density ? | 12.34567, 45.67891")
-app.clipboard_clear(); app.clipboard_append("from my mate:\n" + _share); settle(2)
+# 1.10032: the lines go into a box you can see, not straight off the
+# clipboard - whatever was copied last is never read unasked.
+app.clipboard_clear(); app.clipboard_append("my password, copied by mistake"); settle(2)
 _said.clear()
 _before = len(app.store.deposits)
+_sw.paste_shared(); settle(2)
+check("Import with the box empty reads nothing off the clipboard",
+      len(app.store.deposits) == _before and _said and "box first" in _said[-1],
+      _said[-1:])
+_sw.paste_box.insert("1.0", "from my mate:\n" + _share); settle(2)
 _pasted = _sw.paste_shared(); settle(2)
-check("Paste shared finds adds what was copied",
+check("the lines pasted into the box are added",
       _pasted and _pasted["taken"] == 1 and len(app.store.deposits) == _before + 1, _pasted)
 check("and says so", _said and _said[-1].startswith("Added 1 find"), _said[-1:])
+check("and the box is emptied for the next lot",
+      _sw.paste_box.get("1.0", "end").strip() == "")
+_sw.paste_box.insert("1.0", _share); settle(1)
+_sw._paste_enter(type("E", (), {"state": 0})()); settle(2)
+check("Enter in the box imports too - the same line again is a duplicate, "
+      "not a second find", len(app.store.deposits) == _before + 1
+      and "already" in _said[-1].lower(), _said[-1:])
 app.selected = app.store.deposits[-1]
 _copied = app.copy_selected(); settle(2)
 check("Copy to share puts that find back on the clipboard as the same line",
@@ -495,12 +568,12 @@ print("== the deposit UPDATE button and the new-build button are two buttons =="
 check("the top bar's button is the new-build one",
       app.btn_update.cget("text") == "UPDATE AVAILABLE", app.btn_update.cget("text"))
 check("the rail's is the deposit one, with its key under it",
-      app.btn_update_deposit.cget("text") == "UPDATE\nAlt+6",
+      app.btn_update_deposit.cget("text") == "UPDATE\n" + A.key_text("CTRL+ALT+3"),
       app.btn_update_deposit.cget("text"))
 app.announce_update("EDSMT 9.99999 is out.")
 settle(3)
 check("announcing a build leaves the deposit button alone",
-      app.btn_update_deposit.cget("text") == "UPDATE\nAlt+6"
+      app.btn_update_deposit.cget("text") == "UPDATE\n" + A.key_text("CTRL+ALT+3")
       and app.btn_update.winfo_ismapped(), app.btn_update_deposit.cget("text"))
 app.btn_update.pack_forget()
 settle(2)
@@ -688,7 +761,9 @@ class _Asks:
 
 _real_comm = app.community
 app.community = _Asks(_real_comm)
-app.watcher.holds = {"Ship": {"Haematite": 30}, "SRV": {"Sapphire": 2}}
+# 1.10031: the tab is about what the Rhino dug up. Five Tea bought at a
+# station are in the ship too, and must not be priced here.
+app.watcher.holds = {"Ship": {"Haematite": 30, "Tea": 5}, "SRV": {"Sapphire": 2}}
 app.watcher.cargo = {"Sapphire": 2}
 app.watcher.system = "HR 7280"
 app.watcher.star_pos = (1.0, 2.0, 3.0)
@@ -705,6 +780,13 @@ _old.update({"id": "old1", "started": "2026-09-20T10:00:00Z",
              "system": "Trade Hub", "body": "", "sold": "Tea:40",
              "credits": "40000"})
 app.earnings.sessions.insert(0, _old)
+# The session this afternoon that dug up what is aboard now.
+_dug = {k: "" for k in SV.SESSION_FIELDS}
+_dug.update({"id": "dug1", "kind": SV.RHINO, "started": SV.utc_now(),
+             "ended": SV.utc_now(), "closed": SV.utc_now(),
+             "system": "HR 7280", "body": "HR 7280 A 3",
+             "mined": "Haematite:30;Sapphire:2"})
+app.earnings.sessions.insert(1, _dug)
 app.earnings.save()
 app.open_earnings()
 _end = _time.time() + 2.0
@@ -714,6 +796,10 @@ ledger = app.ledger
 _holding = ledger.holding.cget("text")
 check("the hold line names the SRV and the ship, each with its tonnes",
       "SRV 2t" in _holding and "ship 30t" in _holding, _holding)
+check("and leaves the Tea out - it was bought, not mined",
+      "Tea" not in _holding, _holding)
+check("with an estimate at the galactic average",
+      "galactic average" in _holding, _holding)
 check("opening it with ore aboard asks where to sell it, most valuable first",
       [k.get("commodity") for k in app.community.calls] == ["Sapphire", "Haematite"],
       app.community.calls)
@@ -741,12 +827,32 @@ check("the session says what the Rhino mined and what went to the ship",
 check("and only Rhino sessions are on the tab - not an older build's Tea run",
       "Trade Hub" not in _ledger_text and "Tea" not in _ledger_text,
       _ledger_text[:400])
+check("Start session and Pause are on the window, next to End session",
+      "Start session" in texts_in(ledger) and "Pause" in texts_in(ledger),
+      texts_in(ledger)[:30])
 check("the multi-session box and End session are on the window",
       "End session" in texts_in(ledger)
       and any("Multi-session" in t for t in texts_in(ledger)),
       texts_in(ledger)[:30])
 _check_btn = next((b for b in texts_in(ledger) if b == "Check prices"), None)
 check("Check prices is on the window", _check_btn == "Check prices")
+# 1.10032: "we need to be able to delete entries from the earnings section".
+check("every session row has a delete button",
+      texts_in(ledger.table).count("delete") == len(ledger._rows) >= 2,
+      (texts_in(ledger.table).count("delete"), len(ledger._rows)))
+_victim = next(r for r in ledger._rows if r.get("id") == "dug1")
+_before = len(app.earnings.sessions)
+ledger.delete_session(_victim); settle(2)
+check("one press only asks - nothing is deleted yet",
+      len(app.earnings.sessions) == _before
+      and "again" in ledger.status.cget("text"), ledger.status.cget("text"))
+ledger.delete_session(_victim); settle(2)
+check("the second press on the same row deletes it, from the tab and the file",
+      len(app.earnings.sessions) == _before - 1
+      and not any(r.get("id") == "dug1" for r in ledger._rows)
+      and "dug1" not in open(app.earnings.path, encoding="utf-8").read())
+check("and the file before it is kept beside it",
+      "dug1" in open(app.earnings.path + ".bak", encoding="utf-8").read())
 app.earnings.finish()
 ledger.destroy()
 app.community = _real_comm

@@ -248,7 +248,10 @@ def turn_hint(heading, bearing):
 # and which body classes it turns up on.
 #
 # This came off a commander's own tabulation of the 4.4.1.0 surface mining
-# tables, and it replaces a thirteen-entry list I built from Inara's
+# tables - the stickied "Rhino Surface Hotspot list" on the Frontier forums -
+# refreshed to its 21 September 2026 prices, after the Community Goal whose
+# 1,038,104 Cr stood as the top price for three of these had ended. It
+# replaces a thirteen-entry list I built from Inara's
 # "Mining (surface)" flag. That list was wrong twice over: it MISSED things
 # the game actually gives you - Water, Tantalum, Jadeite, Methanol Crystals -
 # and it had no idea which bodies anything appears on.
@@ -265,45 +268,45 @@ ICY   = "Icy body"
 
 COMMODITIES = {
     # -- chemicals ----------------------------------------------------------
-    "Helium":             (102861,  591360, "Chemicals", (HMC, RICH, ROCKY, RICE)),
-    "Helium-3":           ( 96223,  553040, "Chemicals", (ICY,)),
-    "Tritium":            ( 53311,   61894, "Chemicals", (ICY,)),
-    "Water":              (   496,    2964, "Chemicals", (RICE, ICY)),
+    "Helium":             (105367,   321133, "Chemicals", (HMC, RICH, ROCKY, RICE)),
+    "Helium-3":           ( 98562,   300448, "Chemicals", (ICY,)),
+    "Tritium":            ( 53450,    61894, "Chemicals", (ICY,)),
+    "Water":              (   497,     5094, "Chemicals", (RICE, ICY)),
     # -- metals -------------------------------------------------------------
-    "Iridium":            (208463, 1038104, "Metals", (HMC, RICH, ROCKY)),
-    "Platinum":           ( 70998,  333030, "Metals", (HMC, RICH, ROCKY)),
-    "Palladium":          ( 52167,  302138, "Metals", (HMC, RICH, ROCKY, RICE)),
-    "Gold":               ( 48005,  282678, "Metals", (HMC, RICH, ROCKY)),
-    "Osmium":             ( 56471,  273000, "Metals", (HMC, RICH, ROCKY)),
-    "Silver":             ( 37743,  219318, "Metals", (HMC, RICH, ROCKY)),
-    "Samarium":           ( 28362,  154266, "Metals", (HMC, RICH, ROCKY)),
-    "Tantalum":           ( 14360,   15582, "Metals", (HMC, RICH, ROCKY)),
-    "Thorium":            ( 12297,   12917, "Metals", (HMC, RICH, ROCKY)),
-    "Uranium":            (  7599,    8587, "Metals", (HMC, RICH, ROCKY)),
-    "Titanium":           (  4800,    5865, "Metals", (HMC, RICH, ROCKY)),
-    "Lithium":            (  2099,    2892, "Metals", (HMC, RICH, ROCKY)),
-    "Copper":             (   774,    1931, "Metals", (HMC, RICH, ROCKY, RICE)),
+    "Iridium":            (215545,   699340, "Metals", (HMC, RICH, ROCKY)),
+    "Platinum":           ( 70304,   302844, "Metals", (HMC, RICH, ROCKY)),
+    "Palladium":          ( 52074,    71438, "Metals", (HMC, RICH, ROCKY, RICE)),
+    "Gold":               ( 47909,    67832, "Metals", (HMC, RICH, ROCKY)),
+    "Osmium":             ( 55831,   273000, "Metals", (HMC, RICH, ROCKY)),
+    "Silver":             ( 37641,    49426, "Metals", (HMC, RICH, ROCKY)),
+    "Samarium":           ( 28703,    48618, "Metals", (HMC, RICH, ROCKY)),
+    "Tantalum":           ( 14365,    15582, "Metals", (HMC, RICH, ROCKY)),
+    "Thorium":            ( 12289,    12917, "Metals", (HMC, RICH, ROCKY)),
+    "Uranium":            (  7601,     8587, "Metals", (HMC, RICH, ROCKY)),
+    "Titanium":           (  4805,     5865, "Metals", (HMC, RICH, ROCKY)),
+    "Lithium":            (  2104,     2889, "Metals", (HMC, RICH, ROCKY)),
+    "Copper":             (   778,     1912, "Metals", (HMC, RICH, ROCKY, RICE)),
     # -- minerals -----------------------------------------------------------
-    "Monazite":           (268661,  865908, "Minerals", (ROCKY,)),
-    "Alexandrite":        (229207,  714088, "Minerals", (ROCKY,)),
-    "Grandidierite":      (213547,  571800, "Minerals", (ROCKY,)),
-    "Periclase dunite":   (204168, 1038104, "Minerals", (ROCKY,)),
-    "Thortveitite":       (203892, 1038104, "Minerals", (ROCKY,)),
-    "Serendibite":        (188438,  570948, "Minerals", (ROCKY,)),
-    "Rhodplumsite":       (187921,  826249, "Minerals", (HMC, ROCKY)),
-    "Diamond":            (134784,  720648, "Minerals", (HMC, RICH, ROCKY)),
-    "Low Temperature Diamonds": (130184, 384562, "Minerals", (ROCKY, RICE, ICY)),
-    "Sapphire":           (128050,  648352, "Minerals", (HMC, RICH, ROCKY)),
-    "Ruby":               (110381,  589240, "Minerals", (HMC, RICH, ROCKY)),
-    "Bastn\u00e4site":     ( 78583,  531208, "Minerals", (ROCKY,)),
-    "Quartz pyroxenite":  ( 46469,  312072, "Minerals", (ROCKY, RICE)),
-    "Jadeite":            ( 42770,  179421, "Minerals", (ROCKY,)),
-    "Deuterium":          ( 40762,  273368, "Minerals", (ROCKY, RICE, ICY)),
-    "Magnesite":          ( 38198,  255880, "Minerals", (ROCKY,)),
-    "Olivine":            ( 31417,  209938, "Minerals", (ROCKY, RICE)),
-    "Uraninite":          (  3006,   17166, "Minerals", (ROCKY,)),
-    "Haematite":          (  2800,   10044, "Minerals", (HMC, RICH, ROCKY, RICE)),
-    "Methanol Crystals":  (  2525,    3794, "Minerals", (ICY,)),
+    "Monazite":           (220171,  1249679, "Minerals", (ROCKY,)),
+    "Alexandrite":        (229207,   714088, "Minerals", (ROCKY,)),
+    "Grandidierite":      (211433,   765202, "Minerals", (ROCKY,)),
+    "Periclase dunite":   (208671,   629453, "Minerals", (ROCKY,)),
+    "Thortveitite":       (208192,   629453, "Minerals", (ROCKY,)),
+    "Serendibite":        (186839,   799328, "Minerals", (ROCKY,)),
+    "Rhodplumsite":       (186378,   854307, "Minerals", (HMC, ROCKY)),
+    "Diamond":            (137652,   405175, "Minerals", (HMC, RICH, ROCKY)),
+    "Low Temperature Diamonds": (131924,   417760, "Minerals", (ROCKY, RICE, ICY)),
+    "Sapphire":           (130921,   393722, "Minerals", (HMC, RICH, ROCKY)),
+    "Ruby":               (112766,   331575, "Minerals", (HMC, RICH, ROCKY)),
+    "Bastn\u00e4site":     ( 82432,   220306, "Minerals", (ROCKY,)),
+    "Quartz pyroxenite":  ( 48746,   130347, "Minerals", (ROCKY, RICE)),
+    "Jadeite":            ( 42514,   148462, "Minerals", (ROCKY,)),
+    "Deuterium":          ( 42757,   114426, "Minerals", (ROCKY, RICE, ICY)),
+    "Magnesite":          ( 40066,   107228, "Minerals", (ROCKY,)),
+    "Olivine":            ( 32951,    88299, "Minerals", (ROCKY, RICE)),
+    "Uraninite":          (  3005,     4731, "Minerals", (ROCKY,)),
+    "Haematite":          (  2859,    10044, "Minerals", (HMC, RICH, ROCKY, RICE)),
+    "Methanol Crystals":  (  2522,     3794, "Minerals", (RICE, ICY)),
 }
 
 # The list is SUGGESTIONS, not a rulebook. Anything the game names is
@@ -1231,6 +1234,11 @@ SESSION_FIELDS = [
     "kind",            # "rhino": a Rhino session. Anything else is an old run
     "transferred",     # same shape as mined: what went across to the ship
     "trips",           # how many times the Rhino went out in this session
+    # Added in 1.10031. Old rows read these as blank.
+    "paused",          # seconds spent paused, left out of the Cr/hr
+    "paused_at",       # when the pause in progress began; blank if running
+    "started_by",      # rigs, refined, button - what opened it
+    "ended_by",        # rigs, button, docked, lost, moved, quiet
 ]
 
 # What a session is. Only Rhino sessions are shown and added up: the books
@@ -1246,6 +1254,15 @@ RHINO = "rhino"
 # the takings of the next three. Six hours is well past any single sitting and
 # nowhere near a break for a cup of tea.
 RUN_IDLE_S = 6 * 3600
+
+# Every rig up closes a session; rigs going down again on the same body
+# inside this long is the next deposit along, and opens the same session
+# again rather than starting a second one for the same evening's work.
+REOPEN_S = 10 * 60
+
+# Mined tonnes still unsold after this long are not what is in the hold
+# now: the hold is priced from what a Rhino session dug up recently.
+MINED_ABOARD_S = 48 * 3600
 
 # How far from a marked deposit a refined tonne is still counted into it.
 # The SRV collects what the rigs throw up, and that lands round the deposit
@@ -1321,6 +1338,46 @@ def cycle_tonnes(row):
         if tonnes > 0:
             out.append(tonnes)
     return out
+
+
+def estimate_tonnes(deposits, rigs, density, exclude=None):
+    """(low, high, how many) tonnes a deposit like this held, from deposits
+    this commander has worked out: the same rig count and the same density.
+
+    Measured, never a formula: each worked-out cycle is what the game's own
+    tonne-by-tonne record said came off it. With five or more cycles the
+    range is the middle of them (the 20th to the 80th percentile), so one
+    odd run does not stretch it; with fewer it is lowest to highest. None
+    when there is nothing like it to go on - a guess would be worse than a
+    blank."""
+    try:
+        want_rigs = int(float(rigs))
+    except (TypeError, ValueError):
+        return None
+    want_density = fold(density)
+    if want_rigs <= 0 or not want_density:
+        return None
+    held = []
+    for row in deposits or []:
+        if exclude is not None and row is exclude:
+            continue
+        try:
+            if int(float(row.get("rigs") or 0)) != want_rigs:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if fold(row.get("density")) != want_density:
+            continue
+        held.extend(cycle_tonnes(row))
+    if not held:
+        return None
+    held.sort()
+    if len(held) >= 5:
+        low = held[int(round(0.2 * (len(held) - 1)))]
+        high = held[int(round(0.8 * (len(held) - 1)))]
+    else:
+        low, high = held[0], held[-1]
+    return low, high, len(held)
 
 
 def close_cycle(row, when=None):
@@ -1403,14 +1460,32 @@ def earned(row):
     return _number(row.get("credits")) - _number(row.get("cost"))
 
 
+def paused_seconds(row):
+    """How long a session has spent paused, the pause in progress included
+    up to the last thing that happened in it."""
+    total = _number(row.get("paused"))
+    since = str(row.get("paused_at") or "").strip()
+    if since:
+        total += max(0, _epoch(row.get("ended")) - _epoch(since))
+    return max(0.0, total)
+
+
+def session_hours(row):
+    """The hours a session was actually running: start to last event, less
+    any time it was paused."""
+    hours = hours_between(row.get("started"), row.get("ended"))
+    return max(0.0, hours - paused_seconds(row) / 3600.0)
+
+
 def credits_per_hour(row):
     """What the run was worth an hour.
 
     A run with no measurable length answers 0 rather than dividing by it. A
     sale the app only caught after the fact starts and ends in the same
     second, and "infinity credits an hour" is not a number anybody can use.
+    Paused time is not mining time and is left out.
     """
-    hours = hours_between(row.get("started"), row.get("ended"))
+    hours = session_hours(row)
     return earned(row) / hours if hours > 0 else 0.0
 
 
@@ -1470,6 +1545,9 @@ class Earnings:
         # out does a refined tonne count: MiningRefined is also what the
         # ship writes mining asteroids, and that is not a Rhino session.
         self._in_rhino = False
+        # Which SRV that is, by the journal's ID, so a second Rhino off the
+        # same ship coming aboard - a crewmate's - does not end this one.
+        self._srv_id = None
         # One session across several trips, for hauling back and forth to a
         # station: set from the Earnings window's box, kept in settings.
         self.multi = False
@@ -1549,11 +1627,22 @@ class Earnings:
             self._docked = bool(note.get("docked"))
             self._in_rhino = bool(note.get("in_srv")) and bool(note.get("landed"))
         elif name == "SRVLaunch":
-            self._in_rhino = bool(note.get("rhino"))
+            if note.get("player", True):
+                self._in_rhino = bool(note.get("rhino"))
+                self._srv_id = note.get("srv_id")
         elif name in ("SRVDock", "SRVLost"):
-            self._in_rhino = False
+            if self._ours(note):
+                self._in_rhino = False
         if name in REPLAYED_EVENTS:
             self._shut = name == "Shutdown"
+
+    def _ours(self, note):
+        """Whether an SRV event is about the SRV this commander took out.
+        Without an ID on either side it is taken to be: one SRV, as ever."""
+        srv_id = note.get("srv_id")
+        if srv_id is None or self._srv_id is None:
+            return True
+        return str(srv_id) == str(self._srv_id)
 
     def load(self):
         self.sessions = _read(self.path, SESSION_FIELDS)
@@ -1610,16 +1699,107 @@ class Earnings:
 
     # -- keeping the books -----------------------------------------------
 
-    def start(self, system="", body="", cmdr="", when=None, kind=RHINO):
+    def start(self, system="", body="", cmdr="", when=None, kind=RHINO, by=""):
         when = str(when or "").strip() or utc_now()
         row = {key: "" for key in SESSION_FIELDS}
         row.update({"id": new_id(), "started": when, "ended": when,
                     "system": str(system or ""), "body": str(body or ""),
-                    "cmdr": str(cmdr or ""), "kind": kind, "trips": "0",
-                    "credits": "0", "cost": "0", "sales": "0", "cr_hr": "0"})
+                    "cmdr": str(cmdr or ""), "kind": kind,
+                    # Opened with the Rhino out is its first trip.
+                    "trips": "1" if self._in_rhino else "0",
+                    "credits": "0", "cost": "0", "sales": "0", "cr_hr": "0",
+                    "paused": "0", "started_by": str(by or "")})
         self.sessions.append(row)
         self.save()
         return row
+
+    def start_now(self, system="", body="", cmdr="", when=None):
+        """The Start session button. None when one is already running."""
+        if self.current is not None:
+            return None
+        return self.start(system, body, cmdr, when, by="button")
+
+    @property
+    def paused(self):
+        row = self.current
+        return bool(row is not None and str(row.get("paused_at") or "").strip())
+
+    def pause(self, when=None):
+        """Stop the clock on the session in progress: the drive to a station,
+        a break. Tonnes still count - the first rig down, tonne refined or
+        Rhino out on it picks it up again by itself."""
+        row = self.current
+        if row is None or self.paused:
+            return None
+        when = str(when or "").strip() or utc_now()
+        self._touch(row, when)
+        row["paused_at"] = row["ended"]
+        self.save()
+        return row
+
+    def resume(self, when=None):
+        row = self.current
+        if row is None or not self.paused:
+            return None
+        when = str(when or "").strip() or utc_now()
+        self._resume(row, when)
+        self._touch(row, when)
+        self.save()
+        return row
+
+    @staticmethod
+    def _resume(row, when):
+        """Fold a pause into the paused total. False when not paused."""
+        since = str(row.get("paused_at") or "").strip()
+        if not since:
+            return False
+        gap = max(0, _epoch(when) - _epoch(since))
+        row["paused"] = "%d" % (int(_number(row.get("paused"))) + gap)
+        row["paused_at"] = ""
+        return True
+
+    def _reopen(self, note, when):
+        """The last session opened again, or None.
+
+        Only when every rig came up to close it, on this same body, inside
+        REOPEN_S, and nothing has happened in the books since: that is the
+        rigs going down on the next deposit along, and one evening on one
+        body is one session."""
+        if not self.sessions:
+            return None
+        row = self.sessions[-1]
+        if row.get("kind") != RHINO or row.get("ended_by") != "rigs":
+            return None
+        if not (_same(row.get("body"), note.get("body"))
+                and _same(row.get("system"), note.get("system"))):
+            return None
+        gap = _epoch(when) - _epoch(row.get("closed") or row.get("ended"))
+        if not 0 <= gap <= REOPEN_S:
+            return None
+        row["closed"] = ""
+        row["ended_by"] = ""
+        self._touch(row, when)
+        self.save()
+        return row
+
+    def unsold(self, within_s=MINED_ABOARD_S, now=None):
+        """{commodity: tonnes} dug up by recent Rhino sessions and not yet
+        sold - what the hold is priced from, so hauled cargo is not."""
+        now = _epoch(now) if now else _epoch(utc_now())
+        left = {}
+        for row in self.sessions:
+            if row.get("kind") != RHINO:
+                continue
+            last = _epoch(row.get("ended")) or _epoch(row.get("started"))
+            if not last or now - last > within_s:
+                continue
+            sold = unpack_counts(row.get("sold"))
+            for name, count in unpack_counts(row.get("mined")).items():
+                spare = count - sold.get(name, 0)
+                if spare > 0:
+                    key = canonical(name)
+                    left[key] = left.get(key, 0) + spare
+        return left
 
     def note_mined(self, gains, when=None):
         """Add what just came out of the ground to the run in progress."""
@@ -1636,20 +1816,39 @@ class Earnings:
         self.save()
         return row
 
-    def finish(self, when=None, notes=""):
+    def delete(self, row_id):
+        """Take one session out of the books for good - a test run, a
+        session opened by mistake, one that went wrong. The file before it
+        is kept beside it as sessions.csv.bak, as every write here does.
+        Returns the row taken out, or None when there is no such row."""
+        row_id = str(row_id or "").strip()
+        if not row_id:
+            return None
+        for index, row in enumerate(self.sessions):
+            if str(row.get("id") or "") == row_id:
+                del self.sessions[index]
+                self.save()
+                return row
+        return None
+
+    def finish(self, when=None, notes="", by=""):
         """Bank the run in progress."""
         row = self.current
         if row is None:
             return None
-        self._close(row, when, notes)
+        self._close(row, when, notes, by)
         self.save()
         return row
 
-    def _close(self, row, when=None, notes=""):
+    def _close(self, row, when=None, notes="", by=""):
         stamp = str(when or "").strip()
         if stamp:
             row["ended"] = _later(row.get("ended") or stamp, stamp)
+        # Closed while paused: the pause ran to the end and is not mining.
+        self._resume(row, row.get("ended") or stamp)
         row["closed"] = row["ended"] or utc_now()
+        if by:
+            row["ended_by"] = by
         if notes:
             row["notes"] = (str(row.get("notes") or "") + "\n" + notes).strip()
         self._rate(row)
@@ -1707,43 +1906,76 @@ class Earnings:
         if row is not None:
             last = _epoch(row.get("ended")) or _epoch(row.get("started"))
             if last and (_epoch(when) - last) > RUN_IDLE_S:
-                self.finish(row.get("ended"), "closed - the session went quiet")
+                self.finish(row.get("ended"), "closed - the session went quiet",
+                            by="quiet")
                 row = None
         # A run an older build left open is never carried on by this one.
         if row is not None and row.get("kind") != RHINO:
             self.finish(row.get("ended"), "closed - only Rhino sessions now")
             row = None
 
+        # 1.10031: a session is mining, not the Rhino being out. The Rhino
+        # goes out to look, to scan, to fetch cargo, and all of that used to
+        # open a session - "the earnings tab is picking up stuff to do with
+        # normal hauling". Now the first rig down opens one (the rig keys),
+        # or the first tonne refined in the Rhino for anybody who does not
+        # use them, or the Start session button. Every rig up closes it, as
+        # does the End button or the Rhino coming aboard.
+        if name == "RigDown":
+            if row is not None and not self.multi and \
+                    not _same(row.get("body"), note.get("body")):
+                self.finish(row.get("ended"), "rigs went down on another body",
+                            by="moved")
+                row = None
+            if row is None:
+                if self._reopen(note, when) is not None:
+                    return "Rhino session carries on - rigs down again"
+                self.start(note.get("system"), note.get("body"),
+                           note.get("cmdr"), when, by="rigs")
+                return "Rhino session started - first rig down"
+            resumed = self._resume(row, when)
+            self._touch(row, when)
+            self.save()
+            return "Session running again - rig down" if resumed else None
+
+        if name == "RigsUp":
+            if row is None:
+                return None
+            if self.multi:
+                self._touch(row, when)
+                self.save()
+                return "Rigs up - the multi-session carries on"
+            self.finish(when, by="rigs")
+            return "Rhino session done - every rig up"
+
         if name == "SRVLaunch":
-            if not note.get("rhino"):
+            # Somebody else's launch - a crewmate in the ship's other SRV -
+            # is not this commander's trip.
+            if not note.get("rhino") or not note.get("player", True):
                 return None
             if row is not None and (self.multi or
                                     _same(row.get("body"), note.get("body"))):
                 row["trips"] = "%d" % (_number(row.get("trips")) + 1)
+                resumed = self._resume(row, when)
                 self._touch(row, when)
                 self.save()
-                return "Rhino out - trip %s of this session" % row["trips"]
+                return "Rhino out - trip %s of this session%s" % (
+                    row["trips"], " (running again)" if resumed else "")
             if row is not None:
-                self.finish(row.get("ended"))
-            row = self.start(note.get("system"), note.get("body"),
-                             note.get("cmdr"), when)
-            row["trips"] = "1"
-            self.save()
-            return "Rhino session started"
+                self.finish(row.get("ended"), by="moved")
+                return "Rhino session done - the Rhino is out on another body"
+            # Out, but nothing mined yet: not a session until it is.
+            return None
 
         if name == "Location":
-            # Logged in sitting in the Rhino. The session carries on - or,
-            # when the launch was in a journal the app never read, starts
-            # here. Anywhere else, a login changes nothing.
+            # Logged in sitting in the Rhino: a session in progress carries
+            # on. It no longer starts one - the first tonne refined does.
             if not (note.get("in_srv") and note.get("landed")):
                 return None
             if row is not None:
                 self._touch(row, when)
                 self.save()
-                return None
-            self.start(note.get("system"), note.get("body"), note.get("cmdr"),
-                       when)
-            return "Rhino session picked up"
+            return None
 
         if name == "Refined":
             if not self._in_rhino:
@@ -1751,12 +1983,18 @@ class Earnings:
             commodity = canonical(note.get("commodity") or "")
             if not commodity:
                 return None
+            # Nothing on screen for a tonne - a line a tonne would bury
+            # everything else - except the one that opened the session.
+            line = None
             if row is None:
-                self.start(note.get("system"), note.get("body"),
-                           note.get("cmdr"), when)
+                if self._reopen(note, when) is None:
+                    self.start(note.get("system"), note.get("body"),
+                               note.get("cmdr"), when, by="refined")
+                    line = "Rhino session started - first tonne refined"
+            elif self._resume(row, when):
+                line = "Session running again - mining"
             self.note_mined({commodity: 1}, when)
-            # Nothing on screen: a line a tonne would bury everything else.
-            return None
+            return line
 
         if name == "CargoTransfer":
             if row is None:
@@ -1777,13 +2015,14 @@ class Earnings:
             return "to ship: " + pack_counts(moved).replace(";", ", ")
 
         if name in ("SRVDock", "SRVLost"):
-            if row is None:
+            if row is None or not self._ours(note):
                 return None
             if self.multi:
                 self._touch(row, when)
                 self.save()
                 return "Rhino aboard - the session carries on (multi-session)"
-            self.finish(when, "the Rhino was lost" if name == "SRVLost" else "")
+            self.finish(when, "the Rhino was lost" if name == "SRVLost" else "",
+                        by="lost" if name == "SRVLost" else "docked")
             return "Rhino session done"
 
         if name == "MarketSell":
@@ -1861,7 +2100,7 @@ class Earnings:
             add_counts(sold, unpack_counts(row.get("sold")))
             credits_ += _number(row.get("credits"))
             cost += _number(row.get("cost"))
-            hours += hours_between(row.get("started"), row.get("ended"))
+            hours += session_hours(row)
         return {
             "runs": len(rows),
             "credits": credits_,

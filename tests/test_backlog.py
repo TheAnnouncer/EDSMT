@@ -98,8 +98,8 @@ CHECKS = [
  (54, "rig down key, each rig, TOO FAR",      lambda: wired("drop_rigs") and wired("watch_rigs")
         and wired("sound_alarm") and "def _rig_banner" in OV and "TOO FAR FROM RIG" in OV and "def _rig_marks" in OV),
  # 1.10029
- (58, "keys Alt+1..Alt+6, one table",        lambda: '"hotkey_location": "ALT+1"' in OV and "WORK_KEYS" in APP
-        and "KEYS_LEVEL = 4" in APP and wired("upgrade_hotkeys")),
+ (58, "keys Alt+1 onwards, one table",       lambda: '"hotkey_location": "ALT+1"' in OV and "WORK_KEYS" in APP
+        and "KEYS_LEVEL = 5" in APP and wired("upgrade_hotkeys")),
  (59, "GUIDE box, step by step",             lambda: wired("guide_card") and "def draw_guide" in OV),
  (60, "rig down shows what it mines",        lambda: wired("rig_commodity") and "rigtype" in OV),
  (61, "Basic settings first",                lambda: '"Basic settings"' in APP and wired("save_and_restart")),
@@ -130,6 +130,37 @@ CHECKS = [
  (82, "Where to land Carrying filter",       lambda: wired("land_carrying") and '"carries"' in SV),
  (83, "clipboard survives closing",          lambda: wired("put_on_clipboard") and "CF_UNICODETEXT" in APP),
  (85, "worked-out age shown",                lambda: wired("worked_out_age")),
+ # 1.10031
+ (109, "BUILD.bat says not to type during the tests",
+        lambda: "Do not type or click" in src("BUILD.bat")),
+ (111, "CI finds ISCC wherever it is",       lambda: "Get-ChildItem" in src(".github/workflows/build.yml")
+        and "ISCC.exe" in src(".github/workflows/build.yml")),
+ (112, "a key down and up for every rig",    lambda: '"hotkey_rig%d" % n: "ALT+%d" % (n + 3)' in OV
+        and '"hotkey_rig%dup" % n: "CTRL+ALT+%d" % (n + 3)' in OV and wired("rig_up")),
+ (113, "MARK needs all four boxes",          lambda: wired("missing_fields") and wired("clear_deposit_boxes")),
+ (114, "Find opens after a find of your own", lambda: wired("find_unlocked") and wired("note_shared")),
+ (115, "the guide retires itself",           lambda: wired("retire_guide")),
+ (116, "sessions on rigs, not the launch",   lambda: 'name == "RigDown"' in SV and 'name == "RigsUp"' in SV
+        and wired("rig_event") and wired("mined_aboard")),
+ (117, "Pause",                              lambda: "def pause(self" in SV and wired("pause_session")),
+ (118, "three prices",                       lambda: wired("galactic_average") and "def market_means" in JN
+        and "fold(r[\"system\"]) == here" in SRV),
+ (119, "finds draw fast",                    lambda: wired("mini_button") and wired("row_buttons")),
+ (120, "text size per box",                  lambda: "def scaled_canvas" in OV and "overlay_text_%s" in APP),
+ (121, "rig planner",                        lambda: wired("planner_trace") and wired("follow_trace")
+        and wired("plan_marks") and os.path.exists("rigplan.py")),
+ (122, "wing link and shared ship",          lambda: wired("wing_tick") and wired("take_wing")
+        and '@app.post("/v1/wing/{code}")' in SRV and '"player"' in JN),
+ (129, "next pin on the compass tape",       lambda: '"pintape"' in OV),
+ (130, "a rig counts within half the spacing", lambda: wired("pin_reach")),
+ (131, "shared finds through a paste box",   lambda: "self.paste_box" in APP and wired("_paste_enter")
+        and "clipboard_get" not in APP.split("    def paste_shared(self):")[1].split("\n    def ")[0]),
+ (132, "est. held and left before working it", lambda: "def estimate_tonnes" in SV
+        and "SV.estimate_tonnes(" in APP),
+ (134, "delete a session from Earnings",     lambda: wired("delete_session") and "def delete(self, row_id)" in SV),
+ (135, "CG placeholder prices left out",     lambda: "PLACEHOLDER_DEMAND" in APP and "PLACEHOLDER_DEMAND" in SRV),
+ (123, "FAQ on the download page",           lambda: 'id="faq"' in src("site/index.html")
+        and 'id="faq"' in src("site/edsmt.html")),
  # journal rules
  ("J1","sticky EOF handled",                 lambda: "seek" in JN and "SEEK_END" in JN),
  ("J2","no mtime gate on Status.json",       lambda: "st_mtime" not in JN.split("def _read_status")[1][:900] if "def _read_status" in JN else True),

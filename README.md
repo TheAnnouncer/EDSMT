@@ -61,21 +61,33 @@ signal** — step 3 is Alt+3. The number row, not the number pad.
    keep it held while you map the area. The scope keeps you in the picture
    the whole way out, and shades what you have swept inside the border.
 8. **Drive to a deposit, fill in the boxes, press Alt+3.** Commodity, rigs,
-   Amount, Density — pick with the mouse or type, and Tab moves on.
-9. **Press Alt+4 as each rig goes down.** Each rig is numbered and drawn on
-   the scope and the compass in the colour of what it is mining, with its
-   name beside it. Drive too far from one and the overlay says so.
-10. **Next deposit** — Alt+3, then Alt+4 per rig. **Alt+5** when the rigs
-    come back up. **Alt+6** updates the deposit you are standing on.
+   Amount, Density — pick with the mouse or type, and Tab moves on. All four
+   are needed: a deposit is not marked with any of them blank (the scanner's
+   density counts when the game names one), and the rigs, amount and density
+   boxes clear themselves for the next one.
+9. **Alt+4 to Alt+9 as each rig goes down** — rig 1 is Alt+4, rig 6 is
+   Alt+9. Each rig is drawn on the scope and the compass in the colour of
+   what it is mining, with its name beside it. Drive too far from one and the
+   overlay says so. The first rig down starts your earnings session.
+10. **The same number with AltGr picks that rig up** — AltGr+4 is rig 1 up.
+    The last one up ends the session. **AltGr+0** is every rig up at once,
+    and **AltGr+3** updates the deposit you are standing on.
 
 | Key | Does |
 |---|---|
 | Alt+1 | Log the signal and set the centre |
 | Alt+2 | Survey border here |
 | Alt+3 | Mark the deposit |
-| Alt+4 | A rig is down here |
-| Alt+5 | All rigs up |
-| Alt+6 | Update the deposit I am on |
+| Alt+4 to Alt+9 | Rig 1 to rig 6 down |
+| AltGr+4 to AltGr+9 | Rig 1 to rig 6 up |
+| AltGr+3 | Update the deposit I am on |
+| AltGr+0 | Every rig up |
+| AltGr+2 | Rig planner: trace the deposit's edge (beta, off until switched on) |
+
+**AltGr** is what UK and European keyboards call the right-hand Alt key.
+Windows sees it as Ctrl+Alt, so on a keyboard without one — a US layout —
+the same keys are **Ctrl+Alt+4** and so on, and EDSMT names them that way.
+None of these keys is bound by any of the game's own control schemes.
 
 Every one can be changed in **Settings → Hotkeys** — click it and press the
 key you want, with or without Ctrl, Alt or Shift — and **Reset** puts it
@@ -94,7 +106,8 @@ one if that program is off on your machine.
 
 **The guide.** A GUIDE box over the game shows the step you are on, the key
 for it, and what comes next, and moves on by itself as each step is done. It
-is on for a first run; Settings → Basic settings switches it off.
+is on for a first run and switches itself off once you have followed it all
+the way through; Settings → Basic settings turns it back on.
 
 **There is no centre to set and no bearing to work out.** The game hands over
 your latitude and longitude, so a deposit records where it *is*. Distances
@@ -102,8 +115,10 @@ and directions are worked out live from wherever you happen to be standing —
 which is the number you want while driving, and it means nothing has to be
 pressed before a find can be recorded.
 
-**Rigs can be left blank.** You do not know how many a deposit takes until
-you get there. Mark it, come back, and set the count when you know.
+**Every box, every time.** A deposit goes on the map with its commodity,
+rigs, amount and density, or not at all — finds were reaching the shared map
+without the two things a commander deciding whether to fly there needs most.
+Anything that changes later, **UPDATE** puts right.
 
 **Amount and Density are different things.** Density is how rich the deposit
 is — Low, Medium, High — and does not change. Amount is how much is left, and
@@ -118,7 +133,7 @@ you share, the shared copy is updated too. MARK asks first if you already
 have that commodity marked within 100 m — press MARK again within a few
 seconds to add it as a separate deposit anyway. And if a **different**
 commodity is already marked on the spot you are standing on — the box said
-Monazite, it was Alexandrite — MARK asks too: **Alt+6** renames the one
+Monazite, it was Alexandrite — MARK asks too: **AltGr+3** renames the one
 there, keeping its position, history and tonnes, and **Alt+3** again adds
 the new one as a deposit of its own.
 
@@ -183,33 +198,54 @@ day; taking their last session away as the price would make it worse.
 
 ## Earnings, and where to sell
 
-**Earnings** is your Rhino sessions and nothing else. A session starts when
-the Rhino leaves the ship and ends when it comes back aboard. Every tonne it
-refines is counted, every transfer to the ship is counted, and when you sell
-what it dug up the credits go against the session that dug it — trading,
-exploration and asteroid mining never appear. Log in sitting in the Rhino and
-the session carries on. Restarting EDSMT in the middle of one does not count
-anything twice.
+**Earnings** is your Rhino mining and nothing else. A session starts with
+your **first rig down**, or the first tonne the Rhino refines if you do not
+use the rig keys, or **Start session**. It ends when **every rig is back
+up**, when the Rhino comes back aboard, or on **End session**. The Rhino
+going out on its own is not a session — it goes out to look and to fetch
+cargo too. Rigs going down again on the same body within ten minutes carry
+the same session on. Every tonne it refines is counted, every transfer to
+the ship is counted, and when you sell what it dug up the credits go against
+the session that dug it — trading, hauling, exploration and asteroid mining
+never appear. Restarting EDSMT in the middle of one does not count anything
+twice.
 
-**Multi-session** keeps one session going across trips — fill the ship, fly
-to a station, sell, come back, go again — until you untick it. **End
-session** closes the one in progress by hand.
+**Delete** on a row takes a session out — a test run, one opened by mistake.
+Press it twice on the same row; the file before is kept as
+`sessions.csv.bak`.
+
+**Pause** stops the clock — a break, the drive to a station — and credits
+per hour leaves paused time out. A rig down, a tonne refined or the Rhino
+going out starts it again by itself. **Multi-session** keeps one session
+going across trips — fill the ship, fly to a station, sell, come back, go
+again — until you untick it.
+
+**More than one SRV on the ship.** A crewmate taking the ship's other Rhino
+out is not your trip, and it coming back aboard does not end your session:
+the journal says whose SRV each one is, and EDSMT follows yours.
 
 After every transfer to the ship the overlay flashes what is in the ship and
 the room left, and the STATUS box shows the ship's and the Rhino's holds for
 the whole session.
 
-The hold line names the **SRV** and the **ship** separately. **Where to sell
-what is aboard** asks, for each commodity in the hold, where it sells best
-within the distance you choose **of the system you are in**, and shows that
-system's own price beside it — so you can see that the station two jumps away
-pays more before you fly there. The strip in the main window quotes the total
-too.
+The hold line names the **SRV** and the **ship** separately, and counts
+only what a Rhino session dug up and has not sold — cargo you bought or
+hauled is left out. It gives an estimate at the **galactic average**: the
+game's own figure, read off any commodity market you open, or EDSMT's table
+until you have (marked *). **Where to sell what is aboard** asks, for each
+commodity mined, where it sells best within the distance you choose **of the
+system you are in**, and shows three prices side by side: the galactic
+average, the best in **this system**, and the **best within** the distance —
+so you can see that the station two jumps away pays more before you fly
+there. The strip in the main window quotes the total too.
 
 **Tonnes mined per deposit.** The game writes one line in the journal for
 every tonne refined. EDSMT puts each one against the marked deposit it came
 off — the one of the same commodity first, then the nearest — and the
-selected deposit shows what it has given, by-products and all.
+selected deposit shows what it has given, by-products and all. Once you have
+worked a deposit out it says what it holds; before that, **est. holds** and
+**est. left** come from the deposits you have worked out with the same rigs
+and density, and say how many they rest on.
 
 ## Themes
 
@@ -277,9 +313,12 @@ centre without logging the signal again.
 
 ## Rigs down
 
-Press **Alt+4** — or **RIG DOWN** — as you drop each rig. One key for all of
-them: they are numbered 1 to 6 for you, and a double press on the same spot
-is not counted twice. Each rig is a numbered square on the map, the scope and
+Press the rig's own key as you drop it — **Alt+4** for rig 1 up to **Alt+9**
+for rig 6 — and the same number with **AltGr** as you pick it up. **RIG
+DOWN** in the window, or a spare key you bind in Settings, puts down the
+next free one instead. A rig already down somewhere else under that number
+moves to where you are, and a double press on the same spot is not counted
+twice. Each rig is a numbered square on the map, the scope and
 the compass tape, in the colour of the deposit it is on, with that deposit's
 commodity beside it. The STATUS box shows how many are down and how far the
 farthest one is.
@@ -289,14 +328,38 @@ you change it — the game warns at 4 km and destroys a rig at 5 km) and every
 overlay box you have open shows **TOO FAR FROM RIG**
 and its number in red, with a warning sound if you want one — or the profane one, if you tick it. It
 sounds once per trip out, not every second you are over the line, and is
-ready again once you are back well inside it. **Alt+5** (RIGS UP) forgets them when
-you have collected them; leaving the body does too. 0 turns the warning off.
+ready again once you are back well inside it. Picking each one up forgets
+it, **AltGr+0** (every rig up) forgets the lot, and leaving the body does too.
+0 turns the warning off.
 
 **The last warning.** At 4.8 km from a rig a big warning triangle takes the
 middle of the screen and the warning sounds again — whatever the first
 warning is set to, because 200 m later the rig is gone. Past 5 km in the
 Rhino it is gone: EDSMT drops it, says so, and clears every warning for it.
-**Alt+5** clears the lot by hand at any time.
+**AltGr+0** clears the lot by hand at any time.
+
+### The rig planner (beta)
+
+Off until you switch it on in **Settings → Rigs**. Drive to the deposit's
+edge, press **AltGr+2**, and drive round the edge back to where you pressed
+it: the loop closes by itself, or press the key again to close it where you
+are. EDSMT works out where up to six rigs fit inside what you drove, each at
+least the spacing apart — **78 m** by default, the community's working
+figure, which you can change — and puts a numbered pin on the scope for each
+one, in driving order. The scope closes in on the pins while you are near
+them, STATUS says which pin is next and how far, the compass tape points at
+it, and each pin goes green as a rig goes down within half the spacing of
+it.
+
+### The wing link (beta)
+
+Mining one body with friends, or crew off one ship with more than one Rhino?
+Switch on **Settings → Wing link**, and everyone types the same
+six-character code (**Make a new code** makes one up to read out). Each of
+you sees the others' Rhinos and rigs on the scope in a colour of their own,
+and dropping a rig closer than the rig spacing to a wingmate's says so. Your
+commander name goes with it only if name sharing is on. The server keeps
+nothing: it forgets you two minutes after your last beat.
 
 ---
 
@@ -341,9 +404,10 @@ line anyone can read:
 EDSMT find | HR 7280 | HR 7280 A 3 | signal 5 | Haematite | rigs 4 | amount High | density ? | 10.00100, 20.00100
 ```
 
-Paste it in Discord. Anyone running EDSMT copies it and presses **Settings →
-Your finds → Paste shared finds** — chat around it is ignored, and a find they
-already have is not added twice. A deposit's details also say where it is from
+Paste it in Discord. Anyone running EDSMT copies it, pastes it into the box in
+**Settings → Your finds** and presses **Import** (or Enter) — chat around it is
+ignored, and a find they already have is not added twice. EDSMT never reads
+the clipboard by itself: only what you paste into that box. A deposit's details also say where it is from
 the middle of its signal, so a friend can drive straight to it.
 
 ---
@@ -388,6 +452,9 @@ RHODPLUMSITE, SIGNAL 5 LOGGED.
 | **STATUS** | body, deposit count, rig total, what is next, the estimated value of the patch and how far driving the lot is — and during a Rhino session, the ship's hold against its capacity and the Rhino's |
 | **MINERAL DEPOSIT** | one card: a labelled readout of the deposit you are nearest, telemetry for the whole signal, and a signal radar with range rings and a contact per find |
 | **GUIDE** | the step you are on, the key for it and what comes next — moves on by itself as each step is done |
+
+**Text size, box by box.** Settings → In-game overlay has a text size for
+each box, 80% to 200%, on its own — bigger words without a bigger scope.
 
 The compass and the scope redraw ten times a second, so they turn with the
 Rhino. On a body at or over the gravity set in Settings (2 g to start with) a
@@ -468,7 +535,7 @@ to drive; the map is what is there.
 ## What a session was worth
 
 EDSMT reads the journal's `LaunchSRV`, `MiningRefined`, `CargoTransfer`,
-`DockSRV` and `MarketSell`, and keeps a history of each Rhino session in
+`DockSRV` and `MarketSell`, and your own rig keys, and keeps a history of each Rhino session in
 `sessions.csv` next to your finds — so it is already inside the backup.
 
 While you are playing, the telemetry strip shows the session in progress —
@@ -489,7 +556,8 @@ getting it wrong:
   goods, exploration data — is not booked at all.
 - **The drive to the station is not mining time.** A finished session keeps
   the time it was mined in, so credits per hour means credits per hour of
-  mining. In Multi-session the whole haul is the session, by design.
+  mining. In Multi-session the whole haul is the session, by design — and
+  Pause takes the drive back out.
 
 A session's row on disk is complete the whole way through, not written when
 it ends. A crash, a kill or a power cut costs the closing flag and nothing
@@ -532,7 +600,8 @@ either way.
 Please say yes. One commander cannot cover a galaxy; a few thousand can.
 
 With it on, what you map is shared and everyone else's turns up under
-**Find** — filtered by commodity, minimum rigs, how many different
+**Find**, which opens once the server has taken one deposit of your own —
+reading the shared map starts with adding to it. Find is filtered by commodity, minimum rigs, how many different
 commodities sit in one patch, and how recently anybody confirmed it.
 
 Age is part of the ranking, not a column you are left to interpret. Ring

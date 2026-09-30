@@ -98,7 +98,20 @@ check("commodities the patch notes never mentioned are accepted",
       "Haematite" in app.store.offered(loc) and "Copper" in app.store.offered(loc))
 
 print("== marking a deposit: one key, nothing set up first ==")
+# 1.10031: "you must fill all the information in to do a deposit as we been
+# getting people forgetting the density and amount". Without them it is
+# refused - and then with them it goes in.
 app.fields["commodity"].set("Haematite")
+app.mark_deposit()
+check("with rigs, amount and density blank, nothing is marked",
+      app.store.at("Ega", "Ega 1", "1") == [])
+app.fields["rigs"].set("3")
+app.fields["amount"].set("High")
+app.fields["density"].set("Medium")
+# After a mark the three boxes are cleared for the next deposit (checked in
+# test_field). The rest of this session marks deposit after deposit with
+# the same three, so they are left filled here.
+app.clear_deposit_boxes = lambda: None
 app.mark_deposit()
 found = app.store.at("Ega", "Ega 1", "1")
 check("one deposit", len(found) == 1, len(found))
@@ -106,7 +119,7 @@ check("commodity recorded", found[0]["commodity"] == "Haematite")
 check("position is absolute, not a bearing", found[0]["lat"] == "12.500000")
 check("no centre was ever needed",
       "bearing" not in found[0] and "range_m" not in found[0])
-check("rigs left blank - unknown until you get there", found[0]["rigs"] == "")
+check("rigs recorded as typed", found[0]["rigs"] == "3", found[0]["rigs"])
 check("temperature carried", found[0]["temperature_k"] == "214.5")
 check("cmdr carried", found[0]["cmdr"] == "Jameson")
 check("it says what it did", any("Haematite" in m for m in messages), messages[-1:])
@@ -164,7 +177,7 @@ app.fields["commodity"].set("")
 
 print("== a commodity nobody listed is still recorded ==")
 app.fields["commodity"].set("")
-app.fields["rigs"].set("")
+app.fields["rigs"].set("2")
 app.fields["commodity"].set("Unobtainium")
 app.mark_deposit()
 # Standing on the Olivine just marked: another commodity on the same spot
@@ -1019,6 +1032,9 @@ if 'if tag == "grounds":' in _app_src and "self.take_grounds(ok, message)" in _a
     _routed.add("grounds")
 if 'if tag == "landing":' in _app_src and "self.take_landing(ok, message)" in _app_src:
     _routed.add("landing")
+# The wing link's beats come back to the app, which puts the wing on the scope.
+if 'if tag == "wing":' in _app_src and "self.take_wing(ok, message)" in _app_src:
+    _routed.add("wing")
 check("no community client tag goes unrouted", not (_tags - _routed),
       sorted(_tags - _routed))
 check("and the window switches on the same list the app routes on",
@@ -2189,7 +2205,9 @@ check("and the body radius, for the distance maths",
 
 print("== F10 fills in everything the game knows, unasked ==")
 af.fields["commodity"].set("Magnesite")
-af.fields["rigs"].set("")
+af.fields["rigs"].set("2")
+af.fields["amount"].set("High")
+af.fields["density"].set("Low")
 af.refresh_locations = lambda: None
 af.refresh_deposits = lambda: None
 af.refresh_commodities = lambda: None
@@ -2710,7 +2728,9 @@ check("pressing it again with nothing new says so, and changes nothing",
 
 # MARK on top of it asks first.
 said.clear()
-up.fields["amount"].set("Medium")
+up.fields["amount"].set("Medium"); up.fields["density"].set("Low")
+up.fields["rigs"].set("3")
+up.clear_deposit_boxes = lambda: None
 up.mark_deposit()
 check("MARK on a deposit already marked asks rather than duplicating",
       len(up.store.at("HR 7280", "HR 7280 A 3")) == 1

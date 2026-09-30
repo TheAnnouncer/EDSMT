@@ -96,7 +96,8 @@ Worth knowing before you decide whether any of the above matters.
   gap, and the build is not yet signed — see above. If you would rather
   fetch every build by hand, switch *Download new versions by myself* off in
   Settings and the button just downloads on request.
-- **Global hotkeys.** Left Alt+1 to Alt+6 by default, every one rebindable.
+- **Global hotkeys.** Left Alt and the number row, and the same numbers with
+  AltGr (Ctrl+Alt), by default - every one rebindable.
   They are registered with Windows so they work with the game in front. They
   capture those key combinations only, not what you type.
 - **Your Inara key and staff token** are kept in `settings.json` in your own
@@ -112,6 +113,13 @@ Worth knowing before you decide whether any of the above matters.
   what you record, plus the timestamp. **Your CMDR name is optional.**
 - A deposit is a position, a commodity and a date. No personal data is
   collected, there is no account and there is no sign-up.
+- **The wing link (beta) is off unless you switch it on and type a code.**
+  With it on, every few seconds: your system, body, position on the surface,
+  heading, whether you are in the SRV and where your rigs are - and your CMDR
+  name only if name sharing is on. It goes to the community server, which
+  hands it to whoever else has typed the same code and keeps it in memory
+  only: nothing is written to disk, and you are forgotten two minutes after
+  your last beat.
 - **Inara reporting is off unless you paste your own Inara API key.** That key
   is yours, is stored in `settings.json` on your machine, and is sent to
   inara.cz and nowhere else.

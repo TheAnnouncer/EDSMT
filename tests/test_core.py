@@ -664,8 +664,17 @@ check("and a tonne refined with the Rhino still aboard - the ship mining "
 
 log(dict(RHINO_OUT, timestamp=at(5)))
 lines = tick()
-check("the Rhino leaving the ship starts the session",
-      "Rhino session started" in lines, lines)
+# 1.10031: "The earnings tab is picking up stuff to do with normal hauling
+# lets not do that lets have a start session button or a auto start on
+# first rig deployment." The Rhino goes out to look and to fetch cargo too.
+check("the Rhino leaving the ship is not a session on its own",
+      books.current is None and not any(lines), (books.sessions, lines))
+
+log(*(refined(10, 1, "Rhodplumsite", 3) + refined(10, 2, "Ruby", 2)
+      + refined(11, 0, "Rhodplumsite", 1)))
+lines = tick()
+check("the first tonne refined in the Rhino starts the session",
+      "Rhino session started - first tonne refined" in lines, lines)
 check("on the body the journal named",
       (books.current["system"], books.current["body"]) == ("Ega", "Ega 1"),
       books.current)
@@ -674,14 +683,14 @@ check("crediting the commander the journal named, never one typed in",
 check("it is a Rhino session", books.current["kind"] == S.RHINO)
 check("and it is on disk the moment it opens, not when it closes",
       os.path.exists(books.path))
-
-log(*(refined(10, 1, "Rhodplumsite", 3) + refined(10, 2, "Ruby", 2)
-      + refined(11, 0, "Rhodplumsite", 1)))
-lines = tick()
 check("every tonne refined in the Rhino is counted, three in one second "
       "included", S.unpack_counts(books.current["mined"])
       == {"Rhodplumsite": 4, "Ruby": 2}, books.current["mined"])
-check("and none of them puts a line on screen", not any(lines), lines)
+check("and none but the first puts a line on screen",
+      len([line for line in lines if line]) == 1, lines)
+check("it says what opened it, and the Rhino being out is its first trip",
+      books.current["started_by"] == "refined" and books.current["trips"] == "1",
+      books.current)
 
 log({"timestamp": at(20), "event": "CargoTransfer", "Transfers": [
     {"Type": "rhodplumsite", "Count": 4, "Direction": "toship"},
@@ -705,8 +714,8 @@ lines = tick()
 check("the Rhino coming back aboard ends the session",
       "Rhino session done" in lines and books.current is None, lines)
 done = books.sessions[-1]
-check("it ran from the launch to the dock",
-      (done["started"], done["ended"]) == (at(5), at(30)),
+check("it ran from the first tonne to the dock",
+      (done["started"][:16], done["ended"]) == (at(10)[:16], at(30)),
       (done["started"], done["ended"]))
 check("with every tonne in it",
       S.unpack_counts(done["mined"]) == {"Rhodplumsite": 9, "Ruby": 2},
@@ -753,7 +762,8 @@ check("the station it sold at is on the row",
 check("the drive to the station is not mining time: it still ended at the "
       "dock", done["ended"] == at(30), done["ended"])
 check("so the rate is over the mining, ready to read in a spreadsheet",
-      abs(int(done["cr_hr"]) - 1000000 / (25 / 60.0)) <= 1, done["cr_hr"])
+      abs(int(done["cr_hr"]) - 1000000 / ((20 * 60 - 1) / 3600.0)) <= 1,
+      done["cr_hr"])
 
 print("== the files the game rewrites can be caught half-written ==")
 hold("Ship", at(54), rhodplumsite=4, ruby=2)
@@ -873,7 +883,8 @@ def saw(ledger, event, **note):
 
 
 saw(multi, "SRVLaunch", when=at(0), rhino=True, system="Ega", body="Ega 1")
-saw(multi, "Refined", when=at(1), commodity="Painite", n=1)
+saw(multi, "Refined", when=at(1), commodity="Painite", n=1, system="Ega",
+    body="Ega 1")
 saw(multi, "SRVDock", when=at(10))
 check("with the box ticked, the Rhino coming aboard does not end it",
       multi.current is not None, multi.sessions)
@@ -898,14 +909,22 @@ policy = S.Earnings(os.path.join(TMP, "policy"))
 saw(policy, "SRVLaunch", when=at(0), rhino=False, system="Ega", body="Ega 1")
 check("a Scarab going out is not a Rhino session", policy.current is None)
 saw(policy, "SRVLaunch", when=at(1), rhino=True, system="Ega", body="Ega 1")
+check("nor is the Rhino going out, on its own", policy.current is None)
+check("the first rig down is", saw(policy, "RigDown", when=at(1), rig=1,
+                                   system="Ega", body="Ega 1")
+      == "Rhino session started - first rig down"
+      and policy.current["started_by"] == "rigs")
 first = policy.current
 saw(policy, "SRVLaunch", when=at(2), rhino=True, system="Ega", body="Ega 1")
 check("a second launch on the same body with the first still open carries "
-      "it on", policy.current is first and first["trips"] == "2")
+      "it on", policy.current is first and first["trips"] == "2", first)
 saw(policy, "SRVLaunch", when=at(3), rhino=True, system="Ega", body="Ega 5")
-check("on another body it banks the last one and opens a new one",
-      len(policy.sessions) == 2 and policy.current is not first
-      and first["closed"], policy.sessions)
+check("out on another body it banks the last one and waits for the next "
+      "rig or tonne", policy.current is None and first["closed"]
+      and first["ended_by"] == "moved", policy.sessions)
+saw(policy, "RigDown", when=at(3), rig=1, system="Ega", body="Ega 5")
+check("which opens the next",
+      len(policy.sessions) == 2 and policy.current is not first, policy.sessions)
 saw(policy, "SRVLost", when=at(4))
 check("losing the Rhino ends it too, and says so",
       policy.current is None and "lost" in policy.sessions[-1]["notes"],
@@ -936,10 +955,10 @@ check("and nothing is sold twice: only the one tonne left is booked",
 
 print("== a session that goes quiet is over, and ended when it went quiet ==")
 quiet = S.Earnings(os.path.join(TMP, "quiet"))
-saw(quiet, "SRVLaunch", when="2026-09-10T10:00:00Z", rhino=True,
+saw(quiet, "RigDown", when="2026-09-10T10:00:00Z", rig=1,
     system="Ega", body="Ega 1")
 abandoned = quiet.current
-saw(quiet, "SRVLaunch", when="2026-09-17T10:00:00Z", rhino=True,
+saw(quiet, "RigDown", when="2026-09-17T10:00:00Z", rig=1,
     system="Ega", body="Ega 1")
 check("a week later, the old session is not still collecting",
       abandoned["closed"] != "" and quiet.current is not abandoned)
@@ -1001,7 +1020,7 @@ tidied = S.Earnings(stranded)
 check("only the last run can still be running",
       [bool(r["closed"]) for r in tidied.sessions] == [True, False],
       [r["closed"] for r in tidied.sessions])
-saw(tidied, "SRVLaunch", when=S.utc_now(), rhino=True, system="Ega",
+saw(tidied, "RigDown", when=S.utc_now(), rig=1, system="Ega",
     body="Ega 1")
 check("and a run an older build left open is closed, not carried on, when "
       "the Rhino next goes out", tidied.sessions[1]["closed"]

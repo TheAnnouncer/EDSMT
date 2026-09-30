@@ -27,6 +27,9 @@ def check(label, cond, extra=""):
 
 KEYS = {a: A.key_text(A.DEFAULT_SETTINGS["hotkey_" + a])
         for a in ("location", "border", "deposit", "rigs", "allup")}
+# 1.10031: one key per rig. The guide names the run of them.
+KEYS["rigs"] = A.OV.rig_keys_words(A.DEFAULT_SETTINGS)
+KEYS["rigsup"] = A.OV.rig_keys_words(A.DEFAULT_SETTINGS, up=True)
 
 print("== the guide follows the work, step by step ==")
 # And now from the very start: "the guide should say jump honk and then click
@@ -40,7 +43,7 @@ walk = [({}, "JUMP IN AND HONK"),
         ({"landed": True, "rhino": True}, "LOG THE CENTRE  Alt+1"),
         ({"rhino": True, "centre": True}, "SET THE BORDER  Alt+2"),
         ({"centre": True, "border": True}, "MARK A DEPOSIT  Alt+3"),
-        ({"border": True, "deposit": True}, "PLACE RIGS  Alt+4"),
+        ({"border": True, "deposit": True}, "PLACE RIGS  Alt+4-9"),
         ({"deposit": True, "rigs": True, "marked": 2, "signal_no": "5"},
          "NEXT DEPOSIT")]
 for number, (facts, title) in enumerate(walk, start=1):
@@ -51,7 +54,8 @@ card = A.guide_step({"deposit": True, "rigs": True, "marked": 2,
                      "signal_no": "5"}, KEYS)
 check("the last step repeats: the next deposit, with its keys",
       "2 marked at signal 5" in card["detail"] and "Alt+3" in card["detail"]
-      and "Alt+4" in card["detail"] and "Alt+5" in card["detail"], card)
+      and "Alt+4-9" in card["detail"] and A.key_text("CTRL+ALT+0") in card["detail"]
+      and A.key_text("CTRL+ALT+4") in card["detail"], card)
 card = A.guide_step({"centre": True, "deposit": True}, KEYS)
 check("a skipped border does not hold the guide back",
       card["title"].startswith("PLACE RIGS"), card)
@@ -165,7 +169,7 @@ app.store.add_deposit(system=SYS, body=BODY, location="5", commodity="Rhodplumsi
                       rigs="3", amount="High", density="Low",
                       lat="12.500100", lon="-45.500100")
 check("logged and marked, the guide is on the rigs",
-      app.guide_card()["title"] == "PLACE RIGS  Alt+4", app.guide_card())
+      app.guide_card()["title"] == "PLACE RIGS  Alt+4-9", app.guide_card())
 app.settings["overlay_show_guide"] = False
 check("switched off, there is no card", app.guide_card() is None)
 app.settings["overlay_show_guide"] = True

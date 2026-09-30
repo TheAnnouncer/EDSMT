@@ -105,6 +105,9 @@ rem ---------------------------------------------------------------------
 rem  4. Tests. Nothing ships that has not passed.
 rem ---------------------------------------------------------------------
 echo   [4/6] Running the tests...
+echo         Test windows open and close by themselves for a minute or
+echo         two. Do not type or click until this step says OK - a key
+echo         pressed now lands in one of them and fails a check.
 "%BPY%" tests\run_all.py
 if errorlevel 1 goto TESTSFAILED
 echo         OK.

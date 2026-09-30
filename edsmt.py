@@ -24,6 +24,7 @@ import math
 import queue
 import inspect
 import ctypes
+import secrets
 import threading
 import time
 import tkinter as tk
@@ -36,6 +37,7 @@ import journal as JN
 import edonline as EDO
 import overlay as OV
 import coverage as CV
+import rigplan as RP
 
 ctk.set_appearance_mode("Dark")
 
@@ -226,6 +228,39 @@ COPY_COLUMN = 0
 TOP_READOUT_ROOM = 420
 # Two presses of RIG DOWN this close together are one rig pressed twice.
 RIG_SAME_M = 8.0
+# The rig planner (beta). A rig within PLAN_PIN_DONE_M of a pin is on it;
+# the scope closes in on the plan while any pin is within PLAN_NEAR_M; a
+# trace not closed in PLAN_TRACE_MAX_S is given up on.
+PLAN_PIN_DONE_M = 20.0
+PLAN_NEAR_M = 600.0
+PLAN_TRACE_MAX_S = 20 * 60
+PLAN_SPACING_MIN_M = 20.0
+PLAN_SPACING_MAX_M = 500.0
+# The wing link (beta): a beat every WING_BEAT_S; a wingmate not heard from
+# for WING_STALE_S is taken off the scope. A code is six characters; the
+# ones EDSMT makes up leave out I, O, 0 and 1, which are read out wrong.
+WING_BEAT_S = 4.0
+# A second press on the same Earnings row inside this long deletes it.
+DELETE_CONFIRM_S = 6
+# The demand a Community Goal station shows: a placeholder, not a market.
+PLACEHOLDER_DEMAND = 999999
+WING_STALE_S = 30.0
+WING_CODE_RE = re.compile(r"^[A-Z2-9]{6}$")
+WING_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _same_place(a, b):
+    return str(a or "").strip().lower() == str(b or "").strip().lower() != ""
+
+
+def new_wing_code():
+    return "".join(secrets.choice(WING_CODE_CHARS) for _ in range(6))
+
+
+def clean_wing_code(text):
+    """A wing code as typed - "abc 234" - as the server takes it, or ""."""
+    code = re.sub(r"[^A-Za-z0-9]", "", str(text or "")).upper()
+    return code if WING_CODE_RE.match(code) else ""
 # The game warns at 4 km from the Rhino and destroys a rig at 5 km - tested
 # twice to the metre on 4.4.1.1 by the community field guide, and what the
 # testers see. The last warning goes up 200 m short of the loss; past the
@@ -548,11 +583,14 @@ DEFAULT_SETTINGS = {
     "share_market_prices": True,
     "journal_dir": "",
     # The keys are Left Alt + 1 onwards on the number row, in the order the
-    # work is done on a signal: centre, border, deposit, rig down, rigs up,
-    # update. The number is the step. Function keys were dropped: too many
-    # of them already do something in the game or in a graphics overlay.
-    # Windows cannot tell the two Alt keys apart when it hands out a key
-    # like this, so either Alt works. The table is OV.WORK_KEYS.
+    # work is done on a signal: centre, border, deposit, then Alt+4 to Alt+9
+    # for rigs 1 to 6. The same number with AltGr (Ctrl+Alt) undoes it:
+    # AltGr+3 updates the deposit, AltGr+4 to 9 pick rigs 1 to 6 up, AltGr+0
+    # is every rig up. Function keys were dropped: too many of them already
+    # do something in the game or in a graphics overlay. Windows cannot tell
+    # the two Alt keys apart when it hands out a key like this - which is
+    # why "up" is Ctrl+Alt, the key a UK or European AltGr sends, and not
+    # the right Alt on its own. The table is OV.WORK_KEYS.
     "hotkey_location": OV.WORK_KEYS["hotkey_location"],
     "hotkey_deposit": OV.WORK_KEYS["hotkey_deposit"],
     # Arranging the overlay is something you do with the game in front of
@@ -568,16 +606,24 @@ DEFAULT_SETTINGS = {
     # centre without logging again. The border is the second thing done.
     "hotkey_centre": "",
     "hotkey_border": OV.WORK_KEYS["hotkey_border"],
-    # A rig down here, one press per rig: numbered, drawn on the scope and
-    # the compass with the commodity it is on, and the SRV is warned once it
-    # is further away than rig_warn_m.
+    # The next free rig down here, whichever number that is. Blank as it
+    # ships, now every rig has a key of its own; there for anyone who would
+    # rather spend one key than six.
     "hotkey_rigs": OV.WORK_KEYS["hotkey_rigs"],
     # All the rigs back up.
     "hotkey_allup": OV.WORK_KEYS["hotkey_allup"],
+    # The rig planner (beta): drive the deposit's edge after this key and
+    # the pins for the rigs come out of it.
+    "hotkey_trace": OV.WORK_KEYS["hotkey_trace"],
+    # Rig 1 to 6 down (Alt+4 to Alt+9) and up again (AltGr+4 to AltGr+9):
+    # numbered, drawn on the scope and the compass with the commodity each
+    # is on, and the SRV is warned once it is further away than rig_warn_m.
+    **{name: OV.WORK_KEYS[name] for name in OV.WORK_KEYS
+       if name.startswith("hotkey_rig") and name != "hotkey_rigs"},
     # Which set of default keys this settings file has been given - see
     # upgrade_hotkeys. A key still on an older default moves with the
     # defaults, once; anything set by hand is left alone.
-    "hotkey_defaults": 4,
+    "hotkey_defaults": 5,
     # The game says "approaching mining rig maximum operational range" at
     # about 4 km, and a rig drops off the SRV's Contacts at about 2.9 km -
     # both measured in the game. 3.5 km warns before the game does.
@@ -638,6 +684,31 @@ DEFAULT_SETTINGS = {
     # default: it is how a first-timer learns the keys, and one switch turns
     # it off.
     "overlay_show_guide": True,
+    # Set once the guide has been followed through to its last step - signal,
+    # deposit, rigs. It then switches itself off; turned back on by hand in
+    # Settings, it stays on.
+    "guide_done": False,
+    # Set the first time the server takes a deposit of this commander's own.
+    # Find - reading the shared map - opens then. See find_unlocked.
+    "find_unlocked": False,
+    # The rig planner (beta): drive a deposit's edge once and get a pin for
+    # each rig where they fit. Off until switched on in Settings - a beta
+    # does not turn up in anybody's cockpit uninvited, and its key is not
+    # registered while it is off. The spacing is the community's working
+    # figure for two rigs, measured in the field, never published.
+    "rig_planner": False,
+    "rig_spacing_m": 78,
+    # The wing link (beta): commanders on one body see each other's Rhinos
+    # and rigs on the scope. Off until switched on; everyone in the wing
+    # types the same six-character code. wing_member is this install's own
+    # slot in a wing, made up the first time it is needed and never shown.
+    "wing_link": False,
+    "wing_code": "",
+    "wing_member": "",
+    # Each overlay box's text as a percentage, on its own and apart from the
+    # box's size: a tester wanted bigger words without a bigger scope.
+    **{"overlay_text_%s" % _box: 100 for _box in (
+        OV.STRIP, OV.RADAR, OV.TARGETS, OV.STATUS, OV.DEPOSIT, OV.GUIDE)},
     # Where each panel sits, as FRACTIONS of the screen - never pixels.
     # Written by dragging, not by hand: a pixel position saved on a 4K
     # monitor is off the side of a 1080p one, and the commander who swaps
@@ -897,18 +968,26 @@ def upgrade_layout(merged, saved):
     return merged
 
 
-# The keys, in the order the work is done: Left Alt + 1 onwards.
+# The keys, in the order the work is done: Left Alt + 1 onwards, then the
+# rigs, then the AltGr undo of each.
 KEY_ORDER = tuple((name, OV.WORK_KEYS[name]) for name in (
-    "hotkey_location", "hotkey_border", "hotkey_deposit",
-    "hotkey_rigs", "hotkey_allup", "hotkey_update"))
-KEYS_LEVEL = 4
+    ("hotkey_location", "hotkey_border", "hotkey_deposit")
+    + tuple("hotkey_rig%d" % n for n in range(1, OV.RIG_SLOTS + 1))
+    + ("hotkey_update", "hotkey_trace")
+    + tuple("hotkey_rig%dup" % n for n in range(1, OV.RIG_SLOTS + 1))
+    + ("hotkey_allup", "hotkey_rigs")))
+KEYS_LEVEL = 5
 # What each of those was given by the layout a settings file is still on.
 # A file holding its own layout's default never had that key set by hand,
 # so it moves with the defaults; a file holding anything else keeps it.
 # Per layout, not one list: on the Alt+F layout a blank UPDATE is a key
 # somebody cleared, while before it a blank UPDATE was simply the default.
+# An action a layout did not have at all is new, and takes its default -
+# unless that key is already on something set by hand.
 #   1-2  F9 / F10 (and a test build's F8 / F7)
 #   3    Left Alt + F1 onwards, F4 skipped - a 1.10029 test build
+#   4    Alt+1 to Alt+6: one RIG DOWN key numbering each rig, Alt+5 all up,
+#        Alt+6 update - 1.10029 and 1.10030
 OLD_DEFAULT_KEYS = {
     1: {"hotkey_location": ("F9",), "hotkey_deposit": ("F10",),
         "hotkey_border": ("", "F8"), "hotkey_rigs": ("", "F7"),
@@ -916,6 +995,9 @@ OLD_DEFAULT_KEYS = {
     3: {"hotkey_location": ("ALT+F1",), "hotkey_border": ("ALT+F2",),
         "hotkey_deposit": ("ALT+F3",), "hotkey_rigs": ("ALT+F5",),
         "hotkey_allup": ("ALT+F6",), "hotkey_update": ("ALT+F7",)},
+    4: {"hotkey_location": ("ALT+1",), "hotkey_border": ("ALT+2",),
+        "hotkey_deposit": ("ALT+3",), "hotkey_rigs": ("ALT+4",),
+        "hotkey_allup": ("ALT+5",), "hotkey_update": ("ALT+6",)},
 }
 OLD_DEFAULT_KEYS[2] = OLD_DEFAULT_KEYS[1]
 # 1000 m was the rig warning's default until 1.10029, and a guess. A file
@@ -924,7 +1006,7 @@ OLD_RIG_WARN_M = 1000
 
 
 def upgrade_hotkeys(merged, saved):
-    """Move a settings file's keys to the Alt+1 layout, once.
+    """Move a settings file's keys to the current layout, once.
 
     Only a key still on a default it shipped with moves, and never onto a
     key the commander has put something else on - two actions on one key
@@ -943,8 +1025,15 @@ def upgrade_hotkeys(merged, saved):
         return str(value or "").strip().upper()
 
     before = OLD_DEFAULT_KEYS.get(level, OLD_DEFAULT_KEYS[1])
-    movable = {name for name, _key in KEY_ORDER
-               if norm(saved.get(name)) in before[name]}
+
+    def on_default(name):
+        if name in before:
+            return norm(saved.get(name)) in before[name]
+        # An action this layout never had: new, unless somebody has already
+        # written a key for it into the file by hand.
+        return not norm(saved.get(name))
+
+    movable = {name for name, _key in KEY_ORDER if on_default(name)}
     kept = {norm(value) for name, value in saved.items()
             if name.startswith("hotkey_") and name != "hotkey_defaults"
             and name not in movable and norm(value)}
@@ -952,20 +1041,23 @@ def upgrade_hotkeys(merged, saved):
     for name, key in KEY_ORDER:
         if name not in movable:
             continue
-        if key in kept:
+        if key and key in kept:
             # Its new key is taken by something set by hand: leave it on
-            # whatever it had, which still works.
+            # whatever it had, which still works - or blank, if it is new.
             merged[name] = str(saved.get(name) or "")
             continue
         merged[name] = key
-        kept.add(key)
-        moved.append(key)
+        if key:
+            kept.add(key)
+            moved.append(key)
     if moved and saved:
         SETTINGS_NOTICE.append(
-            "The keys are now Left Alt and the number row, in the order you "
-            "work a signal: Alt+1 log the signal and centre, Alt+2 border, "
-            "Alt+3 mark a deposit, Alt+4 a rig down, Alt+5 rigs up, Alt+6 "
-            "update a deposit. Settings has them.")
+            "New keys: Alt+4 to Alt+9 put rigs 1 to 6 down, and %s to %s "
+            "pick each one up. %s updates the deposit you are on, %s is "
+            "every rig up. Alt+1 to Alt+3 are unchanged. Keys you set "
+            "yourself were kept. Settings has them all."
+            % (key_text("CTRL+ALT+4"), key_text("CTRL+ALT+9"),
+               key_text("CTRL+ALT+3"), key_text("CTRL+ALT+0")))
     try:
         if float(saved.get("rig_warn_m", OLD_RIG_WARN_M)) == OLD_RIG_WARN_M:
             merged["rig_warn_m"] = DEFAULT_SETTINGS["rig_warn_m"]
@@ -999,12 +1091,15 @@ def worked_out_age(deposit, now=None):
                               else "%d days ago" % days)
 
 
-def tonnes_lines(deposit):
+def tonnes_lines(deposit, peers=None):
     """What a deposit has given, as lines for its details.
 
     Its own commodity is the number - by-products come off it too and are
     listed beside, not added in. Once it has been worked out, what it gave
-    each time says what it holds, and so roughly what is left now."""
+    each time says what it holds, and so roughly what is left now. Before
+    that, `peers` - the commander's other deposits - give an estimate from
+    the ones with the same rigs and density that were worked out (1.10032),
+    marked as an estimate and saying how many it rests on."""
     own, others = SV.own_tonnes(deposit)
     held = SV.cycle_tonnes(deposit)
     lines = []
@@ -1024,6 +1119,20 @@ def tonnes_lines(deposit):
             left = ("%dt" % left_high) if left_low == left_high else \
                 ("%d-%dt" % (left_low, left_high))
             lines.append("left: about %s" % left)
+    elif peers and not SV.is_depleted(deposit.get("amount")):
+        guess = SV.estimate_tonnes(peers, deposit.get("rigs"),
+                                   deposit.get("density"), exclude=deposit)
+        if guess:
+            low, high, count = guess
+            size = ("%dt" % high) if low == high else ("%d-%dt" % (low, high))
+            lines.append("est. holds %s - from %d worked out with %s rigs, %s"
+                         % (size, count, deposit.get("rigs"),
+                            deposit.get("density")))
+            if own:
+                left_low, left_high = max(0, low - own), max(0, high - own)
+                left = ("%dt" % left_high) if left_low == left_high else \
+                    ("%d-%dt" % (left_low, left_high))
+                lines.append("est. left: %s" % left)
     return lines
 
 
@@ -1131,14 +1240,18 @@ def bound_key(settings, action, button=""):
     return ("the %s button" % button) if button else "its button"
 
 
+def altgr_word():
+    """What to call the "undo" modifier on this keyboard: AltGr where there
+    is one, Ctrl+Alt where there is not (a US layout's right Alt is plain
+    Alt, and would drop a rig rather than pick it up)."""
+    return "AltGr" if OV.altgr_layout() else "Ctrl+Alt"
+
+
 def key_text(binding):
-    """"ALT+1" as a person writes it: "Alt+1". Blank stays blank."""
-    parts = [part for part in str(binding or "").split("+") if part]
-    if not parts:
-        return ""
-    names = {"ALT": "Alt", "CTRL": "Ctrl", "SHIFT": "Shift", "WIN": "Win"}
-    return "+".join(names.get(part.upper(), part) for part in parts[:-1]) + \
-        ("+" if len(parts) > 1 else "") + parts[-1]
+    """"ALT+1" as a person writes it: "Alt+1"; "CTRL+ALT+4" is "AltGr+4" on
+    a keyboard with an AltGr key. Blank stays blank. One spelling, shared
+    with the overlay: OV.key_words."""
+    return OV.key_words(binding)
 
 
 def save_settings(data):
@@ -1572,8 +1685,8 @@ def take_share_lines(store, text):
 
 def share_summary(result):
     if not (result["taken"] or result["duplicates"] or result["unreadable"]):
-        return ("Nothing to add - copy one or more lines that start "
-                "\"%s\" first." % SHARE_TAG)
+        return ("Nothing to add - paste one or more lines that start "
+                "\"%s\" into the box first." % SHARE_TAG)
     bits = ["Added %d find(s)" % result["taken"]]
     if result["duplicates"]:
         bits.append("%d already here, left alone" % result["duplicates"])
@@ -1629,6 +1742,12 @@ VK.update({
     ";": 0xBA, "=": 0xBB, ",": 0xBC, "-": 0xBD, ".": 0xBE, "/": 0xBF,
     "`": 0xC0, "[": 0xDB, "\\": 0xDC, "]": 0xDD, "'": 0xDE,
 })
+
+# Virtual key code back to its name, for a key Tk reports by the character
+# a layout made of it (AltGr+4 is the euro sign on a UK keyboard). Letters,
+# digits and function keys only - the unambiguous ones.
+VK_NAMES = {code: name for name, code in VK.items()
+            if re.match(r"^([A-Z0-9]|F\d+)$", name)}
 
 # RegisterHotKey's modifier bits.
 MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN = 0x0001, 0x0002, 0x0004, 0x0008
@@ -1703,9 +1822,16 @@ def binding_from_event(event):
     if keysym.lower() in BARE_MODIFIERS:
         return None
     name = KEYSYMS.get(keysym.lower(), keysym.upper())
-    if name not in VK:
-        return None
     state = int(getattr(event, "state", 0) or 0)
+    if name not in VK:
+        # AltGr+4 on a UK keyboard arrives as the euro sign, not as 4: the
+        # layout has already turned the key into the character it types.
+        # On Windows Tk's keycode is the virtual key, which is the key
+        # itself - so read that instead, and AltGr keys can be bound.
+        name = VK_NAMES.get(int(getattr(event, "keycode", 0) or 0)) \
+            if os.name == "nt" else None
+        if not name:
+            return None
     bits = 0
     if state & 0x0004: bits |= MOD_CONTROL
     if state & 0x0001: bits |= MOD_SHIFT
@@ -2370,6 +2496,14 @@ def is_high_g(gravity):
         return False
 
 
+def _join_words(words):
+    """"rigs", "amount", "density" -> "rigs, amount and density"."""
+    words = [str(w) for w in words if str(w)]
+    if len(words) <= 1:
+        return "".join(words)
+    return ", ".join(words[:-1]) + " and " + words[-1]
+
+
 def _metres(value):
     try:
         metres = float(value)
@@ -2609,10 +2743,16 @@ class EDSMT(ctk.CTk):
         which would be a lie about a key they deliberately cleared.
         """
         actions = ("deposit", "location", "lock", "update", "centre",
-                   "border", "rigs", "allup")
+                   "border", "rigs", "allup", "trace") \
+            + tuple("rig%d" % n for n in range(1, MAX_RIGS + 1)) \
+            + tuple("rig%dup" % n for n in range(1, MAX_RIGS + 1))
         wanted = {action: str(data.get("hotkey_" + action,
                                        DEFAULT_SETTINGS["hotkey_" + action]) or "")
                   for action in actions}
+        # The rig planner is a beta and off by default. Its key is left
+        # free for other programs until somebody switches it on.
+        if not data.get("rig_planner"):
+            wanted["trace"] = ""
         return {action: key for action, key in wanted.items() if key.strip()}
 
     def toggle_overlay_lock(self):
@@ -2691,7 +2831,8 @@ class EDSMT(ctk.CTk):
                           rigs=rigs, guide=self.guide_card(),
                           target=attr(self, "_guide_to", None), only=only,
                           cargo=self.overlay_cargo(),
-                          hazard=self.overlay_hazard())
+                          hazard=self.overlay_hazard(),
+                          rigplan=self.plan_marks(), wing=self.wing_marks())
 
     def guide_facts(self):
         """What the guide can see has been done, on the signal being worked."""
@@ -2757,16 +2898,50 @@ class EDSMT(ctk.CTk):
         return facts
 
     def guide_card(self):
-        """The step for the GUIDE box, or None with the guide switched off."""
+        """The step for the GUIDE box, or None with the guide switched off.
+
+        The guide is for the first run. Once a commander has been through
+        it - signal logged, deposit marked, rigs down - it has done its job:
+        it shows its last card for GUIDE_FAREWELL_S so the ending is seen,
+        then switches itself off. Settings turns it back on, and a guide
+        turned back on by hand stays on."""
         settings = attr(self, "settings", None) or {}
+        farewell = attr(self, "_guide_farewell", None)
+        if farewell and time.time() < farewell[0]:
+            return farewell[1]
         if not settings.get("overlay_show_guide", True):
             return None
         try:
             keys = {action: key_text(settings.get("hotkey_" + action, ""))
                     for action in ("location", "border", "deposit", "rigs", "allup")}
-            return guide_step(self.guide_facts(), keys)
+            keys["rigs"] = OV.rig_keys_words(settings) or keys["rigs"]
+            keys["rigsup"] = OV.rig_keys_words(settings, up=True)
+            card = guide_step(self.guide_facts(), keys)
         except Exception:
             return None
+        if card and card["step"] == card["total"] and \
+                not settings.get("guide_done"):
+            self.retire_guide(card)
+        return card
+
+    def retire_guide(self, card=None):
+        """The first full run is done: the guide says so and bows out."""
+        settings = attr(self, "settings", None)
+        if not isinstance(settings, dict):
+            return False
+        settings["guide_done"] = True
+        settings["overlay_show_guide"] = False
+        save_settings(settings)
+        if card:
+            card = dict(card)
+            card["detail"] = (card.get("detail", "") + "  First run done - "
+                              "the guide switches itself off now. Settings "
+                              "turns it back on.").strip()
+            self._guide_farewell = (time.time() + GUIDE_FAREWELL_S, card)
+        self.say("That is the whole run: signal, deposit, rigs. The guide "
+                 "switches itself off now - Settings > Basic settings turns "
+                 "it back on.", GREEN)
+        return True
 
     def site_offset(self, system, body, location, centre, radius_m):
         """Metres east and north from the commander to the signal centre.
@@ -3267,7 +3442,8 @@ class EDSMT(ctk.CTk):
 
         labels = {"signal": ("LOG SIGNAL", key_text(key("hotkey_location"))),
                   "border": ("BORDER", key_text(key("hotkey_border"))),
-                  "rigs": ("RIG DOWN", key_text(key("hotkey_rigs"))),
+                  "rigs": ("RIG DOWN", OV.rig_keys_words(settings)
+                           or key_text(key("hotkey_rigs"))),
                   "allup": ("RIGS UP", key_text(key("hotkey_allup")))}
         for name, (words, bound) in labels.items():
             button = pad.get(name)
@@ -3335,6 +3511,10 @@ class EDSMT(ctk.CTk):
             self.collect_results()
             self.follow_land()
             self.follow_update()
+            try:
+                self.wing_tick()
+            except Exception as exc:
+                self.trouble("Wing link", exc)
             self.after(700, self.tick)
 
     def fast_tick(self):
@@ -3359,9 +3539,21 @@ class EDSMT(ctk.CTk):
         except Exception as exc:
             self.trouble("Status", exc)
         try:
+            if moved:
+                self.follow_trace(attr(self, "game"))
+        except Exception as exc:
+            self.trouble("Rig planner", exc)
+        try:
             self.run_hotkeys()
         except Exception as exc:
             self.trouble("Hotkey", exc)
+        # A search answered by the server waited for the next slow tick -
+        # up to 0.7 s after it had arrived, behind a journal read and a map
+        # redraw. Collecting is a non-blocking look at a queue.
+        try:
+            self.collect_results()
+        except Exception as exc:
+            self.trouble("Results", exc)
         try:
             if moved:
                 self.overlay_fast()
@@ -3390,7 +3582,14 @@ class EDSMT(ctk.CTk):
             "rigs": ("Rigs down", self.drop_rigs),
             "allup": ("Rigs up", self.rigs_up),
             "deposit": ("Mark deposit", self.mark_deposit),
+            "trace": ("Rig planner", self.trace_key),
         }
+        # Each rig its own key: rig 1 to 6 down, and up again.
+        for n in range(1, MAX_RIGS + 1):
+            table["rig%d" % n] = ("Rig %d down" % n,
+                                  lambda n=n: self.drop_rigs(n))
+            table["rig%dup" % n] = ("Rig %d up" % n,
+                                    lambda n=n: self.rig_up(n))
         for action in hotkeys.drain():
             stage, method = table.get(action, ("Hotkey", None))
             if method is None:
@@ -3653,11 +3852,12 @@ class EDSMT(ctk.CTk):
         bits = []
         # Both holds. Out in the SRV, Cargo.json is the SRV's, and a strip
         # that read only that said "hold 6t" over a ship with thirty tonnes
-        # of ore in it.
-        cargo = self.hold_now()
+        # of ore in it. Only what a Rhino session dug up (1.10031): hauled
+        # cargo is somebody else's business, not these earnings.
+        cargo = self.mined_aboard()
         tonnes = sum(int(count) for count in cargo.values())
         if tonnes:
-            hold = "hold %dt" % tonnes
+            hold = "mined aboard %dt" % tonnes
             worth = SV.hold_value(cargo, self.market_prices())
             if worth:
                 where = (attr(self.watcher, "market") or {}).get("station")
@@ -3665,8 +3865,12 @@ class EDSMT(ctk.CTk):
                                                 where or "the last market seen")
             else:
                 # Saying nothing here reads as "worth nothing". The hold is
-                # real either way; what is missing is a price for it.
-                hold += " - no market prices seen yet"
+                # real either way; what is missing is a price for it - and
+                # the galactic average is a fair estimate until there is one.
+                guess = self.hold_estimate(cargo)
+                hold += (" - about %s Cr at the galactic average"
+                         % credits_text(guess)) if guess else \
+                    " - no market prices seen yet"
             best, radius, priced, aboard = self.best_nearby(cargo)
             if best:
                 hold += ", up to %s Cr within %d Ly" % (credits_text(best),
@@ -3676,11 +3880,12 @@ class EDSMT(ctk.CTk):
             bits.append(hold)
         run = self.earnings.rhino
         if run is not None:
-            hours = SV.hours_between(run.get("started"), run.get("ended"))
+            hours = SV.session_hours(run)
             mined = sum(SV.unpack_counts(run.get("mined")).values())
             moved = sum(SV.unpack_counts(run.get("transferred")).values())
-            text = "Rhino session %s - %d t mined, %d t to the ship" % (
-                duration_text(hours), mined, moved)
+            text = "Rhino session %s%s - %d t mined, %d t to the ship" % (
+                duration_text(hours),
+                " PAUSED" if self.earnings.paused else "", mined, moved)
             if SV.earned(run):
                 text += ", %s Cr sold" % credits_text(SV.earned(run))
             bits.append(text)
@@ -3691,6 +3896,43 @@ class EDSMT(ctk.CTk):
         watcher = attr(self, "watcher")
         return combined_hold(getattr(watcher, "holds", None),
                              getattr(watcher, "cargo", None))
+
+    def mined_aboard(self):
+        """What is aboard that a Rhino session dug up and has not sold.
+
+        The hold with anything bought, hauled or picked up elsewhere left
+        out: each commodity is the smaller of what is aboard and what recent
+        Rhino sessions mined and nobody has sold yet. That is what the
+        earnings are about, and all the Earnings tab prices."""
+        try:
+            cargo = self.hold_now()
+            if not cargo:
+                return {}
+            unsold = {SV.fold(name): count for name, count in
+                      self.earnings.unsold().items()}
+        except Exception:
+            return {}
+        mined = {}
+        for name, count in cargo.items():
+            spare = min(int(count), int(unsold.get(SV.fold(name), 0)))
+            if spare > 0:
+                mined[name] = spare
+        return mined
+
+    def galactic_average(self, name):
+        """(price, "game") from the galactic average column of any market
+        seen, else (price, "table") from EDSMT's own table, else (0, "")."""
+        means = getattr(attr(self, "watcher"), "means", None) or {}
+        mean = int(means.get(SV.fold(name)) or 0)
+        if mean > 0:
+            return mean, "game"
+        table = int(SV.published_price(name) or 0)
+        return (table, "table") if table > 0 else (0, "")
+
+    def hold_estimate(self, cargo):
+        """What a hold comes to at the galactic average - an estimate."""
+        return sum(self.galactic_average(name)[0] * int(count)
+                   for name, count in dict(cargo or {}).items())
 
     def quote_hold(self, radius=None):
         """Ask where what is aboard sells best, near where the commander is.
@@ -3706,9 +3948,9 @@ class EDSMT(ctk.CTk):
         system = str(getattr(attr(self, "watcher"), "system", "") or "")
         if not system:
             return 0, "The game has not said which system you are in yet."
-        wanted = worth_asking(self.hold_now())
+        wanted = worth_asking(self.mined_aboard())
         if not wanted:
-            return 0, "Nothing aboard to price."
+            return 0, "Nothing mined aboard to price."
         radius = int(radius or QUOTE_DISTANCES[DEFAULT_QUOTE_DISTANCE])
         here = self.star_position()
         self.quote_asked = {"system": system, "radius": radius,
@@ -4514,8 +4756,9 @@ class EDSMT(ctk.CTk):
         if not commodity:
             self.say("Which commodity? Pick one on the left, then press %s again."
                      % self.key("deposit", "MARK DEPOSIT"), AMBER)
+            self.flash("NOT MARKED - NO COMMODITY",
+                       "fill in all four boxes first", AMBER)
             return
-
         # Marking the one you are standing on a second time is nearly always
         # meant as an update. Ask once; a second press within a few seconds
         # means it really is a separate deposit.
@@ -4528,7 +4771,6 @@ class EDSMT(ctk.CTk):
                             "to change it, or MARK again to add a separate "
                             "deposit." % (same[0].get("commodity") or "a deposit",
                                           _metres(same[1])), AMBER)
-        self._mark_armed = None
 
         # Another commodity already marked on this very spot is far more
         # often the same rock with the wrong name than a second deposit: the
@@ -4559,6 +4801,28 @@ class EDSMT(ctk.CTk):
                     % (was, _metres(other[1]), self.key("update", "UPDATE"),
                        commodity, self.key("deposit", "MARK DEPOSIT"),
                        commodity), AMBER)
+
+        # Every deposit carries all four: what it is, how many rigs, how much
+        # is left and how dense it is. Half-filled finds went out to the
+        # shared map without their Amount and Density - the two things a
+        # commander deciding whether to fly there needs most - so a deposit
+        # is not marked until the boxes are full. The scanner's density
+        # counts when the game gave one. Asked after "already marked here"
+        # and "rename it?", which need nothing filled in to answer.
+        missing = self.missing_fields(state)
+        if missing:
+            self.say("Not marked - fill in %s first. Every deposit needs its "
+                     "commodity, rigs, amount and density, so the shared map "
+                     "can be trusted. Then press %s again." % (
+                         _join_words(missing),
+                         self.key("deposit", "MARK DEPOSIT")), AMBER)
+            self.flash("NOT MARKED - FILL IN %s" % " + ".join(
+                           word.upper() for word in missing),
+                       "all four boxes, then %s" % self.key("deposit", "MARK"),
+                       AMBER)
+            return
+
+        self._mark_armed = None
         self._retype_armed = None
 
         world = state.body_profile()
@@ -4597,7 +4861,12 @@ class EDSMT(ctk.CTk):
         self.redraw()
         self.share(record)
         rigs = record["rigs"]
-        self.say("Marked %s%s at %.5f, %.5f."
+        # The next deposit is another rock: its rigs, amount and density are
+        # read off it, not carried over from this one - carried-over boxes
+        # are how a Low Amount went out as the High of the deposit before.
+        self.clear_deposit_boxes()
+        self.say("Marked %s%s at %.5f, %.5f. Rigs, amount and density cleared "
+                 "for the next deposit."
                  % (record["commodity"],
                     " (%s rigs)" % rigs if rigs else "",
                     state.lat, state.lon), GREEN)
@@ -4607,6 +4876,43 @@ class EDSMT(ctk.CTk):
                        str(record.get("amount") or ""),
                        "signal %s" % record.get("location")
                        if record.get("location") else "") if bit))
+
+    def clear_deposit_boxes(self):
+        """Empty Rigs, Amount and Density - not the commodity, which the
+        scanner keeps filling in as you drive."""
+        fields = attr(self, "fields", None) or {}
+        for name in ("rigs", "amount", "density"):
+            try:
+                fields[name].set("")
+            except Exception:
+                pass
+        filled = attr(self, "_autofilled")
+        if isinstance(filled, dict):
+            filled.pop("density", None)
+
+    def missing_fields(self, state=None):
+        """Which of Rigs, Amount and Density are still blank for MARK -
+        in the order the boxes are read. Rigs must be 1 to MAX_RIGS."""
+        fields = attr(self, "fields", None) or {}
+        state = state if state is not None else attr(self, "game")
+
+        def box(name):
+            try:
+                return str(fields[name].get() or "").strip()
+            except Exception:
+                return ""
+        missing = []
+        rigs = box("rigs")
+        try:
+            if not 1 <= int(float(rigs)) <= MAX_RIGS:
+                missing.append("rigs")
+        except (TypeError, ValueError):
+            missing.append("rigs")
+        if not box("amount"):
+            missing.append("amount")
+        if not (box("density") or getattr(state, "detected_density", "")):
+            missing.append("density")
+        return missing
 
     # -- the rigs -------------------------------------------------------------
 
@@ -4635,35 +4941,68 @@ class EDSMT(ctk.CTk):
             return []
         return list(rigs["rigs"])
 
-    def drop_rigs(self):
-        """One rig down, where the SRV is standing now. Numbered 1 to 6.
+    def drop_rigs(self, n=None):
+        """A rig down, where the SRV is standing now.
 
-        One key for every rig, pressed as each goes down - the number is
-        worked out, not chosen. A second press on the same spot is taken as
-        a double press, not a second rig.
+        With a number - Alt+4 is rig 1, Alt+9 rig 6 - that rig. A rig already
+        down somewhere else under that number was picked up without its key
+        being pressed, so it moves here rather than being refused. Without a
+        number, the next free one: the RIG DOWN button, and a spare key for
+        anyone who would rather press one key six times. A second press on
+        the same spot is a double press, not a second rig.
         """
         state = self.game
         system, body = self.here()
         if not (state is not None and state.has_position and system and body):
             return self.say("No surface position from the game yet - press "
-                            "RIG DOWN from the SRV as you drop each rig.", AMBER)
+                            "a rig key from the SRV as you drop each rig.", AMBER)
         rigs = self._rigs_here()
         if not rigs:
             self.rigs_at = {"system": system, "body": body, "rigs": []}
         radius = state.radius_m or 0
-        for rig in rigs:
-            if radius and SV.surface_range_m(state.lat, state.lon, rig["lat"],
-                                             rig["lon"], radius) < RIG_SAME_M:
-                return self.say("Rig %d is already marked here." % rig["n"], AMBER)
-        taken = {rig["n"] for rig in rigs}
-        free = [n for n in range(1, MAX_RIGS + 1) if n not in taken]
-        if not free:
-            return self.say("All %d rigs are marked. Press ALL UP when you have "
-                            "collected them." % MAX_RIGS, AMBER)
+
+        def metres_to(rig):
+            if not radius:
+                return None
+            return SV.surface_range_m(state.lat, state.lon, rig["lat"],
+                                      rig["lon"], radius)
+
+        moved_from = None
+        if n is not None:
+            try:
+                n = int(n)
+            except (TypeError, ValueError):
+                n = 0
+            if not 1 <= n <= MAX_RIGS:
+                return self.say("There are %d rigs - no rig %s." % (MAX_RIGS, n),
+                                AMBER)
+            mine = next((rig for rig in rigs if rig["n"] == n), None)
+            if mine is not None:
+                away = metres_to(mine)
+                if away is not None and away < RIG_SAME_M:
+                    return self.say("Rig %d is already down here." % n, AMBER)
+                moved_from = away
+                self.rigs_at["rigs"] = [r for r in self.rigs_at["rigs"]
+                                        if r["n"] != n]
+        else:
+            for rig in rigs:
+                away = metres_to(rig)
+                if away is not None and away < RIG_SAME_M:
+                    return self.say("Rig %d is already marked here." % rig["n"],
+                                    AMBER)
+            taken = {rig["n"] for rig in rigs}
+            free = [k for k in range(1, MAX_RIGS + 1) if k not in taken]
+            if not free:
+                return self.say("All %d rigs are marked. %s when you have "
+                                "collected them." % (MAX_RIGS,
+                                                     self.key("allup", "RIGS UP")),
+                                AMBER)
+            n = free[0]
         what = self.rig_commodity(state, system, body)
-        rig = {"n": free[0], "lat": state.lat, "lon": state.lon, "at": time.time(),
+        rig = {"n": n, "lat": state.lat, "lon": state.lon, "at": time.time(),
                "commodity": what}
         self.rigs_at["rigs"].append(rig)
+        self.rigs_at["rigs"].sort(key=lambda r: r["n"])
         self._rigs_warned = False
         try:
             # For the guide: rigs have gone down at this signal, which stays
@@ -4672,18 +5011,435 @@ class EDSMT(ctk.CTk):
                 (str(system).lower(), str(body).lower(), str(self.signal())))
         except Exception:
             pass
+        self.rig_event("RigDown", n)
         self.refresh_rigs_note()
         self.redraw()
         limit = self.rig_limit()
-        self.flash("RIG %d DOWN%s" % (rig["n"], ("  " + what.upper()) if what else ""),
-                   "%d of %d  -  %s" % (len(self.rigs_at["rigs"]), MAX_RIGS,
+        down = len(self.rigs_at["rigs"])
+        self.flash("RIG %d %s%s" % (n, "MOVED" if moved_from is not None else "DOWN",
+                                    ("  " + what.upper()) if what else ""),
+                   "%d of %d  -  %s" % (down, MAX_RIGS,
                                         "warning past %s" % _metres(limit)
                                         if limit else "distance warning off"))
-        return self.say("Rig %d down%s (%d of %d). %s" % (
-            rig["n"], (" on " + what) if what else "",
-            len(self.rigs_at["rigs"]), MAX_RIGS,
+        if moved_from is not None:
+            return self.say("Rig %d moved here%s - %s from where it was marked."
+                            " %s picks a rig up." % (
+                                n, (" on " + what) if what else "",
+                                _metres(moved_from), self.key("rig%dup" % n,
+                                                              "RIGS UP")), GREEN)
+        pin = self.plan_pin_at(state.lat, state.lon)
+        clash = self.wing_clash(state.lat, state.lon)
+        if clash:
+            self.flash("RIG %d DOWN - CLOSE TO %s" % (n, clash[0].upper()),
+                       "%s from their rig %d" % (_metres(clash[2]), clash[1]),
+                       AMBER)
+        return self.say("Rig %d down%s%s (%d of %d). %s" % (
+            n, (" on " + what) if what else "",
+            (" at pin P%d" % pin) if pin else "", down, MAX_RIGS,
             "You will be warned past %s from any rig." % _metres(limit) if limit
             else "The distance warning is off in Settings."), GREEN)
+
+    def rig_up(self, n):
+        """One rig collected: stop watching it. The last one up is every
+        rig up, with everything that goes with that."""
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            return self.say("No such rig.", AMBER)
+        rigs = self._rigs_here()
+        if not any(rig["n"] == n for rig in rigs):
+            return self.say("Rig %d is not marked down%s." % (
+                n, " - no rigs are" if not rigs else ""), AMBER)
+        self.rigs_at["rigs"] = [r for r in self.rigs_at["rigs"] if r["n"] != n]
+        left = len(self.rigs_at["rigs"])
+        if not left:
+            return self.rigs_up(picked=n)
+        # The warning was about whichever rig was farthest; that may have
+        # been this one. The next poll works it out again from the rest.
+        self._rigs_warned = False
+        self._rigs_final = False
+        self.clear_rig_alarm()
+        self.refresh_rigs_note()
+        self.redraw()
+        self.flash("RIG %d UP" % n, "%d still down" % left)
+        return self.say("Rig %d up. %d still down: %s." % (
+            n, left, ", ".join(str(r["n"]) for r in self.rigs_at["rigs"])), GREEN)
+
+    def rig_event(self, what, n=None):
+        """A rig going down or the last one coming up, handed to the books:
+        the first rig down starts an Earnings session, the last one up ends
+        it. Never raises - the rig is marked whatever the books make of it."""
+        try:
+            system, body = self.here()
+            line = self.earnings.observe({
+                "event": what, "when": SV.utc_now(), "rig": n,
+                "system": system, "body": body,
+                "cmdr": getattr(attr(self, "watcher"), "cmdr", "") or ""})
+            if line:
+                self.earnings_note(line)
+        except Exception:
+            pass
+
+    def trace_key(self):
+        """The rig planner's key: start tracing a deposit's edge, or finish
+        the trace. Beta - off unless switched on in Settings."""
+        return self.planner_trace()
+
+    # -- the rig planner (beta) -----------------------------------------------
+
+    def planner_on(self):
+        return bool(attr(self, "settings", {}).get("rig_planner"))
+
+    def planner_spacing(self):
+        """Metres between two rigs, from Settings, kept to something sane."""
+        try:
+            spacing = float(self.settings.get("rig_spacing_m")
+                            or RP.RIG_SPACING_M)
+        except (TypeError, ValueError):
+            spacing = RP.RIG_SPACING_M
+        return max(PLAN_SPACING_MIN_M, min(PLAN_SPACING_MAX_M, spacing))
+
+    def planner_trace(self):
+        """Start tracing the deposit's edge from where the Rhino is, or -
+        pressed again while tracing - close the loop here and plan.
+
+        The loop also closes itself when the Rhino comes back round to where
+        it started, so most of the time the key is pressed once."""
+        if not self.planner_on():
+            return self.say("The rig planner is a beta and is off. Switch it "
+                            "on in Settings, under Rigs.", AMBER)
+        state = attr(self, "game")
+        system, body = self.here()
+        if not (state is not None and state.has_position and state.radius_m
+                and system and body):
+            return self.say("No surface position from the game yet - trace "
+                            "the edge from the Rhino.", AMBER)
+        trace = attr(self, "_trace", None)
+        if trace is not None and not trace.closed:
+            trace.add(state.lat, state.lon)
+            if not trace.close():
+                self._trace = None
+                self.redraw()
+                return self.say("Rig planner: not enough of an edge to plan "
+                                "on - trace cancelled. Drive right round the "
+                                "deposit's edge, then press it again.", AMBER)
+            return self.finish_trace()
+        self._trace = RP.Trace(state.lat, state.lon, state.radius_m)
+        self._trace_where = (str(system).lower(), str(body).lower())
+        self._trace_started = time.time()
+        self.rig_plan = None
+        key = self.key("trace", "the planner key")
+        self.flash("TRACING THE EDGE", "drive round the deposit back to here")
+        return self.say("Rig planner: tracing. Drive along the deposit's edge "
+                        "and back to where you are now - it closes by itself "
+                        "when you get here, or press %s to close it where you "
+                        "are." % key, GREEN)
+
+    def follow_trace(self, state):
+        """Every new position from the game, while a trace is running. True
+        when this one closed the loop and the pins are out."""
+        trace = attr(self, "_trace", None)
+        if trace is None or trace.closed:
+            return False
+        system, body = self.here()
+        if (str(system).lower(), str(body).lower()) != attr(self, "_trace_where"):
+            return self.cancel_trace("you left the body")
+        if time.time() - float(attr(self, "_trace_started", 0) or 0) > \
+                PLAN_TRACE_MAX_S:
+            return self.cancel_trace("%d minutes without closing the loop"
+                                     % (PLAN_TRACE_MAX_S // 60))
+        if not (state is not None and state.has_position):
+            return False
+        closed = trace.add(state.lat, state.lon)
+        if trace.too_big:
+            return self.cancel_trace("that is %s from the start - bigger "
+                                     "than any deposit" % _metres(RP.TRACE_MAX_SPAN_M))
+        if closed:
+            self.finish_trace()
+            return True
+        return False
+
+    def cancel_trace(self, why):
+        self._trace = None
+        self.redraw()
+        self.say("Rig planner: %s - trace cancelled." % why, AMBER)
+        return False
+
+    def finish_trace(self):
+        """Plan the rigs for the loop just driven and put the pins out."""
+        trace = attr(self, "_trace", None)
+        if trace is None:
+            return None
+        self._trace = None
+        state = attr(self, "game")
+        start = (state.lat, state.lon) if (state is not None
+                                          and state.has_position) else None
+        spacing = self.planner_spacing()
+        try:
+            pins = trace.pins(spacing, start=start)
+        except Exception as exc:
+            self.trouble("Rig planner", exc)
+            return self.say("Rig planner: could not work out the pins for "
+                            "that shape.", AMBER)
+        if not pins:
+            return self.say("Rig planner: no room for a rig inside that "
+                            "trace.", AMBER)
+        system, body = attr(self, "_trace_where", ("", ""))
+        self.rig_plan = {
+            "system": system, "body": body, "spacing": spacing,
+            "pins": [{"n": i + 1, "lat": lat, "lon": lon}
+                     for i, (lat, lon) in enumerate(pins)],
+            "outline": trace.outline(), "at": time.time(),
+            "area_m2": RP.area(trace.points)}
+        self.redraw()
+        count = len(pins)
+        self.flash("RIG PLAN  %d PIN%s" % (count, "" if count == 1 else "S"),
+                   "%d m apart - drive to P1" % round(spacing))
+        return self.say("Rig planner: %d rig%s fit %d m apart in what you "
+                        "traced (about %s m2). The pins are on the scope in "
+                        "driving order - drop a rig on each; the next one is "
+                        "amber, done ones go green." % (
+                            count, "" if count == 1 else "s", round(spacing),
+                            "{:,}".format(int(round(RP.area(trace.points), -1)))),
+                        GREEN)
+
+    # -- the wing link (beta) -------------------------------------------------
+
+    def wing_code(self):
+        return clean_wing_code(attr(self, "settings", {}).get("wing_code"))
+
+    def wing_on(self):
+        return bool(attr(self, "settings", {}).get("wing_link")) and \
+            bool(self.wing_code())
+
+    def wing_member(self):
+        """This install's slot in a wing: made up once, kept in settings,
+        never shown - it is what stops somebody else beating as you."""
+        member = str(self.settings.get("wing_member") or "")
+        if not re.match(r"^[A-Za-z0-9]{8,32}$", member):
+            member = secrets.token_hex(8)
+            self.settings["wing_member"] = member
+            save_settings(self.settings)
+        return member
+
+    def wing_tick(self, now=None):
+        """Every WING_BEAT_S while the wing link is on, send where this
+        commander is and their rigs; the answer is everybody else's. One
+        beat in flight at a time. Switched off, it says goodbye once."""
+        now = now or time.time()
+        if not self.wing_on():
+            if attr(self, "_wing_joined", ""):
+                self.wing_leave()
+            return False
+        community = attr(self, "community")
+        if community is None:
+            return False
+        sent = attr(self, "_wing_sent", 0.0) or 0.0
+        if attr(self, "_wing_busy", False) and now - sent < 20.0:
+            return False
+        if now - sent < WING_BEAT_S:
+            return False
+        code = self.wing_code()
+        joined = attr(self, "_wing_joined", "")
+        if joined and joined != code:
+            self.wing_leave()
+        if not community.wing(code, self.wing_beat()):
+            return False
+        self._wing_busy, self._wing_sent, self._wing_joined = True, now, code
+        return True
+
+    def wing_beat(self, leave=False):
+        """What one beat says: who (the journal's name, if sharing names is
+        on), where, which way, and where this commander's rigs are."""
+        state = attr(self, "game")
+        system, body = self.here()
+        share = getattr(attr(self, "community"), "share_name", True)
+        beat = {"member": self.wing_member(), "leave": bool(leave),
+                "name": str(getattr(attr(self, "watcher"), "cmdr", "") or "")[:40]
+                if share else "",
+                "system": str(system or "")[:120], "body": str(body or "")[:120],
+                "in_srv": bool(getattr(state, "in_srv", False)), "rigs": []}
+        if state is not None and state.has_position:
+            beat["lat"], beat["lon"] = float(state.lat), float(state.lon)
+            if state.heading is not None:
+                beat["heading"] = float(state.heading) % 360.0
+        beat["rigs"] = [{"n": int(rig["n"]), "lat": float(rig["lat"]),
+                         "lon": float(rig["lon"])}
+                        for rig in self._rigs_here()][:12]
+        return beat
+
+    def wing_leave(self):
+        code = attr(self, "_wing_joined", "")
+        self._wing_joined, self.wing_mates = "", []
+        community = attr(self, "community")
+        if code and community is not None:
+            community.wing(code, self.wing_beat(leave=True))
+
+    def take_wing(self, ok, message):
+        """The rest of the wing, as the server last heard them."""
+        self._wing_busy = False
+        if not ok:
+            problem = str(message or "")
+            if problem != attr(self, "_wing_problem", ""):
+                self.say("Wing link: %s" % problem, AMBER)
+            self._wing_problem = problem
+            return
+        try:
+            data = json.loads(message)
+        except (TypeError, ValueError):
+            return
+        mates = [mate for mate in data.get("members") or []
+                 if isinstance(mate, dict)]
+        before = {str(mate.get("name") or "") for mate in
+                  attr(self, "wing_mates", None) or []}
+        if attr(self, "_wing_problem", ""):
+            self._wing_problem = ""
+        joined = [str(mate.get("name") or "") or "a wingmate" for mate in mates
+                  if str(mate.get("name") or "") not in before]
+        self.wing_mates, self._wing_heard = mates, time.time()
+        if joined:
+            self.say("Wing: %s on the link." % ", ".join(joined), GREEN)
+
+    def wing_marks(self):
+        """Wingmates on this body for the scope, as east/north metres from
+        the commander, with their rigs. None when there are none."""
+        try:
+            return self._wing_marks()
+        except Exception:
+            return None
+
+    def _wing_marks(self):
+        mates = attr(self, "wing_mates", None)
+        if not mates or not self.wing_on():
+            return None
+        state = attr(self, "game")
+        if not (state is not None and state.has_position and state.radius_m):
+            return None
+        heard = time.time() - (attr(self, "_wing_heard", 0.0) or 0.0)
+        system, body = self.here()
+        marks = []
+        for mate in mates:
+            if not (_same_place(mate.get("system"), system)
+                    and _same_place(mate.get("body"), body)):
+                continue
+            if float(mate.get("age_s") or 0) + heard > WING_STALE_S:
+                continue
+            if mate.get("lat") is None or mate.get("lon") is None:
+                continue
+            east, north = SV.local_offset(state.lat, state.lon, mate["lat"],
+                                          mate["lon"], state.radius_m)
+            rigs = []
+            for rig in mate.get("rigs") or []:
+                re_, rn = SV.local_offset(state.lat, state.lon, rig["lat"],
+                                          rig["lon"], state.radius_m)
+                rigs.append({"n": rig.get("n"), "east": re_, "north": rn})
+            marks.append({"name": str(mate.get("name") or "") or "wingmate",
+                          "east": east, "north": north,
+                          "heading": mate.get("heading"),
+                          "in_srv": bool(mate.get("in_srv")), "rigs": rigs})
+        return {"mates": marks} if marks else None
+
+    def wing_clash(self, lat, lon):
+        """(name, rig, metres) for a wingmate's rig closer than the rig
+        spacing to this spot, or None."""
+        state = attr(self, "game")
+        if not self.wing_on() or state is None or not state.radius_m:
+            return None
+        system, body = self.here()
+        spacing = self.planner_spacing()
+        closest = None
+        for mate in attr(self, "wing_mates", None) or []:
+            if not (_same_place(mate.get("system"), system)
+                    and _same_place(mate.get("body"), body)):
+                continue
+            for rig in mate.get("rigs") or []:
+                metres = SV.surface_range_m(lat, lon, rig["lat"], rig["lon"],
+                                            state.radius_m)
+                if metres < spacing and (closest is None or metres < closest[2]):
+                    closest = (str(mate.get("name") or "a wingmate"),
+                               rig.get("n"), metres)
+        return closest
+
+    @staticmethod
+    def pin_reach(plan):
+        """How close a rig has to be to a pin to count as on it: half the
+        spacing, never less than PLAN_PIN_DONE_M. Nobody drops a rig on the
+        exact spot, and at 20 m a rig a car's length off did not count.
+        Pins are a full spacing apart, so no rig can count for two."""
+        try:
+            spacing = float((plan or {}).get("spacing") or 0)
+        except (TypeError, ValueError):
+            spacing = 0.0
+        return max(PLAN_PIN_DONE_M, spacing / 2.0)
+
+    def plan_pin_at(self, lat, lon):
+        """The number of the plan's pin at this spot, or None."""
+        plan = attr(self, "rig_plan", None)
+        state = attr(self, "game")
+        if not plan or state is None or not state.radius_m:
+            return None
+        reach = self.pin_reach(plan)
+        for pin in plan["pins"]:
+            if SV.surface_range_m(lat, lon, pin["lat"], pin["lon"],
+                                  state.radius_m) <= reach:
+                return pin["n"]
+        return None
+
+    def plan_marks(self):
+        """The trace or the plan for the overlay, as east/north metres from
+        the commander, or None. Never raises."""
+        try:
+            return self._plan_marks()
+        except Exception:
+            return None
+
+    def _plan_marks(self):
+        trace = attr(self, "_trace", None)
+        plan = attr(self, "rig_plan", None)
+        if trace is None and not plan:
+            return None
+        state = attr(self, "game")
+        if not (state is not None and state.has_position and state.radius_m):
+            return None
+        system, body = self.here()
+        where = (str(system).lower(), str(body).lower())
+        radius = state.radius_m
+
+        def offset(lat, lon):
+            return SV.local_offset(state.lat, state.lon, lat, lon, radius)
+
+        if trace is not None and not trace.closed:
+            if where != attr(self, "_trace_where"):
+                return None
+            return {"tracing": True, "near": True, "pins": [], "spacing": 0,
+                    "outline": [offset(lat, lon) for lat, lon in trace.outline()],
+                    "next": None, "next_pin": None, "done": 0}
+        if not plan or where != (plan["system"], plan["body"]):
+            return None
+        rigs = self._rigs_here()
+        reach = self.pin_reach(plan)
+        pins = []
+        for pin in plan["pins"]:
+            east, north = offset(pin["lat"], pin["lon"])
+            done = any(SV.surface_range_m(rig["lat"], rig["lon"], pin["lat"],
+                                          pin["lon"], radius) <= reach
+                       for rig in rigs)
+            pins.append({"n": pin["n"], "east": east, "north": north,
+                         "done": done, "range_m": math.hypot(east, north)})
+        waiting = [pin for pin in pins if not pin["done"]]
+        following = waiting[0] if waiting else None
+        next_pin = None
+        if following is not None:
+            bearing = math.degrees(math.atan2(following["east"],
+                                              following["north"])) % 360.0
+            turn = (bearing - float(state.heading or 0.0) + 540.0) % 360.0 - 180.0
+            next_pin = {"n": following["n"], "range_m": following["range_m"],
+                        "offset": turn}
+        return {"tracing": False, "pins": pins, "spacing": plan["spacing"],
+                "outline": [offset(lat, lon) for lat, lon in plan["outline"]],
+                "near": any(pin["range_m"] <= PLAN_NEAR_M for pin in pins),
+                "next": following["n"] if following is not None else None,
+                "next_pin": next_pin, "done": len(pins) - len(waiting)}
 
     def rig_commodity(self, state, system, body):
         """What a rig going down here is mining.
@@ -4720,22 +5476,30 @@ class EDSMT(ctk.CTk):
             return SV.canonical(typed)
         return SV.canonical(getattr(state, "detected_type", "") or "")
 
-    def rigs_up(self):
+    def rigs_up(self, picked=None):
         """Rigs collected: forget them all and stop watching the distance.
 
         Also the hand-operated off switch for every rig warning - the banner,
         the last warning in the middle of the screen, the lot - so a warning
-        that is wrong, or about rigs already lost, is one key from gone."""
+        that is wrong, or about rigs already lost, is one key from gone.
+        `picked` is the rig whose own key brought the last one up."""
         self.clear_rig_alarm()
-        if not self._rigs_here():
+        if not self._rigs_here() and picked is None:
             self.rigs_at = None
             return self.say("No rigs are marked down.", AMBER)
-        count = len(self.rigs_at["rigs"])
+        count = len(self.rigs_at["rigs"]) if self.rigs_at else 0
+        if picked is not None:
+            count = 1
         self.rigs_at = None
         self._rigs_warned = False
         self._rigs_final = False
+        self.rig_event("RigsUp")
         self.refresh_rigs_note()
         self.redraw()
+        if picked is not None:
+            self.flash("RIG %d UP" % picked, "all rigs up - warning stood down")
+            return self.say("Rig %d up - that was the last. Distance warning "
+                            "stood down." % picked, GREEN)
         self.flash("%d RIG%s UP" % (count, "" if count == 1 else "S"),
                    "distance warning stood down")
         return self.say("%d rig(s) up. Distance warning stood down." % count, GREEN)
@@ -5691,7 +6455,7 @@ class EDSMT(ctk.CTk):
             lines.append("logged %s" % str(deposit["recorded"])[:10])
         # Counted off the game's own tonne-by-tonne record while EDSMT was
         # running.
-        lines.extend(tonnes_lines(deposit))
+        lines.extend(tonnes_lines(deposit, attr(self.store, "deposits", None)))
         if deposit.get("shared"):
             # Somebody else's. It can be driven to; it cannot be edited or
             # deleted from here, because it is not in your records.
@@ -5740,8 +6504,8 @@ class EDSMT(ctk.CTk):
             put_on_clipboard(self, line)
         except Exception as exc:
             return self.say("Could not reach the clipboard: %s" % exc, RED)
-        self.say("Copied - paste it anywhere. Anyone with EDSMT adds it with "
-                 "Settings -> Your finds -> Paste shared finds.", GREEN)
+        self.say("Copied - paste it anywhere. Anyone with EDSMT pastes it "
+                 "into Settings -> Your finds and presses Import.", GREEN)
         return line
 
     def edit_selected(self):
@@ -6022,6 +6786,9 @@ class EDSMT(ctk.CTk):
             if tag == "landing":
                 self.take_landing(ok, message)
                 continue
+            if tag == "wing":
+                self.take_wing(ok, message)
+                continue
             if tag == QUOTE_TAG:
                 try:
                     self.take_quote(ok, message)
@@ -6068,6 +6835,8 @@ class EDSMT(ctk.CTk):
                     self.say("You are up to date - EDSMT %s is the latest "
                              "build." % APP_VERSION, GREEN)
                 continue
+            if tag == "share" and ok:
+                self.note_shared(message)
             label = {"inara": "Inara", "inara-verify": "Inara key",
                      "share": "Shared", "prices": "Market",
                      "verify": "Verify"}.get(tag, tag)
@@ -6271,8 +7040,59 @@ class EDSMT(ctk.CTk):
     def open_settings(self):
         SettingsWindow(self)
 
+    def find_unlocked(self):
+        """Whether this commander has put a deposit of their own on the
+        shared map - which is what opens Find.
+
+        The shared map is only as good as what goes into it, so reading it
+        starts with adding to it. Remembered in settings once the server
+        takes one. A commander who was already sharing before this rule came
+        in - finds of their own, marked with sharing on - is not locked out
+        of what they helped build: one complete find of their own counts.
+        """
+        settings = attr(self, "settings", None) or {}
+        if settings.get("find_unlocked"):
+            return True
+        if not (settings.get("community_enabled")
+                and settings.get("community_auto_share", True)):
+            return False
+        try:
+            for row in self.store.deposits:
+                if row.get("status") == SV.STATUS_REPORTED and \
+                        row.get("commodity") and row.get("lat") and \
+                        row.get("amount") and row.get("density"):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def note_shared(self, message):
+        """A share the server answered: the first one opens Find."""
+        try:
+            numbers = [int(n) for n in re.findall(r"\d+", str(message or ""))]
+        except ValueError:
+            numbers = []
+        if not sum(numbers[:2]):
+            return False
+        if self.settings.get("find_unlocked"):
+            return True
+        self.settings["find_unlocked"] = True
+        save_settings(self.settings)
+        self.say("Your first find is on the shared map - Find is open to you "
+                 "now.", GREEN)
+        return True
+
     def open_find(self):
+        if not self.find_unlocked():
+            sharing = self.settings.get("community_enabled")
+            self.say("Find opens once you have shared a deposit of your own. "
+                     "%s" % ("Mark one - all four boxes filled in - and it "
+                             "goes up by itself." if sharing else
+                             "Switch sharing on in Settings, then mark one "
+                             "with all four boxes filled in."), AMBER)
+            return None
         self.finder = FindWindow(self)
+        return self.finder
 
     def open_earnings(self):
         self.ledger = EarningsWindow(self)
@@ -6509,41 +7329,90 @@ class SettingsWindow(ctk.CTkToplevel):
                       "somewhere unusual, or you run it through Steam Play.")
         self._entry(body, "journal_dir", "Saved Games folder", "leave blank for automatic")
 
+        settings_now = getattr(self.app, "settings", None)
         self._section(body, "Rigs",
-                      ("Press RIG DOWN (%s) as you drop each rig - they are "
-                       "numbered for you, and shown on the scope and the "
-                       "compass with what each one is on. Drive further "
-                       "than this from any of them and the overlay says TOO "
-                       "FAR FROM RIG, with a sound if you want one. The game "
-                       "warns at 4 km and destroys a rig at 5 km, so at "
-                       "4.8 km EDSMT puts a big last warning in the middle "
-                       "of the screen and sounds again. Past 5 km the rig is "
-                       "gone and the warnings clear themselves; RIGS UP "
-                       "clears them by hand. 0 turns the first warning off.")
-                      % bound_key(getattr(self.app, "settings", None),
-                                  "rigs", "RIG DOWN"))
+                      ("Press a rig's key as it goes down - %s for rigs 1 to "
+                       "6 - and the same number with %s as you pick it up. "
+                       "Each is shown on the scope and the compass with what "
+                       "it is on. Drive further than this from any of them "
+                       "and the overlay says TOO FAR FROM RIG, with a sound "
+                       "if you want one. The game warns at 4 km and destroys "
+                       "a rig at 5 km, so at 4.8 km EDSMT puts a big last "
+                       "warning in the middle of the screen and sounds "
+                       "again. Past 5 km the rig is gone and the warnings "
+                       "clear themselves; %s (every rig up) clears them by "
+                       "hand. 0 turns the first warning off.")
+                      % (OV.rig_keys_words(settings_now) or "RIG DOWN",
+                         altgr_word(), bound_key(settings_now, "allup",
+                                                 "RIGS UP")))
         self._entry(body, "rig_warn_m", "Warn me this far from a rig (m)", "3500")
         self._switch(body, "rig_warn_sound", "Sound the warning as well as showing it")
+        self._switch(body, "rig_planner",
+                     "Rig planner (beta): trace a deposit's edge, get a pin "
+                     "for each rig")
+        ctk.CTkLabel(body, text=(
+            "With the planner on, %s starts tracing: drive along the "
+            "deposit's edge and back to where you pressed it. The loop "
+            "closes by itself, or press it again to close it where you are. "
+            "The pins go on the scope in driving order - drop a rig on each "
+            "one. The spacing is the community's working figure, not a "
+            "published one; change it if you find better."
+            % bound_key(settings_now, "trace", "the planner key")),
+            font=F_SMALL, text_color=DIM, justify="left", wraplength=560,
+            anchor="w").pack(fill="x", padx=10, pady=(0, 4))
+        self._entry(body, "rig_spacing_m", "Rig planner: metres between rigs", "78")
+
+        self._section(body, "Wing link (beta)",
+                      "Mining one body with friends - or crew off one ship "
+                      "with more than one Rhino? Everyone switches this on "
+                      "and types the same code, and each of you sees the "
+                      "others' Rhinos and rigs on the scope, so nobody drops "
+                      "a rig on top of anybody else's. Your commander name "
+                      "goes with it only if name sharing is on. Nothing is "
+                      "kept: the server forgets you two minutes after you "
+                      "switch it off or close EDSMT.")
+        self._switch(body, "wing_link", "Wing link (beta): share my Rhino and "
+                                        "rigs with my wing")
+        self._entry(body, "wing_code", "Wing code (6 letters and digits)",
+                    "the same code for everyone")
+        code_row = ctk.CTkFrame(body, fg_color="transparent")
+        code_row.pack(fill="x", padx=14, pady=(0, 6))
+        ctk.CTkButton(code_row, text="Make a new code", width=160, height=28,
+                      font=F_STRONG, **BTN_SECONDARY,
+                      command=self.make_wing_code).pack(side="left")
 
         self._section(body, "Hotkeys",
-                      "Left Alt and the number row - not the number pad - "
-                      "in the order you work a signal, so step 3 is Alt+3. "
-                      "They work with the game in front of you. Click one "
-                      "and press the key you want instead - any key, with "
-                      "or without Ctrl, Alt or Shift - and Reset puts it "
-                      "back. Keep clear of keys another program already "
-                      "owns, or it gets the key first: NVIDIA uses Alt+F1, "
-                      "Alt+F3, Alt+F9, Alt+Z and Alt+R, AMD uses Alt+R and "
-                      "Ctrl+Shift keys, Windows uses Win keys, Steam uses "
-                      "Shift+Tab and F12, the game uses F10. EDSMT says so "
-                      "when you pick one.")
-        for name, label in (
-                ("hotkey_location", "1  Log the signal and set the centre"),
-                ("hotkey_border", "2  Survey border here"),
-                ("hotkey_deposit", "3  Mark the deposit"),
-                ("hotkey_rigs", "4  A rig is down here"),
-                ("hotkey_allup", "5  All rigs up"),
-                ("hotkey_update", "6  Update the deposit I am on")):
+                      ("Left Alt and the number row - not the number pad - "
+                       "in the order you work a signal: Alt+1 signal, Alt+2 "
+                       "border, Alt+3 deposit, Alt+4 to Alt+9 rigs 1 to 6. "
+                       "The same number with %s undoes it: %s+3 updates the "
+                       "deposit, %s+4 to 9 pick the rigs up, %s+0 is every "
+                       "rig up. None of these is used by the game's own "
+                       "control schemes. They work with the game in front "
+                       "of you. Click one and press the key you want "
+                       "instead - any key, with or without Ctrl, Alt or "
+                       "Shift - and Reset puts it back. Keep clear of keys "
+                       "another program already owns, or it gets the key "
+                       "first: NVIDIA uses Alt+F1, Alt+F3, Alt+F9, Alt+Z "
+                       "and Alt+R, AMD uses Alt+R and Ctrl+Shift keys, "
+                       "Windows uses Win keys, Steam uses Shift+Tab and "
+                       "F12, the game uses F10. EDSMT says so when you "
+                       "pick one.") % ((altgr_word(),) * 4))
+        # Labels say what a key does, not which key: the box beside each
+        # shows the key actually bound, and a label naming Alt+1 beside a
+        # box saying F5 would be wrong the moment somebody changed it.
+        rows = [("hotkey_location", "Log the signal and set the centre"),
+                ("hotkey_border", "Survey border here"),
+                ("hotkey_deposit", "Mark the deposit"),
+                ("hotkey_update", "Update the deposit I am on")]
+        rows += [("hotkey_rig%d" % n, "Rig %d down" % n)
+                 for n in range(1, MAX_RIGS + 1)]
+        rows += [("hotkey_rig%dup" % n, "Rig %d up" % n)
+                 for n in range(1, MAX_RIGS + 1)]
+        rows += [("hotkey_allup", "Every rig up"),
+                 ("hotkey_rigs", "The next free rig down (spare key)"),
+                 ("hotkey_trace", "Rig planner: trace the deposit's edge (beta)")]
+        for name, label in rows:
             self._binding(body, name, label, DEFAULT_SETTINGS[name])
         self._binding(body, "hotkey_centre", "Move the centre here (no new log)", "")
         self._binding(body, "hotkey_lock", "Lock / unlock the overlay", "")
@@ -6578,13 +7447,27 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkButton(import_row, text="Import another tool's CSV", width=210,
                       height=30, font=F_STRONG, **BTN_SECONDARY,
                       command=self.import_now).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(import_row, text="Paste shared finds", width=160,
-                      height=30, font=F_STRONG, **BTN_SECONDARY,
-                      command=self.paste_shared).pack(side="left", padx=8)
+        # Shared finds come in through a box you can see, not straight off
+        # the clipboard: whatever was copied last - a password, half a chat -
+        # is not read until you have pasted it here and pressed Import.
+        ctk.CTkLabel(body, text="Shared finds - paste the lines here, then "
+                                "Import (or Enter):",
+                     font=F_BODY, text_color=TEXT, anchor="w").pack(
+                         fill="x", padx=10, pady=(6, 2))
+        paste_row = ctk.CTkFrame(body, fg_color="transparent")
+        paste_row.pack(fill="x", padx=10, pady=(0, 4))
+        self.paste_box = ctk.CTkTextbox(paste_row, height=64, font=F_SMALL,
+                                        **TEXTBOX)
+        self.paste_box.pack(side="left", fill="x", expand=True)
+        self.paste_box.bind("<Return>", self._paste_enter)
+        ctk.CTkButton(paste_row, text="Import", width=90, height=30,
+                      font=F_STRONG, **BTN_SECONDARY,
+                      command=self.paste_shared).pack(side="left", padx=(8, 0))
         ctk.CTkLabel(body,
-                     text="The CSV: either surfaceminingmap.csv layout. Paste: "
-                          "lines made by Copy to share on a deposit. Nothing "
-                          "already here is changed.",
+                     text="The CSV: either surfaceminingmap.csv layout. The box: "
+                          "lines made by Copy to share on a deposit - chat "
+                          "round them is ignored. Nothing already here is "
+                          "changed. Shift+Enter starts a new line.",
                      font=F_SMALL, text_color=DIM, justify="left", anchor="w",
                      wraplength=560).pack(fill="x", padx=10, pady=(0, 4))
 
@@ -6626,6 +7509,14 @@ class SettingsWindow(ctk.CTkToplevel):
                      "Box: STATUS - body, count, and what is next")
         self._switch(body, "overlay_show_deposit",
                      "Box: MINERAL DEPOSIT - one card, with a signal radar")
+        sizes = [("%d%%" % size, str(size)) for size in OV.TEXT_SIZES]
+        for key, name in ((OV.STRIP, "COMPASS"), (OV.RADAR, "SCOPE"),
+                          (OV.TARGETS, "TARGETS"), (OV.STATUS, "STATUS"),
+                          (OV.DEPOSIT, "MINERAL DEPOSIT"), (OV.GUIDE, "GUIDE")):
+            self._choice(body, "overlay_text_%s" % key, "Text size: %s" % name,
+                         sizes, "The words in each box, on their own - the "
+                         "box's size is its corner, when unlocked."
+                         if key == OV.GUIDE else "")
         # The mode picker did not exist. The scope was built, shipped and
         # unreachable - indistinguishable from never having been built, and
         # reported as "you removed the radar".
@@ -6769,6 +7660,26 @@ class SettingsWindow(ctk.CTkToplevel):
     def hide_secrets(self):
         for key in list(self.secrets):
             self.hide_secret(key)
+
+    def _paste_enter(self, event=None):
+        """Enter imports; Shift+Enter is a new line in the box."""
+        try:
+            if int(getattr(event, "state", 0) or 0) & 0x0001:
+                return None
+        except (TypeError, ValueError):
+            pass
+        self.paste_shared()
+        return "break"
+
+    def make_wing_code(self):
+        """A fresh wing code in the box, for reading out to the wing."""
+        box = self.fields.get("wing_code")
+        if box is None:
+            return
+        box.delete(0, "end")
+        box.insert(0, new_wing_code())
+        self.say("New wing code in the box - read it out to your wing, then "
+                 "Save.", GREEN)
 
     def _forget_hide(self, key):
         timer = self._hide_timers.pop(key, None)
@@ -7026,6 +7937,22 @@ class SettingsWindow(ctk.CTkToplevel):
                             "3500, 3,500, 3500 m or 3.5 km all work. 0 turns "
                             "it off.", RED)
         data["rig_warn_m"] = warn
+        spacing = parse_metres(data.get("rig_spacing_m") or RP.RIG_SPACING_M)
+        if spacing is None or not PLAN_SPACING_MIN_M <= spacing <= PLAN_SPACING_MAX_M:
+            return self.say("The rig planner's spacing must be a distance "
+                            "between %d and %d m - 78 is the community's "
+                            "figure." % (PLAN_SPACING_MIN_M, PLAN_SPACING_MAX_M),
+                            RED)
+        data["rig_spacing_m"] = spacing
+        raw_code = str(data.get("wing_code") or "").strip()
+        code = clean_wing_code(raw_code)
+        if raw_code and not code:
+            return self.say("A wing code is six letters and digits - "
+                            "everyone in the wing types the same one.", RED)
+        if data.get("wing_link") and not code:
+            return self.say("The wing link needs a code. Make a new one and "
+                            "read it out to the rest of your wing.", RED)
+        data["wing_code"] = code
         try:
             data["high_g_warn"] = max(0.0, float(
                 str(data.get("high_g_warn") or "0").lower().replace("g", "")
@@ -7195,16 +8122,26 @@ class SettingsWindow(ctk.CTkToplevel):
         self.app.redraw()
 
     def paste_shared(self):
-        """Add the finds in whatever lines were copied from Copy to share."""
+        """Add the finds in the lines pasted into the box (1.10032: the box,
+        not the clipboard - nothing is read that you have not put there)."""
+        box = attr(self, "paste_box")
         try:
-            text = self.clipboard_get()
+            text = box.get("1.0", "end") if box is not None else ""
         except Exception:
             text = ""
+        if not str(text or "").strip():
+            return self.say("Paste the shared lines into the box first, then "
+                            "press Import.", AMBER)
         try:
             result = take_share_lines(self.app.store, text)
         except Exception as problem:
             return self.say("Could not add those: %s" % problem, RED)
         self.say(share_summary(result), GREEN if result["taken"] else AMBER)
+        if result["taken"] or result.get("duplicates"):
+            try:
+                box.delete("1.0", "end")
+            except Exception:
+                pass
         if result["taken"]:
             self.app.refresh_locations()
             self.app.refresh_deposits()
@@ -7960,6 +8897,50 @@ def chain_tab(widgets):
                 entry.bind(sequence, backward, add="+")
             except Exception:
                 pass
+
+
+def mini_button(parent, text, command, primary=False):
+    """A small button for a table row: a plain Tk label that clicks.
+
+    A toolkit button is a canvas and a label of its own, drawn with rounded
+    corners. A page of a hundred rows carried two or three of them each,
+    and that - not the server - was most of the "really really slow"
+    loading of finds: seconds to draw a page. This is milliseconds, and at
+    22 pixels high it looks the same. Its clicks are bound on the label
+    itself, nowhere else."""
+    # `primary` may be a style of its own - BTN_DANGER for a delete.
+    style = primary if isinstance(primary, dict) else \
+        (BTN_PRIMARY if primary else BTN_SECONDARY)
+    colour = style.get("fg_color") or STEEL
+    hover = style.get("hover_color") or RULE
+    label = tk.Label(parent, text=text, font=F_MICRO, bg=colour,
+                     fg=style.get("text_color") or AMBER, padx=7, pady=1,
+                     bd=0, cursor="hand2")
+    label.bind("<Button-1>", lambda _event: command())
+    label.bind("<Enter>", lambda _event: label.configure(bg=hover))
+    label.bind("<Leave>", lambda _event: label.configure(bg=colour))
+    return label
+
+
+def row_buttons(table, index, buttons):
+    """A row's copy and verify buttons, in the copy column.
+
+    buttons is [(text, command, primary)]. Nothing is drawn for none."""
+    if not buttons:
+        return None
+    box = tk.Frame(table, bg=PANEL, bd=0)
+    box.grid(row=index, column=COPY_COLUMN, padx=6, pady=1, sticky="w")
+    for text, command, primary in buttons:
+        mini_button(box, text, command, primary).pack(side="left", padx=2)
+    return box
+
+
+def cell_label(table, index, column, text, colour=None, wrap=None):
+    """One table cell: a plain Tk label, never the toolkit's."""
+    tk.Label(table, text=text, font=F_SMALL, fg=colour or TEXT, bg=PANEL,
+             justify="left", anchor="w", wraplength=wrap or CELL_WRAP,
+             bd=0).grid(row=index, column=DATA_COLUMN_0 + column,
+                        padx=8, pady=2, sticky="w")
 
 
 class ScrollTable(ctk.CTkFrame):
@@ -8785,22 +9766,11 @@ class FindWindow(ctk.CTkToplevel):
                      anchor="w", wraplength=CELL_WRAP, bd=0).grid(
                          row=index, column=DATA_COLUMN_0 + column,
                          padx=8, pady=2, sticky="w")
-        copies = self._copies(row)
-        verifiable = self._verifiable(row)
-        if not copies and not verifiable:
-            return
-        box = ctk.CTkFrame(self.table, fg_color="transparent")
-        box.grid(row=index, column=COPY_COLUMN, padx=6, pady=1, sticky="w")
-        for label, what, text in copies:
-            ctk.CTkButton(box, text=label, width=58, height=22,
-                          font=F_MICRO, **BTN_SECONDARY,
-                          command=lambda w=what, t=text: self.copy_text(w, t)
-                          ).pack(side="left", padx=2)
-        if verifiable:
-            ctk.CTkButton(box, text="verify", width=58, height=22,
-                          font=F_MICRO, **BTN_PRIMARY,
-                          command=lambda r=row: self.verify_site(r)
-                          ).pack(side="left", padx=2)
+        buttons = [(label, lambda w=what, t=text: self.copy_text(w, t), False)
+                   for label, what, text in self._copies(row)]
+        if self._verifiable(row):
+            buttons.append(("verify", lambda r=row: self.verify_site(r), True))
+        row_buttons(self.table, index, buttons)
 
     # -- filtering and sorting -------------------------------------------
 
@@ -9334,6 +10304,19 @@ class EarningsWindow(ctk.CTkToplevel):
                                       "going across trips to a station",
                         variable=self.multi, font=F_BODY,
                         command=self.set_multi).pack(side="left", padx=(14, 6))
+        # A session opens on the first rig down or the first tonne refined
+        # in the Rhino, and closes on every rig up or the Rhino aboard. These
+        # are for doing it by hand: Start before anything is down, Pause for
+        # the drive to a station or a break - paused time is not in the
+        # Cr/hr - and End.
+        self.start_button = ctk.CTkButton(
+            buttons, text="Start session", width=120, height=32,
+            font=F_STRONG, **BTN_SECONDARY, command=self.start_session)
+        self.start_button.pack(side="left", padx=6)
+        self.pause_button = ctk.CTkButton(
+            buttons, text="Pause", width=100, height=32, font=F_STRONG,
+            **BTN_SECONDARY, command=self.pause_session)
+        self.pause_button.pack(side="left", padx=6)
         ctk.CTkButton(buttons, text="End session", width=110, height=32,
                       font=F_STRONG, **BTN_SECONDARY,
                       command=self.end_session).pack(side="left", padx=6)
@@ -9353,7 +10336,7 @@ class EarningsWindow(ctk.CTkToplevel):
         # whole reason to open this with a full hold is to find out where
         # to take it. Quietly: an offline commander gets the ledger, not an
         # error, and the button is there to ask again.
-        if self.app.hold_now():
+        if self.app.mined_aboard():
             self.check_prices(quiet=True)
 
     # -- sessions -----------------------------------------------------------
@@ -9370,7 +10353,7 @@ class EarningsWindow(ctk.CTkToplevel):
         books = self.app.earnings
         books.multi = wanted
         if not wanted and books.rhino is not None and not books._in_rhino:
-            books.finish(None, "multi-session switched off")
+            books.finish(None, "multi-session switched off", by="button")
         self.refresh()
         self.say("Multi-session on: one session across every trip until you "
                  "untick this." if wanted else
@@ -9382,9 +10365,51 @@ class EarningsWindow(ctk.CTkToplevel):
         books = self.app.earnings
         if books.current is None:
             return self.say("No session is running.", AMBER)
-        books.finish(None, "ended by hand")
+        books.finish(None, "ended by hand", by="button")
         self.refresh()
         return self.say("Session ended.", GREEN)
+
+    def start_session(self):
+        """Open a session now, before a rig is down or a tonne refined."""
+        books = self.app.earnings
+        if books.current is not None:
+            return self.say("A session is already running%s." % (
+                " - paused; Resume carries it on" if books.paused else ""),
+                AMBER)
+        system, body = self.app.here()
+        books.start_now(system, body,
+                        getattr(attr(self.app, "watcher"), "cmdr", "") or "")
+        self.refresh()
+        return self.say("Session started. Every rig up, End session or the "
+                        "Rhino coming aboard ends it.", GREEN)
+
+    def pause_session(self):
+        """Pause or resume the session in progress."""
+        books = self.app.earnings
+        if books.current is None:
+            return self.say("No session is running to pause.", AMBER)
+        if books.paused:
+            books.resume()
+            self.refresh()
+            return self.say("Session running again.", GREEN)
+        books.pause()
+        self.refresh()
+        return self.say("Session paused - the clock has stopped, so the drive "
+                        "to a station is not in the Cr/hr. Tonnes and sales "
+                        "still count; a rig down, a tonne refined or the "
+                        "Rhino going out starts it again by itself.", GREEN)
+
+    def _session_buttons(self):
+        """Pause reads Resume while paused; Start is dimmed while running."""
+        books = self.app.earnings
+        try:
+            self.pause_button.configure(
+                text="Resume" if books.paused else "Pause",
+                state="normal" if books.current is not None else "disabled")
+            self.start_button.configure(
+                state="disabled" if books.current is not None else "normal")
+        except Exception:
+            pass
 
     # -- where to sell ------------------------------------------------------
 
@@ -9419,7 +10444,7 @@ class EarningsWindow(ctk.CTkToplevel):
         try:
             for widget in table.winfo_children():
                 widget.destroy()
-            cargo = self.app.hold_now()
+            cargo = self.app.mined_aboard()
             quotes = self.app.fresh_quotes()
             asked = attr(self.app, "quote_asked") or {}
             system = asked.get("system") or getattr(self.app.watcher,
@@ -9435,7 +10460,8 @@ class EarningsWindow(ctk.CTkToplevel):
                     self.say("Could not get prices - the server said: %s"
                              % problem, AMBER)
                 return
-            headings = ("Commodity", "Aboard", "In this system",
+            headings = ("Commodity", "Aboard", "Galactic avg (est.)",
+                        "In this system",
                         "Best within %d Ly" % self._radius(), "Where",
                         "Price seen", "Worth there")
             for column, text in enumerate(headings):
@@ -9448,9 +10474,12 @@ class EarningsWindow(ctk.CTkToplevel):
                 count = int(cargo.get(name, 0))
                 seen = last_seen({"last_seen": (best or {}).get("seen")})[0] \
                     if best else "-"
+                average, source = self.app.galactic_average(name)
                 cells = (
                     (name, TEXT),
                     ("%dt" % count, TEXT),
+                    ((credits_text(average) + ("" if source == "game" else " *"))
+                     if average else "-", DIM),
                     (credits_text(here["sell"]) if here else "none known",
                      TEXT if here else DIM),
                     (credits_text(best["sell"]) if best else "none within range",
@@ -9466,6 +10495,14 @@ class EarningsWindow(ctk.CTkToplevel):
                              wraplength=CELL_WRAP).grid(
                                  row=index, column=column, padx=(0, 14),
                                  sticky="w")
+            if any(self.app.galactic_average(name)[1] == "table"
+                   for name in rows):
+                tk.Label(table, text="* EDSMT's own figure. Open any "
+                         "commodity market in the game and the game's "
+                         "galactic average replaces it.", font=F_SMALL,
+                         fg=DIM, bg=PANEL, anchor="w", bd=0).grid(
+                             row=len(rows) + 1, column=0, columnspan=8,
+                             sticky="w", pady=(4, 0))
         except Exception as exc:
             self.say("Could not show the prices: %s" % exc, RED)
 
@@ -9530,7 +10567,7 @@ class EarningsWindow(ctk.CTkToplevel):
                           command=lambda c=column: self.sort_by(c)).grid(
                               row=0, column=DATA_COLUMN_0 + column,
                               padx=4, pady=4, sticky="w")
-        ctk.CTkLabel(self.table, text="Copy", font=F_SMALL_B,
+        ctk.CTkLabel(self.table, text="Copy / delete", font=F_SMALL_B,
                      text_color=ORANGE).grid(row=0, column=COPY_COLUMN,
                                              padx=8, pady=5, sticky="w")
 
@@ -9547,13 +10584,50 @@ class EarningsWindow(ctk.CTkToplevel):
                      anchor="w", wraplength=CELL_WRAP, bd=0).grid(
                          row=index, column=DATA_COLUMN_0 + column,
                          padx=8, pady=2, sticky="w")
-        box = ctk.CTkFrame(self.table, fg_color="transparent")
-        box.grid(row=index, column=COPY_COLUMN, padx=6, pady=1, sticky="w")
-        for label, what, text in self._copies(row):
-            ctk.CTkButton(box, text=label, width=58, height=22,
-                          font=F_MICRO, **BTN_SECONDARY,
-                          command=lambda w=what, t=text: self.copy_text(w, t)
-                          ).pack(side="left", padx=2)
+        buttons = [(label, lambda w=what, t=text: self.copy_text(w, t), False)
+                   for label, what, text in self._copies(row)]
+        buttons.append(("delete", lambda r=row: self.delete_session(r),
+                        BTN_DANGER))
+        row_buttons(self.table, index, buttons)
+
+    def delete_session(self, row):
+        """Take a session off the tab and out of sessions.csv.
+
+        Two presses, the second on the same row within a few seconds: one
+        click on a row of small buttons is too easy to land on the wrong
+        one, and a modal box over a window full of numbers is worse. The
+        file before is kept as sessions.csv.bak."""
+        row_id = str((row or {}).get("id") or "")
+        if not row_id:
+            return self.say("That session has no id to delete it by.", RED)
+        armed = attr(self, "_delete_armed", None)
+        when = str(row.get("started") or "")[:16].replace("T", " ")
+        where = " / ".join(str(row.get(k) or "") for k in ("system", "body")
+                           if row.get(k)) or "somewhere unrecorded"
+        if not (armed and armed[0] == row_id
+                and time.time() - armed[1] < DELETE_CONFIRM_S):
+            self._delete_armed = (row_id, time.time())
+            return self.say("Press delete again on the same row within %d "
+                            "seconds to remove the session from %s at %s. "
+                            "It cannot be undone here - the file before it "
+                            "is kept as sessions.csv.bak."
+                            % (DELETE_CONFIRM_S, when or "an unknown time",
+                               where), AMBER)
+        self._delete_armed = None
+        try:
+            gone = self.app.earnings.delete(row_id)
+        except Exception as exc:
+            return self.say("Could not delete it: %s" % exc, RED)
+        if gone is None:
+            self.refresh()
+            return self.say("That session was already gone.", AMBER)
+        self.refresh()
+        try:
+            self.app.update_earnings()
+        except Exception:
+            pass
+        return self.say("Deleted the session from %s at %s." % (
+            when or "an unknown time", where), GREEN)
 
     def _summarise(self):
         """Everything, added up, above the rows it is the sum of."""
@@ -9564,7 +10638,9 @@ class EarningsWindow(ctk.CTkToplevel):
                     duration_text(totals["hours"]),
                     credits_text(totals["cr_hr"])))
         self.holding.configure(text=self._holding() or
-                               "Nothing in the hold, or the game is not running.")
+                               "Nothing mined in the hold, or the game is not "
+                               "running.")
+        self._session_buttons()
 
     def _holding(self):
         """The live line: what is aboard, and what it would fetch.
@@ -9576,7 +10652,7 @@ class EarningsWindow(ctk.CTkToplevel):
         """
         try:
             holds = dict(getattr(self.app.watcher, "holds", None) or {})
-            cargo = self.app.hold_now()
+            cargo = self.app.mined_aboard()
             prices = self.app.market_prices()
         except Exception:
             return ""
@@ -9585,9 +10661,12 @@ class EarningsWindow(ctk.CTkToplevel):
         tonnes = sum(int(count) for count in cargo.values())
         # Ship and SRV each named, because "36t" over a ship with 30 and an
         # SRV with 6 does not tell you whether it is time to go back up.
+        # Only what was mined: a hold of hauled Tea is not these earnings.
+        mined = {SV.fold(name) for name in cargo}
         parts = []
         for vessel in ("SRV", "Ship"):
-            hold = {k: v for k, v in dict(holds.get(vessel) or {}).items() if v}
+            hold = {k: v for k, v in dict(holds.get(vessel) or {}).items()
+                    if v and SV.fold(k) in mined}
             if not hold:
                 continue
             biggest = sorted(hold.items(), key=lambda pair: -pair[1])[:4]
@@ -9598,8 +10677,11 @@ class EarningsWindow(ctk.CTkToplevel):
             biggest = sorted(cargo.items(), key=lambda pair: -pair[1])[:4]
             parts.append("%dt - %s" % (tonnes, ", ".join(
                 "%s %d" % (name, count) for name, count in biggest)))
-        text = "In the hold: " + ";  ".join(parts) + "."
+        text = "Mined, in the hold: " + ";  ".join(parts) + "."
         worth = SV.hold_value(cargo, prices)
+        guess = self.app.hold_estimate(cargo)
+        if guess:
+            text += " About %s Cr at the galactic average." % credits_text(guess)
         if not worth:
             return text + " No market prices seen yet."
         where = (getattr(self.app.watcher, "market", None) or {}).get("station")
@@ -9608,14 +10690,17 @@ class EarningsWindow(ctk.CTkToplevel):
 
     def _advice(self):
         """An empty ledger has to say what fills it, not just that it is empty."""
-        return ("No Rhino sessions yet.\n\nA session starts when the Rhino "
-                "leaves the ship and ends when it comes back aboard. Every "
-                "tonne it refines is counted, every transfer to the ship is "
-                "counted, and when you sell what it dug up the credits are "
-                "put against it. Nothing else goes in here - not trading, "
-                "not exploration, not asteroid mining. Tick Multi-session to "
-                "keep one session going across trips to a station. Nothing "
-                "has to be pressed - the journal fills this in.")
+        return ("No Rhino sessions yet.\n\nA session starts on your first "
+                "rig down (the rig keys), or the first tonne the Rhino "
+                "refines, or Start session. It ends when every rig is back "
+                "up, when the Rhino comes back aboard, or on End session. "
+                "Every tonne it refines is counted, every transfer to the "
+                "ship is counted, and when you sell what it dug up the "
+                "credits are put against it. Nothing else goes in here - not "
+                "trading, not hauling, not exploration, not asteroid mining. "
+                "Pause stops the clock for a break or the drive to a "
+                "station. Tick Multi-session to keep one session going "
+                "across trips to a station.")
 
     # -- the row itself ----------------------------------------------------
 
@@ -9628,7 +10713,7 @@ class EarningsWindow(ctk.CTkToplevel):
         """
         started = str(row.get("started") or "")
         live = not str(row.get("closed") or "").strip()
-        hours = SV.hours_between(started, row.get("ended"))
+        hours = SV.session_hours(row)
         kept = SV.earned(row)
 
         def listed(field):
@@ -9994,19 +11079,11 @@ class LandWindow(ctk.CTkToplevel):
     def _row(self, index, row):
         for column, cell in enumerate(self._land_row(row)):
             text, colour, _key = EarningsWindow._cell(cell)
-            wrap = LAND_WRAP.get(LAND_HEADERS[column], CELL_WRAP)
-            ctk.CTkLabel(self.table, text=text, font=F_SMALL,
-                         text_color=colour or TEXT, justify="left",
-                         anchor="w", wraplength=wrap).grid(
-                             row=index, column=DATA_COLUMN_0 + column,
-                             padx=8, pady=2, sticky="w")
-        box = ctk.CTkFrame(self.table, fg_color="transparent")
-        box.grid(row=index, column=COPY_COLUMN, padx=6, pady=1, sticky="w")
-        for label, what, text in self._copies(row):
-            ctk.CTkButton(box, text=label, width=58, height=22,
-                          font=F_MICRO, **BTN_SECONDARY,
-                          command=lambda w=what, t=text: self.copy_text(w, t)
-                          ).pack(side="left", padx=2)
+            cell_label(self.table, index, column, text, colour,
+                       LAND_WRAP.get(LAND_HEADERS[column], CELL_WRAP))
+        row_buttons(self.table, index,
+                    [(label, lambda w=what, t=text: self.copy_text(w, t), False)
+                     for label, what, text in self._copies(row)])
 
     @staticmethod
     def _land_row(row):
@@ -10187,14 +11264,19 @@ GUIDE_STEPS = (
      "location's edge line and press {border} there, then keep it held "
      "while you map the area.{from_centre}"),
     ("deposit", "MARK A DEPOSIT  {deposit}",
-     "Drive to a deposit, fill in the boxes, press {deposit}."),
+     "Drive to a deposit and fill in all four boxes - commodity, rigs, "
+     "amount and density - then press {deposit}."),
     ("rigs", "PLACE RIGS  {rigs}",
-     "Press {rigs} as each rig goes down. Its type goes on the scope and "
-     "the compass."),
+     "One key per rig as it goes down: {rigs} is rigs 1 to 6. Its type goes "
+     "on the scope and the compass."),
     ("again", "NEXT DEPOSIT",
      "{marked} marked at signal {signal}. Next one: {deposit}, then {rigs} "
-     "per rig. {allup} when the rigs come up."),
+     "for the rigs. {rigsup} picks each one up, {allup} is all of them."),
 )
+
+# How long the guide's last card stays up after the first full run, before
+# the guide switches itself off.
+GUIDE_FAREWELL_S = 30.0
 
 # The Rhino deploys only below this, out of glide. From the testers, and the
 # guide will not say DEPLOY until both are true.
@@ -10214,8 +11296,8 @@ def guide_step(facts, keys=None):
     keys = dict(keys or {})
     words = {"location": "the LOG SIGNAL button", "border": "BORDER",
              "deposit": "MARK DEPOSIT", "rigs": "RIG DOWN",
-             "allup": "RIGS UP", "marked": 0, "signal": "-",
-             "from_centre": ""}
+             "allup": "RIGS UP", "rigsup": "its key", "marked": 0,
+             "signal": "-", "from_centre": ""}
     words.update({k: v for k, v in keys.items() if v})
     words["marked"] = facts.get("marked", 0)
     words["signal"] = facts.get("signal_no") or "-"
@@ -10315,9 +11397,12 @@ def read_quote(payload, system):
             continue
         try:
             price = int(row.get("sell") or 0)
+            demand = int(row.get("demand") or 0)
         except (TypeError, ValueError):
             continue
-        if price > 0:
+        # Demand 999,999 is a Community Goal's placeholder, not a market -
+        # and it is where the inflated "best" prices came from.
+        if price > 0 and demand != PLACEHOLDER_DEMAND:
             rows.append(dict(row, sell=price))
     commodity = SV.canonical(data.get("commodity") or "")
     best = max(rows, key=lambda r: r["sell"], default=None)
@@ -10518,12 +11603,38 @@ class SitesWindow(ctk.CTkToplevel):
                                                   pady=18, sticky="w")
                 return
             self._headings()
-            here = self._here()
-            for index, site in enumerate(self._rows, start=1):
-                self._row(index, site, here)
+            self._drawn, self._more_button = 0, None
+            self._draw_page()
             self.scroller.top()
         except Exception as exc:
             self.say("Could not draw the list: %s" % exc, RED)
+
+    def _draw_page(self):
+        """The next PAGE_ROWS sites, and a button for the rest. A commander
+        with a few hundred signals logged got every one drawn at once."""
+        rows = attr(self, "_rows", None) or []
+        start = attr(self, "_drawn", 0) or 0
+        more = attr(self, "_more_button", None)
+        if more is not None:
+            try:
+                more.destroy()
+            except Exception:
+                pass
+            self._more_button = None
+        here = self._here()
+        end = min(len(rows), start + PAGE_ROWS)
+        for index in range(start, end):
+            self._row(index + 1, rows[index], here)
+        self._drawn = end
+        left = len(rows) - end
+        if left > 0:
+            self._more_button = ctk.CTkButton(
+                self.table, text="Show %d more  (%d not drawn yet)"
+                % (min(PAGE_ROWS, left), left),
+                font=F_STRONG, **BTN_SECONDARY, height=30,
+                command=self._draw_page)
+            self._more_button.grid(row=end + 1, column=DATA_COLUMN_0,
+                                   columnspan=4, padx=8, pady=10, sticky="w")
 
     def _summarise(self, shown):
         sites = self._sites
@@ -10565,22 +11676,14 @@ class SitesWindow(ctk.CTkToplevel):
         cells = site_cells(site, here)
         for column, cell in enumerate(cells):
             text, colour, _key = EarningsWindow._cell(cell)
-            wrap = SITES_WRAP.get(SITES_HEADERS[column], CELL_WRAP)
-            ctk.CTkLabel(self.table, text=text, font=F_SMALL,
-                         text_color=colour or TEXT, justify="left",
-                         anchor="w", wraplength=wrap).grid(
-                             row=index, column=DATA_COLUMN_0 + column,
-                             padx=8, pady=2, sticky="w")
-        box = ctk.CTkFrame(self.table, fg_color="transparent")
-        box.grid(row=index, column=COPY_COLUMN, padx=6, pady=1, sticky="w")
-        for label, what, text in (
-                ("system", "the system name", site["system"]),
-                ("row", "this site", " | ".join(
-                    EarningsWindow._cell(c)[0].replace("\n", " ") for c in cells))):
-            ctk.CTkButton(box, text=label, width=58, height=22,
-                          font=F_MICRO, **BTN_SECONDARY,
-                          command=lambda w=what, t=text: self.copy_text(w, t)
-                          ).pack(side="left", padx=2)
+            cell_label(self.table, index, column, text, colour,
+                       SITES_WRAP.get(SITES_HEADERS[column], CELL_WRAP))
+        line = " | ".join(EarningsWindow._cell(c)[0].replace("\n", " ")
+                          for c in cells)
+        row_buttons(self.table, index, [
+            ("system", lambda s=site["system"]: self.copy_text(
+                "the system name", s), False),
+            ("row", lambda s=line: self.copy_text("this site", s), False)])
 
     def _sorted(self, sites):
         column = self._sort_column

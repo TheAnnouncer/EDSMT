@@ -226,46 +226,83 @@ for junk in ("a long way", "-5", "nan"):
 
 print("== keys for the SRV, and a settings file from before them ==")
 # His request: Left Alt and the number row, in the order a signal is worked -
-# centre, border, deposit, rig down, rigs up, update - so step 3 is Alt+3.
-# ("Lets do alt 1 alt2 etc as the fbuttons can get confusion")
-NEW = ["ALT+1", "ALT+2", "ALT+3", "ALT+4", "ALT+5", "ALT+6"]
-WORK = ("hotkey_location", "hotkey_border", "hotkey_deposit", "hotkey_rigs",
-        "hotkey_allup", "hotkey_update")
+# centre, border, deposit - so step 3 is Alt+3. Then (1.10031) Alt+4 to
+# Alt+9 put rigs 1 to 6 down, and the same number with AltGr - Ctrl+Alt -
+# picks it up: "alt 4, 5, 6, 7, 8, 9 to put each down and then right alt
+# and the numbers to pick up". AltGr+3 updates, AltGr+0 is every rig up.
+NEW = ["ALT+1", "ALT+2", "ALT+3", "CTRL+ALT+3", "CTRL+ALT+0"]
+WORK = ("hotkey_location", "hotkey_border", "hotkey_deposit", "hotkey_update",
+        "hotkey_allup")
+RIGS_DOWN = ["hotkey_rig%d" % n for n in range(1, 7)]
+RIGS_UP = ["hotkey_rig%dup" % n for n in range(1, 7)]
 order = [A.DEFAULT_SETTINGS[name] for name in WORK]
-check("the keys go Alt+1 to Alt+6 in the order the work is done",
-      order == NEW, order)
+check("the keys go Alt+1 to Alt+3 in the order the work is done, the undo "
+      "of each on AltGr", order == NEW, order)
+check("rigs 1 to 6 go down on Alt+4 to Alt+9",
+      [A.DEFAULT_SETTINGS[n] for n in RIGS_DOWN]
+      == ["ALT+%d" % d for d in range(4, 10)])
+check("and come up on AltGr (Ctrl+Alt) with the same number",
+      [A.DEFAULT_SETTINGS[n] for n in RIGS_UP]
+      == ["CTRL+ALT+%d" % d for d in range(4, 10)])
+check("the spare next-rig key ships unbound", A.DEFAULT_SETTINGS["hotkey_rigs"] == "")
 check("the app, Settings' Reset and the overlay all read one table",
-      [A.OV.WORK_KEYS[n] for n in WORK] == NEW
-      and [key for _n, key in A.KEY_ORDER] == NEW)
+      all(A.OV.WORK_KEYS[n] == A.DEFAULT_SETTINGS[n]
+          for n in WORK + tuple(RIGS_DOWN) + tuple(RIGS_UP))
+      and dict(A.KEY_ORDER) == {n: A.OV.WORK_KEYS[n] for n, _k in A.KEY_ORDER})
 check("no function key is a default any more", not any(
       str(v).upper().startswith(("F", "ALT+F")) for k, v in A.DEFAULT_SETTINGS.items()
       if k.startswith("hotkey_") and isinstance(v, str)))
+defaults = [A.DEFAULT_SETTINGS[n] for n in WORK + tuple(RIGS_DOWN) + tuple(RIGS_UP)]
 check("every one of them is a key Windows can register, on the number row",
-      all(A.parse_binding(key) == (A.MOD_ALT, 0x30 + n)
-          for n, key in enumerate(order, start=1)),
-      [A.parse_binding(k) for k in order])
+      all(A.parse_binding(key) is not None and 0x30 <= A.parse_binding(key)[1] <= 0x39
+          for key in defaults), [A.parse_binding(k) for k in defaults])
+check("no two actions share a key", len(set(defaults)) == len(defaults))
 check("each is written the way a person reads it", A.key_text("ALT+1") == "Alt+1"
       and A.key_text("") == "" and A.key_text("F9") == "F9")
+A.OV._ALTGR["on"] = False
+check("off a keyboard with AltGr, the undo keys read Ctrl+Alt",
+      A.key_text("CTRL+ALT+4") == "Ctrl+Alt+4")
+A.OV._ALTGR["on"] = True
+check("on one with AltGr - UK, Europe - they read AltGr",
+      A.key_text("CTRL+ALT+4") == "AltGr+4" and A.key_text("ALT+4") == "Alt+4")
+check("and the six rig keys read as one run",
+      A.OV.rig_keys_words(A.DEFAULT_SETTINGS) == "Alt+4-9"
+      and A.OV.rig_keys_words(A.DEFAULT_SETTINGS, up=True) == "AltGr+4-9",
+      (A.OV.rig_keys_words(A.DEFAULT_SETTINGS),
+       A.OV.rig_keys_words(A.DEFAULT_SETTINGS, up=True)))
+A.OV._ALTGR.clear()
 check("rigs up has a key, and the key does rigs up, not mark a deposit",
-      A.EDSMT.wanted_hotkeys(A.DEFAULT_SETTINGS).get("allup") == "ALT+5"
+      A.EDSMT.wanted_hotkeys(A.DEFAULT_SETTINGS).get("allup") == "CTRL+ALT+0"
       and '"allup": ("Rigs up", self.rigs_up)' in open(A.__file__,
                                                         encoding="utf-8").read())
+wanted = A.EDSMT.wanted_hotkeys(A.DEFAULT_SETTINGS)
+check("every rig key is registered, down and up",
+      all(wanted.get("rig%d" % n) == "ALT+%d" % (n + 3)
+          and wanted.get("rig%dup" % n) == "CTRL+ALT+%d" % (n + 3)
+          for n in range(1, 7)), wanted)
+src = open(A.__file__, encoding="utf-8").read()
+check("and each runs its own rig",
+      'table["rig%d" % n] = ("Rig %d down" % n,' in src
+      and "lambda n=n: self.drop_rigs(n))" in src
+      and "lambda n=n: self.rig_up(n))" in src)
 old = {"hotkey_deposit": "F10", "hotkey_location": "F9", "hotkey_rigs": "",
        "hotkey_border": "", "rig_warn_m": 1000}
 del A.SETTINGS_NOTICE[:]
 merged = A.upgrade_hotkeys({**A.DEFAULT_SETTINGS, **old}, old)
 check("a file from 1.10028 moves to the new keys",
-      [merged[n] for n in WORK] == NEW, merged)
+      [merged[n] for n in WORK] == NEW
+      and [merged[n] for n in RIGS_DOWN] == ["ALT+%d" % d for d in range(4, 10)],
+      [merged[n] for n in WORK])
 check("and the guessed 1 km rig warning becomes the measured one",
       merged["rig_warn_m"] == A.DEFAULT_SETTINGS["rig_warn_m"])
-check("and says which layout it has", merged["hotkey_defaults"] == A.KEYS_LEVEL == 4)
+check("and says which layout it has", merged["hotkey_defaults"] == A.KEYS_LEVEL == 5)
 check("and the commander is told once, at start-up",
-      any("Alt+1" in note and "Alt+6" in note for note in A.SETTINGS_NOTICE),
+      any("Alt+4 to Alt+9" in note for note in A.SETTINGS_NOTICE),
       A.SETTINGS_NOTICE)
 test_build = dict(old, hotkey_border="F8", hotkey_rigs="F7", hotkey_defaults=2)
 merged = A.upgrade_hotkeys({**A.DEFAULT_SETTINGS, **test_build}, test_build)
-check("a test build's F8 and F7 move too",
-      (merged["hotkey_border"], merged["hotkey_rigs"]) == ("ALT+2", "ALT+4"),
+check("a test build's F8 and F7 move too - F7 to the unbound spare",
+      (merged["hotkey_border"], merged["hotkey_rigs"]) == ("ALT+2", ""),
       (merged["hotkey_border"], merged["hotkey_rigs"]))
 alt_f = {"hotkey_location": "ALT+F1", "hotkey_border": "ALT+F2",
          "hotkey_deposit": "ALT+F3", "hotkey_rigs": "ALT+F5",
@@ -281,7 +318,27 @@ check("on the Alt+F layout, a key somebody cleared stays cleared",
 check("and one somebody moved stays moved",
       merged["hotkey_allup"] == "CTRL+U", merged["hotkey_allup"])
 check("while the rest still move",
-      merged["hotkey_location"] == "ALT+1" and merged["hotkey_rigs"] == "ALT+4")
+      merged["hotkey_location"] == "ALT+1" and merged["hotkey_rig1"] == "ALT+4")
+# 1.10029 and 1.10030: Alt+1 to Alt+6 with one RIG DOWN key.
+alt_n = {"hotkey_location": "ALT+1", "hotkey_border": "ALT+2",
+         "hotkey_deposit": "ALT+3", "hotkey_rigs": "ALT+4",
+         "hotkey_allup": "ALT+5", "hotkey_update": "ALT+6",
+         "hotkey_defaults": 4, "rig_warn_m": 3500}
+del A.SETTINGS_NOTICE[:]
+merged = A.upgrade_hotkeys({**A.DEFAULT_SETTINGS, **alt_n}, alt_n)
+check("a 1.10030 file: Alt+4 becomes rig 1, Alt+5 rig 2, Alt+6 rig 3",
+      [merged[n] for n in RIGS_DOWN] == ["ALT+%d" % d for d in range(4, 10)]
+      and merged["hotkey_rigs"] == "", [merged[n] for n in RIGS_DOWN])
+check("and update and every-rig-up move to AltGr+3 and AltGr+0",
+      (merged["hotkey_update"], merged["hotkey_allup"]) == ("CTRL+ALT+3", "CTRL+ALT+0"))
+check("and is told", any("Alt+4 to Alt+9" in n for n in A.SETTINGS_NOTICE))
+mine_upd = dict(alt_n, hotkey_update="ALT+7")
+merged = A.upgrade_hotkeys({**A.DEFAULT_SETTINGS, **mine_upd}, mine_upd)
+check("a 1.10030 key moved by hand onto Alt+7 keeps it, and rig 4 is left "
+      "unbound rather than doubled",
+      merged["hotkey_update"] == "ALT+7" and merged["hotkey_rig4"] == ""
+      and merged["hotkey_rig5"] == "ALT+8",
+      (merged["hotkey_update"], merged["hotkey_rig4"]))
 own = dict(old, hotkey_location="CTRL+L")
 merged = A.upgrade_hotkeys({**A.DEFAULT_SETTINGS, **own}, own)
 check("a key set by hand is left where it was put",
@@ -294,15 +351,15 @@ check("a new key already taken by hand is not given twice",
 mine = dict(old, rig_warn_m=3950)
 merged = A.upgrade_hotkeys({**A.DEFAULT_SETTINGS, **mine}, mine)
 check("a rig distance someone chose is left alone", merged["rig_warn_m"] == 3950)
-done = dict(old, hotkey_defaults=A.KEYS_LEVEL, hotkey_rigs="", hotkey_border="")
+done = dict(old, hotkey_defaults=A.KEYS_LEVEL, hotkey_rig1="", hotkey_border="")
 merged = A.upgrade_hotkeys({**A.DEFAULT_SETTINGS, **done}, done)
 check("once moved, a key cleared later stays cleared",
-      merged["hotkey_rigs"] == "" and merged["hotkey_border"] == "")
-src = open(A.__file__, encoding="utf-8").read()
-check("the Settings rows are numbered in the order the work is done",
-      src.index('"1  Log the signal and set the centre"')
-      < src.index('"2  Survey border here"') < src.index('"3  Mark the deposit"')
-      < src.index('"4  A rig is down here"'))
+      merged["hotkey_rig1"] == "" and merged["hotkey_border"] == "")
+check("the Settings rows go in the order the work is done",
+      src.index('("hotkey_location", "Log the signal and set the centre")')
+      < src.index('("hotkey_border", "Survey border here")')
+      < src.index('("hotkey_deposit", "Mark the deposit")')
+      < src.index('rows += [("hotkey_rig%d" % n, "Rig %d down" % n)'))
 check("no message still tells anyone to press F9 or F10",
       not re.search(r'press F(9|10)\b|\(F9\)|F10 again', src))
 

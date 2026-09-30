@@ -337,11 +337,22 @@ def mark_app():
         def set(self, value):
             self.value = value
     mapp.fields = {k: _Box() for k in ("commodity", "rigs", "amount", "density")}
+    # 1.10031: a deposit is only marked with all four boxes filled in.
+    mapp.fields["rigs"].set("3")
+    mapp.fields["amount"].set("High")
+    mapp.fields["density"].set("Medium")
+    _clear = mapp.clear_deposit_boxes
+    def _refill():
+        _clear()
+        mapp.fields["rigs"].set("3")
+        mapp.fields["amount"].set("High")
+        mapp.fields["density"].set("Medium")
+    mapp.clear_deposit_boxes = _refill
     mapp.refresh_locations = mapp.refresh_deposits = mapp.redraw = lambda: None
     mapp.refresh_commodities = lambda *a: None
     mapp.share = lambda row: None
     mapp.on_pick = lambda row: None
-    mapp.key = lambda action, fallback="": {"update": "Alt+6",
+    mapp.key = lambda action, fallback="": {"update": "AltGr+3",
                                             "deposit": "Alt+3"}.get(action, fallback)
     return mapp
 
