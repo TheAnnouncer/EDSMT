@@ -37,6 +37,32 @@ updates, and opens again with your finds and settings as they were. Settings
 
 ---
 
+## Run from source
+
+The source is at
+**[github.com/TheAnnouncer/EDSMT](https://github.com/TheAnnouncer/EDSMT)**,
+GPL-3.0. Windows 10 or 11 and Python 3.10 or newer; the downloads are built
+with 3.12.
+
+```bat
+git clone https://github.com/TheAnnouncer/EDSMT.git
+cd EDSMT
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python edsmt.py
+```
+
+Or double-click `RUN.bat` in the folder. It makes the `.venv`, installs what
+`requirements.txt` lists and starts EDSMT, and offers to install Python
+through winget if there is none.
+
+`BUILD.bat` makes `EDSMT-Setup.exe` and `EDSMT.exe` the way the downloads
+are made, fetching Inno Setup for the installer if it is missing. The same
+build runs on GitHub from `.github/workflows/build.yml`.
+
+---
+
 ## How it actually works
 
 The keys are **Left Alt and the number row, in the order you work a
