@@ -180,6 +180,13 @@ footer a:hover{color:var(--signal)}
   .readout .row{flex-wrap:wrap}
   .readout .v{text-align:left}
 }
+.faq details{border-bottom:1px solid var(--line);padding:12px 0}
+.faq summary{cursor:pointer;font-family:var(--display);font-weight:600;
+  font-size:1.1rem;color:var(--paper);list-style:none}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::before{content:"+";display:inline-block;width:1.2em;color:var(--signal)}
+.faq details[open] summary::before{content:"\2212"}
+.faq details p{margin:8px 0 0 1.2em;color:var(--mute)}
 </style>
 </head>
 <body>
@@ -228,8 +235,8 @@ footer a:hover{color:var(--signal)}
   </header>
 
   <section class="panel">
-    <h2>Six keys, in the order you work.</h2>
-    <p class="sub">Left Alt and the number row &middot; the number is the step</p>
+    <h2>Keys, in the order you work.</h2>
+    <p class="sub">Left Alt and the number row &middot; the same number with AltGr takes it back</p>
 
     <div class="keys">
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
@@ -244,41 +251,31 @@ footer a:hover{color:var(--signal)}
         ground you have swept inside it.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
         <kbd>Alt+3</kbd>
-        <p><b>Stood on a deposit.</b> One press per deposit. Rigs can be left
-        blank &mdash; you do not know the count until you are on it.</p></div>
+        <p><b>Stood on a deposit.</b> One press per deposit, with all four
+        boxes filled in &mdash; commodity, rigs, amount and density &mdash; so
+        what goes on the shared map can be trusted.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>Alt+4</kbd>
-        <p><b>As each rig goes down.</b> Numbered, and drawn on the scope and
-        the compass in the colour of what it is mining.</p></div>
+        <kbd>Alt+4 &ndash; 9</kbd>
+        <p><b>Rig 1 to rig 6 down.</b> Each rig its own key, drawn on the scope
+        and the compass in the colour of what it is mining. The first one down
+        starts your earnings session.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>Alt+5</kbd>
-        <p><b>Rigs back up.</b> Clears them from the scope and the
-        compass, and clears every rig warning.</p></div>
+        <kbd>AltGr+4 &ndash; 9</kbd>
+        <p><b>That rig back up.</b> The last one up ends the session and stands
+        every rig warning down. On a keyboard without AltGr it is
+        Ctrl+Alt.</p></div>
       <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
-        <kbd>Alt+6</kbd>
+        <kbd>AltGr+3</kbd>
         <p><b>Back at a deposit you marked.</b> Writes the Amount going down, or
         the rig count you now know, onto it instead of adding a second
         copy.</p></div>
+      <div class="key"><span class="hud-corner c-tl"></span><span class="hud-corner c-br"></span>
+        <kbd>AltGr+0</kbd>
+        <p><b>Every rig up at once.</b> Clears them from the scope and the
+        compass, and every rig warning with them.</p></div>
     </div>
-
-    <div class="callout">
-      <span class="hud-label">No centre to set. No bearing to work out.</span>
-      <p>A deposit records where it <em>is</em>. How far and which way to turn
-      are worked out live from wherever you happen to be standing &mdash; which
-      is the number you want with your hands on the wheel, and it means
-      nothing has to be pressed before a find can be recorded.</p>
-    </div>
-
-    <p>The keys are system-wide, so they work with the game in front, and
-    every one can be changed in Settings. Get one wrong and every deposit is editable
-    afterwards &mdash; marking a find is one keypress with the game in front
-    of you, so the commodity or the signal number can easily be whatever the
-    boxes happened to say at that moment.</p>
-  </section>
-
-  <section class="panel">
-    <h2>On your screen while you drive</h2>
-    <p class="sub">Six boxes. Any combination. Drag them, then lock them.</p>
+    <p class="note-small">None of these is used by any of the game's own
+    control schemes. Every one can be changed in Settings.</p>
 
     <div class="cols2">
       <div>
@@ -455,6 +452,39 @@ footer a:hover{color:var(--signal)}
         <code>journal-mining-events.log</code>. Documenting that schema would
         be a bigger win for the community than this app is.</p>
       </div>
+    </div>
+  </section>
+
+  <section class="panel" id="faq">
+    <h2>Questions</h2>
+    <p class="sub">The ones people ask first</p>
+    <div class="faq">
+      <details><summary>Do I need an account, or to log in with Frontier?</summary>
+        <p>No. EDSMT reads the journal files the game writes on your own PC for tools like this one. There is no account, and a Frontier login would not tell it anything about surface mining that the journal does not.</p></details>
+      <details><summary>Does it touch the game?</summary>
+        <p>No. It reads the game's journal and status files and draws its boxes over the top. It never reads the game's memory, never injects anything and never presses a key in the game for you.</p></details>
+      <details><summary>The boxes do not show over the game.</summary>
+        <p>Set Elite to borderless or windowed. Nothing can draw over exclusive fullscreen &mdash; that is DirectX, not EDSMT.</p></details>
+      <details><summary>A key does nothing.</summary>
+        <p>Another program got it first &mdash; graphics-card overlays, Discord and Steam all grab keys. Pick another in Settings; EDSMT tells you when a key is taken. On UK and European keyboards AltGr is Ctrl+Alt to Windows, which is why the pick-up keys read AltGr there and Ctrl+Alt on a US keyboard.</p></details>
+      <details><summary>Alt+3 will not mark the deposit.</summary>
+        <p>All four boxes have to be filled in: commodity, rigs, amount and density. The scanner's density counts when the game names one. Half-filled finds were reaching the shared map without the two things somebody deciding whether to fly there needs most.</p></details>
+      <details><summary>Why is Find locked?</summary>
+        <p>Find reads the shared map, and it opens once you have put one deposit of your own on it: switch sharing on in Settings and mark one. It stays open from then on.</p></details>
+      <details><summary>What is shared, and what stays on my PC?</summary>
+        <p>Nothing leaves your PC until you switch sharing on. Then it is the deposits you mark and the prices at markets you open, with your commander name only if you leave name sharing on. Your sessions, settings and everything else stay in your own AppData folder.</p></details>
+      <details><summary>When does an earnings session start and stop?</summary>
+        <p>It starts with your first rig down, or your first tonne refined in the Rhino, or Start session. It ends when every rig is back up, when the Rhino comes back aboard, or on End session. Pause stops the clock for a break or the drive to a station. Only what the Rhino dug up is counted &mdash; cargo you bought or hauled is left out.</p></details>
+      <details><summary>Where do the sell prices come from?</summary>
+        <p>Three places, side by side: the game's own galactic average, read off any commodity market you open (an estimate until you do); prices EDSMT users have read at stations; and a public market index, for the best price within the distance you pick and the price in the system you are in.</p></details>
+      <details><summary>What are the rig planner and the wing link?</summary>
+        <p>Two betas, both off until you switch them on in Settings. The rig planner: press AltGr+2, drive the deposit's edge back to where you started, and a pin goes on the scope for each rig that fits, 78 m apart by default &mdash; the community's working figure, which you can change. The wing link: everyone types the same six-character code and sees each other's Rhinos and rigs on the scope &mdash; friends on one body, or crew off one ship with more than one Rhino. The server forgets you two minutes after you stop.</p></details>
+      <details><summary>The words in the boxes are too small.</summary>
+        <p>Settings has a text size for each box on its own, from 80% to 200%, without making the box itself any bigger. Unlock to drag a box or resize it by its corner.</p></details>
+      <details><summary>How do I update?</summary>
+        <p>EDSMT tells you when there is a new version and installs it on one click. Your deposits, sessions and settings are kept.</p></details>
+      <details><summary>Windows says it protected my PC.</summary>
+        <p>A new download trips SmartScreen until enough people have run it. More info, then Run anyway. The source is here too if you would rather read it first.</p></details>
     </div>
   </section>
 

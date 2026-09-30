@@ -1,15 +1,15 @@
 {
-  "version": "1.10030",
+  "version": "1.10032",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "Fixed \u2014 Alt+1 to Alt+6 work in the game",
+  "headline": "New \u2014 an estimate of what a deposit holds, before you work it",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10030",
-    "sha256": "a676ee7dda024ceaba459501c19d5902de3352a3d7971e7b041952964b363662",
-    "bytes": 12743793
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10032",
+    "sha256": "85e180eda090582278f62ba462ce411bd374ac4a5e0dcf91d0a0cc81f7728204",
+    "bytes": 12780045
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10030",
-    "sha256": "22e50cdb1854fd4b05ca8519ce540c7b9ca1ed2fca5172b18935bc2dc6b849c2",
-    "bytes": 14068309
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10032",
+    "sha256": "5fe55cccfd14d4d9c5b75f614843c3f38cd6a8e7d197b12d39dd3c57179ff16f",
+    "bytes": 14148602
   }
 }

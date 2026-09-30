@@ -557,7 +557,7 @@ check("the next target is a heading and a range, not just a dot",
 wide_scope = drawn(RADAR_ROWS, heading=12.0, size=(760, 420))
 check("with room, the hotkeys that record one are on it, in the order the "
       "work is done",
-      said(wide_scope, "Alt+1 SITE  Alt+2 BORDER  Alt+3 DEPOSIT  Alt+4 RIG"),
+      said(wide_scope, "Alt+1 SITE  Alt+2 BORDER  Alt+3 DEPOSIT  Alt+4-9 RIG"),
       texts(wide_scope))
 check("squeezed, they give way to where to go next rather than print over it",
       said(scope, "NEXT") and not said(scope, "Alt+1 SITE"), texts(scope))

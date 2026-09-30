@@ -4,6 +4,128 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10032
+
+### New — an estimate of what a deposit holds, before you work it
+
+A deposit you have not worked out yet shows **est. holds** and **est. left**,
+from the deposits you have worked out with the same rig count and density —
+the tonnes the game itself counted off them, never a formula. It says how
+many it rests on, and it shows nothing when there is nothing like it to go
+on. A deposit you have worked out still shows its own measure.
+
+### New — the next rig pin on the compass tape
+
+The rig planner's next pin is an amber diamond on the compass with its
+distance, pinned to the end with an arrow when it is behind you.
+
+### Changed — a rig counts on a pin within half the spacing
+
+39 m at the default 78 m, instead of 20 m: a rig dropped a car's length off
+the pin now ticks it off and moves you on to the next.
+
+### New — delete a session from Earnings
+
+Every row on the Earnings tab has a **delete** button: press it, then press
+it again on the same row within six seconds. The file before is kept as
+`sessions.csv.bak`.
+
+### Fixed — Community Goal prices are no longer "the best price"
+
+A station reading demand 999,999 is a Community Goal's placeholder, not a
+market, and the Ega CG's 1,038,104 Cr showed as the top price for Iridium,
+Periclase Dunite and Thortveitite under it. Such rows are left out, in the
+app and on the server. The commodity table's average and top prices are
+refreshed to the community list's 21 September figures, after the CG, and
+Methanol Crystals are listed on rocky ice worlds as well as icy bodies.
+
+### Changed — shared finds come in through a box you can see
+
+**Settings → Your finds** has a box: paste the shared lines, press **Import**
+or Enter. EDSMT no longer reads whatever is on the clipboard.
+
+---
+
+## 1.10031
+
+### New — a key for every rig
+
+**Alt+4 to Alt+9** put rigs 1 to 6 down, and the **same number with AltGr**
+picks that rig up — AltGr+4 is rig 1 up. **AltGr+3** updates the deposit you
+are on, **AltGr+0** is every rig up. On a keyboard without AltGr it is
+Ctrl+Alt, and EDSMT names the keys that way. Alt+1 to Alt+3 are unchanged,
+and none of the keys is used by any of the game's own control schemes. Keys
+you set yourself are kept; the rest move once, and EDSMT says so.
+
+### Changed — a deposit needs all four boxes
+
+Commodity, rigs, amount and density, or it is not marked — finds were reaching
+the shared map without the amount and density. The scanner's density counts
+when the game names one. After a mark, rigs, amount and density clear
+themselves for the next deposit.
+
+### Changed — Find opens once you have shared a find of your own
+
+Reading the shared map starts with adding to it: switch sharing on and mark
+one deposit, and Find is open from then on.
+
+### Changed — Earnings is mining, not hauling
+
+A session starts with your **first rig down**, the first tonne the Rhino
+refines, or **Start session** — not the Rhino going out, which it also does
+to haul and to look. It ends when **every rig is back up**, when the Rhino
+comes aboard, or on **End session**. **Pause** stops the clock for a break or
+the drive to a station, and credits per hour leaves it out. The hold on the
+Earnings tab is only what the Rhino dug up: bought and hauled cargo is left
+out. A crewmate taking the ship's other Rhino out no longer counts as your
+trip.
+
+### New — three prices for what you mined
+
+**Galactic average** (the game's own figure, read off any commodity market
+you open — an estimate until you do), the best price **in the system you are
+in**, and the **best within** the distance you pick. The price in your own
+system is no longer cut off when twenty better ones are in range.
+
+### New — the rig planner (beta, off until switched on)
+
+Press **AltGr+2** and drive round the deposit's edge: EDSMT works out where up
+to six rigs fit, 78 m apart by default (the community's working figure — a
+setting), and puts a numbered pin on the scope for each, in driving order.
+STATUS says which pin is next and how far; each goes green as a rig goes
+down on it.
+
+### New — the wing link (beta, off until switched on)
+
+Friends on one body, or crew off one ship with more than one Rhino: type the
+same six-character code and see each other's Rhinos and rigs on the scope. A
+rig dropped too close to a wingmate's says so. Nothing is stored — the server
+forgets you two minutes after your last beat.
+
+### New — text size per overlay box
+
+Each box has its own text size in Settings, 80% to 200%, without making the
+box bigger. Asked for by the testers.
+
+### Changed — the guide steps aside after your first full run
+
+It switches itself off once you have followed it through signal, deposit
+and rigs, and says so. Settings turns it back on.
+
+### Fixed — finds load fast
+
+Result pages drew a toolkit button two or three times a row, and a search
+waited for the next slow tick to be picked up. Rows are plain now, results
+are collected ten times a second, and My sites draws a page at a time.
+
+### Also
+
+- Keys pressed with AltGr are captured properly in Settings.
+- A questions section on the download page.
+- The GitHub build finds the Inno Setup compiler wherever it is installed.
+
+---
+
 ## 1.10030
 
 ### Fixed — Alt+1 to Alt+6 work in the game

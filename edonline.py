@@ -15,10 +15,10 @@ Three separate things live here:
 
   MarketWatch      reads Market.json, which the game writes whenever the
                    commodity screen is opened. Frontier's 4.4.1.0 commodities
-                   are missing from the community commodity-ID list the market
-                   services key off, and none of those services expose a
-                   commodity search, so nothing out there can price them yet.
-                   The prices come from our own users instead.
+                   were missing from the community commodity-ID list the
+                   market services key off when this was written; they are in
+                   it now. Our own users' reads are still collected - a price
+                   seen today at a station is the freshest there is.
 
   analysis         pure functions over recorded deposits: clustering, overlap
                    detection, freshness decay, nearest sites. No I/O, so it is
@@ -43,7 +43,7 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10030"
+APP_VERSION = "1.10032"
 # An honest, contactable User-Agent. Bot filters at the edge judge
 # unattended clients on exactly this, and a bare name with no way to
 # reach anyone reads as something worth blocking.
@@ -935,12 +935,26 @@ class CommunityClient:
             lambda: self._verified(post_json(url, payload, headers=self._headers())))
         return True
 
+    def wing(self, code: str, beat: dict) -> bool:
+        """One beat of the wing link (beta): where this commander is, and
+        back, where the rest of the wing is. The server keeps nothing past
+        two minutes, and the code is the only key. Not gated on sharing -
+        this is not the map, and it only goes on when switched on."""
+        if not self.can_read or not code or not beat:
+            return False
+        url = "%s/v1/wing/%s" % (self.base_url, urllib.parse.quote(
+            str(code).strip().upper()))
+        self.worker.submit("wing", lambda: json.dumps(
+            post_json(url, beat, timeout=8.0, headers=self._headers())))
+        return True
+
     def upload_prices(self, cmdr: str, market: dict) -> bool:
         """Share one station's prices for the surface-mining commodities.
 
-        Nobody else has this data: the 4.4.1.0 commodities are missing from
-        the community commodity-ID list, so every market service keyed off it
-        is blind to them. The journal has the numbers, so we collect our own.
+        When this was written the 4.4.1.0 commodities were missing from the
+        community commodity-ID list, and every market service keyed off it
+        was blind to them. They have been added since; our own users' reads
+        stay, because a price somebody saw today is the freshest there is.
         """
         if not self.ready or not market or not market.get("items"):
             return False

@@ -80,9 +80,20 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
+      # ${env:ProgramFiles(x86)} with the braces: without them PowerShell
+      # reads $env:ProgramFiles and then the literal text "(x86)", looks in
+      # "C:\Program Files(x86)" and fails - which is what every tagged run
+      # up to 1.10030 did. Searched for rather than assumed, so a different
+      # Inno Setup folder or version on the runner cannot break it again.
       - name: Build the installer
         run: |
-          & "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" /Q build\installer.iss
+          $roots = @(${env:ProgramFiles(x86)}, $env:ProgramFiles, "$env:LOCALAPPDATA\Programs") | Where-Object { $_ }
+          $iscc = $roots | ForEach-Object { Get-ChildItem -Path $_ -Filter ISCC.exe -Recurse -Depth 2 -ErrorAction SilentlyContinue } | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found under: $($roots -join ', ')" }
+          Write-Host "Inno Setup compiler: $($iscc.FullName)"
+          & $iscc.FullName /Q build\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path upload\EDSMT-Setup.exe)) { throw "ISCC ran but upload\EDSMT-Setup.exe is missing" }
         shell: pwsh
 
       # GPL-3.0 asks for the source that was used to build the binary, which

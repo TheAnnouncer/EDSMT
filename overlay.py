@@ -26,8 +26,10 @@ display - the window itself cannot be, but where every mark lands can.
 """
 
 
+import ctypes
 import json
 import math
+import os
 
 import planview as PV
 
@@ -93,6 +95,10 @@ DEFAULT_MODE = STRIP
 # not tighter than this (a single deposit two metres away should not fill
 # the scope) and not wider than the cap, past which this stops being a map.
 MIN_RADIUS_M = 250.0
+# The scope while the rig planner has pins close by: never tighter than
+# this, never wider than that.
+PLAN_VIEW_FLOOR_M = 120.0
+PLAN_VIEW_CAP_M = 1500.0
 DEFAULT_MAX_RADIUS_M = PV.MAX_MAP_RADIUS_M
 
 # Cockpit palette, the same one edsmt.py draws the main window with. It is
@@ -108,6 +114,9 @@ TEXT = "#e9dccd"
 DIM = "#9c6a3c"
 FAINT = "#6d4826"
 CYAN = "#37c6d4"
+# Wingmates' Rhinos and rigs (wing link, beta): a colour nothing else on the
+# scope uses, so another commander's rig is never read as one of yours.
+WING_COLOUR = "#c77dff"
 SCAN_RING = "#2a5f66"
 # The glass the concept panels sit on. Deliberately close to the background:
 # furniture must never read as a contact.
@@ -341,17 +350,103 @@ DEPOSIT = "deposit"
 GUIDE = "guide"
 
 # The work keys as they ship: Left Alt and the number row, numbered in the
-# order a signal is worked, so the key for step 3 is Alt+3. The one table -
-# the app's defaults, its buttons, Settings' Reset and this overlay's hints
-# all read it, so no screen can go on naming a key that moved.
+# order a signal is worked, so the key for step 3 is Alt+3. The rigs take
+# the rest of the row: Alt+4 to Alt+9 put rigs 1 to 6 down, and the same
+# number with AltGr - Ctrl+Alt on a keyboard without one - picks that rig
+# up. AltGr+3 updates the deposit Alt+3 marked, AltGr+0 is every rig up.
+# None of these is bound by any of the game's own control schemes (every
+# .binds file shipped with 4.4 was checked), and nothing in Windows, NVIDIA,
+# AMD, Steam or Discord uses them. One table - the app's defaults, its
+# buttons, Settings' Reset and this overlay's hints all read it, so no
+# screen can go on naming a key that moved.
+RIG_SLOTS = 6
 WORK_KEYS = {
     "hotkey_location": "ALT+1",    # log the signal and set the centre
     "hotkey_border": "ALT+2",      # the survey border, at the edge
     "hotkey_deposit": "ALT+3",     # mark the deposit
-    "hotkey_rigs": "ALT+4",        # a rig is down here, one press per rig
-    "hotkey_allup": "ALT+5",       # all rigs up
-    "hotkey_update": "ALT+6",      # update the deposit you are on
+    "hotkey_update": "CTRL+ALT+3",  # update the deposit you are on
+    "hotkey_trace": "CTRL+ALT+2",  # rig planner: trace the deposit's edge
+    "hotkey_rigs": "",             # the next free rig, for a spare key
+    "hotkey_allup": "CTRL+ALT+0",  # every rig up
 }
+WORK_KEYS.update({"hotkey_rig%d" % n: "ALT+%d" % (n + 3)
+                  for n in range(1, RIG_SLOTS + 1)})
+WORK_KEYS.update({"hotkey_rig%dup" % n: "CTRL+ALT+%d" % (n + 3)
+                  for n in range(1, RIG_SLOTS + 1)})
+
+_ALTGR = {}
+
+
+def altgr_layout():
+    """True when the keyboard layout in use has an AltGr key.
+
+    On those - UK and most of Europe - the right-hand Alt IS Ctrl+Alt, so a
+    key bound to Ctrl+Alt+4 is pressed as AltGr+4 and should be written that
+    way. On a US layout the right Alt is plain Alt and the key has to be
+    written Ctrl+Alt+4, or it is pressed as Alt+4 and drops a rig instead of
+    picking one up. Asked once: a layout with AltGr turns Ctrl+Alt plus one
+    of these keys into a character (UK AltGr+4 is the euro sign), a layout
+    without one does not. Never raises; False anywhere but Windows.
+    """
+    if "on" in _ALTGR:
+        return _ALTGR["on"]
+    found = False
+    if os.name == "nt":
+        try:
+            user32 = ctypes.WinDLL("user32")
+            layout = user32.GetKeyboardLayout(0)
+            state = (ctypes.c_ubyte * 256)()
+            state[0x11] = 0x80          # VK_CONTROL
+            state[0x12] = 0x80          # VK_MENU (Alt)
+            out = ctypes.create_unicode_buffer(8)
+            for vk in (0x32, 0x33, 0x34, 0x37, 0x45, 0x51):   # 2 3 4 7 E Q
+                scan = user32.MapVirtualKeyExW(vk, 0, layout)
+                # 0x4: do not change the keyboard's dead-key state.
+                got = user32.ToUnicodeEx(vk, scan, state, out, 8, 0x4, layout)
+                if got > 0 and out.value.strip():
+                    found = True
+                    break
+        except Exception:
+            found = False
+    _ALTGR["on"] = found
+    return found
+
+
+def key_words(binding):
+    """"ALT+1" as a person writes it: "Alt+1". "CTRL+ALT+4" is "AltGr+4"
+    on a keyboard that has an AltGr key, "Ctrl+Alt+4" on one that does not.
+    Blank stays blank."""
+    parts = [part for part in str(binding or "").split("+") if part]
+    if not parts:
+        return ""
+    mods = [part.upper() for part in parts[:-1]]
+    if sorted(mods) == ["ALT", "CTRL"] and altgr_layout():
+        return "AltGr+" + parts[-1]
+    names = {"ALT": "Alt", "CTRL": "Ctrl", "SHIFT": "Shift", "WIN": "Win"}
+    return "+".join(names.get(part.upper(), part) for part in parts[:-1]) + \
+        ("+" if len(parts) > 1 else "") + parts[-1]
+
+
+def rig_keys_words(settings, up=False):
+    """The six rig keys in one short phrase: "Alt+4-9" when they run on in
+    a row with one modifier, as they ship; otherwise the ones that are
+    bound, listed. "" when none of them is."""
+    settings = settings or {}
+    suffix = "up" if up else ""
+    bound = []
+    for n in range(1, RIG_SLOTS + 1):
+        name = "hotkey_rig%d%s" % (n, suffix)
+        bound.append(str(settings.get(name, WORK_KEYS[name]) or "").strip().upper())
+    if not any(bound):
+        return ""
+    heads = {key.rsplit("+", 1)[0] if "+" in key else "" for key in bound if key}
+    tails = [key.rsplit("+", 1)[-1] for key in bound]
+    if all(bound) and len(heads) == 1 and all(t.isdigit() and len(t) == 1 for t in tails) \
+            and [int(t) for t in tails] == list(range(int(tails[0]), int(tails[0]) + len(tails))):
+        first = key_words(bound[0])
+        return "%s-%s" % (first, tails[-1])
+    return ", ".join(key_words(key) for key in bound if key)
+
 PANEL_ORDER = (STRIP, RADAR, TARGETS, STATUS, DEPOSIT, GUIDE)
 PANEL_TITLE = {STRIP: "COMPASS", RADAR: "SCOPE",
                TARGETS: "TARGETS", STATUS: "STATUS",
@@ -731,6 +826,50 @@ def value_bars(canvas, x, y, width, height, bars, colour=None):
             canvas.create_text(left + pitch / 2.0, y + height + 6, anchor="n",
                                fill=FAINT, font=("Consolas", 7),
                                text=str(name)[:6].upper())
+
+
+class _ScaledCanvas:
+    """A panel's canvas with every piece of text drawn at a set size.
+
+    The scope, the compass and the rest are drawn with fixed font sizes, and
+    making a box bigger makes the picture bigger without making the words
+    any easier to read - which is what a tester asked for: the text on its
+    own, independent of the scope. Everything but create_text goes straight
+    through to the real canvas."""
+
+    def __init__(self, canvas, factor):
+        self._canvas = canvas
+        self._factor = factor
+
+    def __getattr__(self, name):
+        return getattr(self._canvas, name)
+
+    def create_text(self, *args, **kwargs):
+        font = kwargs.get("font")
+        if isinstance(font, tuple) and len(font) >= 2:
+            try:
+                size = int(font[1])
+                bigger = max(6, int(round(abs(size) * self._factor)))
+                kwargs["font"] = (font[0], bigger if size >= 0 else -bigger) \
+                    + tuple(font[2:])
+            except (TypeError, ValueError):
+                pass
+        return self._canvas.create_text(*args, **kwargs)
+
+
+def scaled_canvas(canvas, factor):
+    """The canvas itself at 100%, a scaling wrapper otherwise."""
+    try:
+        factor = float(factor)
+    except (TypeError, ValueError):
+        factor = 1.0
+    if canvas is None or abs(factor - 1.0) < 0.01:
+        return canvas
+    return _ScaledCanvas(canvas, max(0.5, min(3.0, factor)))
+
+
+# The text sizes offered per box, as percentages.
+TEXT_SIZES = (80, 90, 100, 115, 130, 150, 175, 200)
 
 
 class Panel:
@@ -1616,9 +1755,17 @@ class Overlay:
         # the old palette.
         return ORANGE
 
+    def text_scale(self, key):
+        """This box's text size from settings: 1.0 is as designed."""
+        try:
+            return float(self.settings.get("overlay_text_%s" % key, 100)
+                         or 100) / 100.0
+        except (TypeError, ValueError):
+            return 1.0
+
     def draw(self, rows, heading, note="", body="", location="", site=None,
              survey=None, rigs=None, guide=None, target=None, only=None,
-             cargo=None, hazard=None):
+             cargo=None, hazard=None, rigplan=None, wing=None):
         """Redraw. Called from the same poll that moves the map.
 
         `rows` are Survey.near rows, measured from the commander. The three
@@ -1651,6 +1798,12 @@ class Overlay:
         # A reason to be careful on this body - high gravity - said on the
         # GUIDE and STATUS boxes for as long as you are on it.
         self._hazard = hazard if isinstance(hazard, dict) else None
+        # The rig planner (beta): the traced edge and the pins for the rigs,
+        # as east/north metres from the commander. The scope closes in on
+        # them while the Rhino is near, and STATUS says which pin is next.
+        self._plan = rigplan if isinstance(rigplan, dict) else None
+        # The wing link (beta): the other Rhinos on this body and their rigs.
+        self._wing = wing if isinstance(wing, dict) else None
         # The signal being worked, and nothing else. A body can hold finds
         # thousands of kilometres apart, and the boxes used to list and point
         # at all of them: a scope sized to 50 km with 9,698 km arrows at its
@@ -1715,7 +1868,7 @@ class Overlay:
                     continue
                 rebuilt = True
             self._drawing = panel
-            self.canvas = panel.canvas
+            self.canvas = scaled_canvas(panel.canvas, self.text_scale(key))
             try:
                 self.canvas.delete("all")
                 width, height = panel.size()
@@ -1821,6 +1974,35 @@ class Overlay:
                                anchor="w" if right else "e", text=label,
                                fill=colour, font=("Consolas", 8, "bold"),
                                tags=("rigtape",))
+
+        # The rig planner's next pin on the tape too (1.10032): the scope
+        # shows the pins from above, the tape says which way to turn for the
+        # next one - an amber diamond, pinned to the near end with an arrow
+        # when it is behind you.
+        planned = getattr(self, "_plan", None) or {}
+        pin = planned.get("next_pin") if not planned.get("tracing") else None
+        if pin:
+            try:
+                bearing = (float(heading) + float(pin.get("offset") or 0.0)) % 360.0
+                x = tape_x(heading, bearing, width, span)
+                offscreen = x is None
+                if offscreen:
+                    x = 16.0 if float(pin.get("offset") or 0.0) < 0 else width - 16.0
+                y = baseline
+                canvas.create_polygon(x, y - 8, x + 8, y, x, y + 8, x - 8, y,
+                                      fill=GLASS, outline=AMBER, width=2,
+                                      tags=("pintape",))
+                label = "P%d %s" % (pin["n"], format_range(pin["range_m"]))
+                if offscreen:
+                    label = ("< " + label) if float(pin.get("offset") or 0) < 0 \
+                        else (label + " >")
+                right = x < width / 2.0
+                canvas.create_text(x + (11 if right else -11), y + 12,
+                                   anchor="w" if right else "e", text=label,
+                                   fill=AMBER, font=("Consolas", 9, "bold"),
+                                   tags=("pintape",))
+            except (KeyError, TypeError, ValueError):
+                pass
 
         if note:
             canvas.create_text(6, height - 8, text=note, fill=dim, anchor="sw",
@@ -2038,7 +2220,17 @@ class Overlay:
             ])
 
         nearest = self.ranked(rows, heading, limit=1)
-        if nearest:
+        planned = getattr(self, "_plan", None) or {}
+        pin = planned.get("next_pin") if planned.get("near") else None
+        if pin:
+            canvas.create_text(6, top + 30, anchor="w", fill=AMBER,
+                               font=("Consolas", 10, "bold"),
+                               text="PIN %d %s %s  (%d/%d)" % (
+                                   pin["n"], turn_arrow(pin.get("offset", 0.0)),
+                                   format_range(pin["range_m"]),
+                                   planned.get("done", 0),
+                                   len(planned.get("pins") or [])))
+        elif nearest:
             item = nearest[0]
             canvas.create_text(6, top + 30, anchor="w",
                                fill=self.colour(item["commodity"]),
@@ -2206,18 +2398,13 @@ class Overlay:
             return "unlocked - drag me"
 
         def key(name):
-            value = str(self.settings.get(name, WORK_KEYS[name]) or "").strip()
-            parts = [p for p in value.split("+") if p]
-            if not parts:
-                return ""
-            mods = {"ALT": "Alt", "CTRL": "Ctrl", "SHIFT": "Shift", "WIN": "Win"}
-            return "+".join(mods.get(p.upper(), p) for p in parts)
+            return key_words(self.settings.get(name, WORK_KEYS[name]))
 
         # In the order a signal is worked: centre, border, deposit, rig.
         wanted = [(key("hotkey_location"), "SITE"),
                   (key("hotkey_border"), "BORDER"),
                   (key("hotkey_deposit"), "DEP" if short else "DEPOSIT"),
-                  (key("hotkey_rigs"), "RIG")]
+                  (rig_keys_words(self.settings) or key("hotkey_rigs"), "RIG")]
         if short:
             wanted = [pair for pair in wanted if pair[1] != "BORDER"]
         return "  ".join("%s %s" % (bound, what) for bound, what in wanted if bound)
@@ -2294,6 +2481,18 @@ class Overlay:
         cap = min(cap, PV.SIGNAL_VIEW_CAP_M)
         floor = MIN_RADIUS_M if rows else PV.SIGNAL_VIEW_EMPTY_M
         extent = PV.extent_for(points, floor_m=floor, headroom=1.25, cap_m=cap)
+        # The rig planner: near its pins the scope is about metres, not
+        # kilometres - it centres on you and holds the pins and the traced
+        # edge, so a pin 78 m from the last one is a pin you can drive to.
+        planned = getattr(self, "_plan", None) or {}
+        if planned.get("near"):
+            origin = (0.0, 0.0)
+            centred = False
+            close = [(0.0, 0.0)]
+            close += [(p["east"], p["north"]) for p in planned.get("pins") or []]
+            close += [tuple(p) for p in planned.get("outline") or []]
+            extent = PV.extent_for(close, floor_m=PLAN_VIEW_FLOOR_M,
+                                   headroom=1.3, cap_m=PLAN_VIEW_CAP_M)
 
         # The header and footer eat into the window, so the scope is nudged
         # down between them rather than centred on a window it does not own
@@ -2322,6 +2521,8 @@ class Overlay:
         self._scope_queue = []
         self._scope(viewport, plan)
         self._survey_marks(viewport, origin)
+        self._plan_marks(viewport, origin)
+        self._wing_marks(viewport, origin)
         self._rig_marks(viewport, origin)
         self._scanner(viewport, plan)
         if patch:
@@ -2336,6 +2537,76 @@ class Overlay:
         self._header(width, plan, found, centred, body, rows)
         self._footer(width, height, plan, note)
         self._brackets(width, height)
+
+    def _wing_marks(self, viewport, origin):
+        """Wingmates on the scope: a diamond for each Rhino with the name
+        beside it, and their rigs as small squares with their initial - in
+        one colour of their own, so theirs never read as yours."""
+        wing = getattr(self, "_wing", None)
+        if not wing:
+            return
+        canvas = self.canvas
+        for mate in wing.get("mates") or []:
+            name = str(mate.get("name") or "wingmate")
+            tag = name.replace("CMDR", "").strip()[:1].upper() or "W"
+            for rig in mate.get("rigs") or []:
+                x, y = viewport.to_canvas(rig["east"] - origin[0],
+                                          rig["north"] - origin[1])
+                if not (0 <= x <= viewport.width and 0 <= y <= viewport.height):
+                    continue
+                canvas.create_rectangle(x - 5, y - 5, x + 5, y + 5,
+                                        outline=WING_COLOUR, width=1,
+                                        tags=("wingmark",))
+                canvas.create_text(x, y, text="%s%s" % (tag, rig.get("n") or ""),
+                                   fill=WING_COLOUR, font=("Consolas", 6, "bold"),
+                                   tags=("wingmark",))
+                self._taken().append((x - 6, y - 6, x + 6, y + 6))
+            x, y = viewport.to_canvas(mate["east"] - origin[0],
+                                      mate["north"] - origin[1])
+            if not (0 <= x <= viewport.width and 0 <= y <= viewport.height):
+                continue
+            canvas.create_polygon(x, y - 6, x + 6, y, x, y + 6, x - 6, y,
+                                  outline=WING_COLOUR, fill="", width=2,
+                                  tags=("wingmark",))
+            canvas.create_text(x + 9, y, anchor="w", text=name[:18],
+                               fill=WING_COLOUR, font=("Consolas", 8),
+                               tags=("wingmark",))
+            self._taken().append((x - 7, y - 7, x + 9 + 7 * len(name[:18]), y + 7))
+
+    def _plan_marks(self, viewport, origin):
+        """The rig planner on the scope: the edge that was driven, and a
+        ring for each rig where it fits, numbered in driving order. Green
+        once a rig is down on it; the next one to drive to is bright."""
+        planned = getattr(self, "_plan", None)
+        if not planned:
+            return
+        canvas = self.canvas
+        edge = [viewport.to_canvas(e - origin[0], n - origin[1])
+                for e, n in planned.get("outline") or []]
+        if len(edge) >= 2:
+            flat = [c for point in edge for c in point]
+            if not planned.get("tracing"):
+                flat += list(edge[0])
+            canvas.create_line(*flat, fill=CYAN, width=1,
+                               dash=(3, 3) if planned.get("tracing") else None,
+                               tags=("planmark",))
+        spacing = float(planned.get("spacing") or 0)
+        ring = max(4.0, viewport.radius_px(spacing / 2.0)) if spacing and \
+            hasattr(viewport, "radius_px") else 7.0
+        following = planned.get("next")
+        for pin in planned.get("pins") or []:
+            x, y = viewport.to_canvas(pin["east"] - origin[0],
+                                      pin["north"] - origin[1])
+            if not (0 <= x <= viewport.width and 0 <= y <= viewport.height):
+                continue
+            colour = GREEN_OK if pin.get("done") else (
+                AMBER if pin.get("n") == following else DIM)
+            canvas.create_oval(x - ring, y - ring, x + ring, y + ring,
+                               outline=colour, width=2 if pin.get("n") == following
+                               else 1, tags=("planmark",))
+            canvas.create_text(x, y, text="P%d" % pin["n"], fill=colour,
+                               font=("Consolas", 8, "bold"), tags=("planmark",))
+            self._taken().append((x - 8, y - 8, x + 8, y + 8))
 
     def _rig_marks(self, viewport, origin):
         """Each rig on the scope: a small numbered square, red past the limit."""

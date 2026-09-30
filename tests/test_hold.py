@@ -88,15 +88,28 @@ class _Watcher:
     market = None
 
 
+class _Books:
+    """What recent Rhino sessions dug up and have not sold. The Tea in the
+    SRV was picked up, not mined - 1.10031: "The earnings tab is picking up
+    stuff to do with normal hauling lets not do that"."""
+    current = rhino = None
+    paused = False
+    def unsold(self): return {"Haematite": 30, "Sapphire": 2}
+
+
 app = A.EDSMT.__new__(A.EDSMT)
 app.community = _Comm()
 app.watcher = _Watcher()
+app.earnings = _Books()
 timers = []
 app.after = lambda ms, fn: timers.append((ms, fn))
+check("what is priced is what was mined, not the whole hold",
+      app.mined_aboard() == {"Haematite": 30, "Sapphire": 2}, app.mined_aboard())
 count, why = app.quote_hold(50)
-check("one ask per commodity aboard", count == 3 and not why, (count, why))
+check("one ask per mined commodity aboard - the hauled Tea is not asked about",
+      count == 2 and not why, (count, why))
 check("spaced out, so the market index answers every one of them",
-      [ms for ms, _fn in timers] == [0, A.QUOTE_GAP_MS, 2 * A.QUOTE_GAP_MS],
+      [ms for ms, _fn in timers] == [0, A.QUOTE_GAP_MS],
       [ms for ms, _fn in timers])
 for _ms, fn in timers:
     fn()
@@ -130,7 +143,6 @@ check("an empty hold asks nothing", empty_hold.quote_hold()[0] == 0)
 print("== answers filed, and quoted on the strip ==")
 strip = []
 app.t_earnings = type("L", (), {"configure": lambda self, **k: strip.append(k.get("text"))})()
-app.earnings = type("E", (), {"current": None, "rhino": None})()
 app.take_quote(True, json.dumps(ANSWER))
 filed = app.fresh_quotes().get(SV.fold("Sapphire"))
 check("the answer is filed under its commodity",
@@ -139,14 +151,14 @@ check("the answer is filed under its commodity",
 check("the strip says what the hold fetches at the best price found, and that "
       "not everything is priced yet",
       strip and "up to 1,296,000 Cr within 50 Ly" in strip[-1]
-      and "(1 of 3 priced)" in strip[-1], strip[-1:])
-check("and the ship and SRV are both in the hold figure",
-      strip and strip[-1].startswith("hold 33t"), strip[-1:])
-for name, price in (("Haematite", 9000), ("Tea", 1500)):
+      and "(1 of 2 priced)" in strip[-1], strip[-1:])
+check("and the ship and SRV are both in the mined figure, the Tea left out",
+      strip and strip[-1].startswith("mined aboard 32t"), strip[-1:])
+for name, price in (("Haematite", 9000),):
     app.take_quote(True, json.dumps({"commodity": name, "market": [
         {"station": "S", "system": "Ten Mandi", "sell": price, "distance_ly": 8.2}]}))
 check("once everything is priced the caveat goes",
-      "up to 1,567,500 Cr within 50 Ly" in strip[-1] and "priced)" not in strip[-1],
+      "up to 1,566,000 Cr within 50 Ly" in strip[-1] and "priced)" not in strip[-1],
       strip[-1:])
 app.watcher.system = "Somewhere Else"
 app.update_earnings()

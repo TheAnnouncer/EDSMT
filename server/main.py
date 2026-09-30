@@ -47,7 +47,10 @@ SELL_UPSTREAM_BASE.
 
 import math
 import os
+import re
 import sqlite3
+import threading
+import time
 import unicodedata
 import datetime as dt
 from contextlib import closing
@@ -76,7 +79,7 @@ def _staff_from_env(raw):
 
 
 STAFF = _staff_from_env(os.environ.get("RR_STAFF", ""))
-APP_VERSION = "1.10030"
+APP_VERSION = "1.10032"
 SCHEMA_ID = "radioraxxla/surfacemining/1"
 DEPLETION_SCHEMA = "radioraxxla/surfacemining-depletion/1"
 MARKET_SCHEMA = "radioraxxla/surfacemining-market/1"
@@ -910,6 +913,7 @@ font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--faint);t
     <tr><td class="m">GET /v1/prices</td><td class="d">Commander market reads, unblended</td></tr>
     <tr><td class="m">POST /v1/deposits</td><td class="d">Share what you mapped</td></tr>
     <tr><td class="m">POST /v1/depletion</td><td class="d">Say a patch is stripped &mdash; the useful one</td></tr>
+    <tr><td class="m">POST /v1/wing/{code}</td><td class="d">Wing link (beta) &mdash; see each other&rsquo;s Rhinos and rigs; nothing kept</td></tr>
   </table>
 </section>
 <section>
@@ -990,6 +994,7 @@ def index(accept: str = Header(default="")):
             "prices":      "GET  /v1/prices?commodity=",
             "submit":      "POST /v1/deposits",
             "depletion":   "POST /v1/depletion",
+            "wing":        "POST /v1/wing/{code}",
         },
         "answers": "Is this patch still worth the trip.",
         "reformation_measured": REFORMATION_MEASURED,
@@ -1324,6 +1329,12 @@ SELL_SLUGS = {"lowtemperaturediamonds": "lowtemperaturediamond"}
 _sell_cache: dict = {}
 _sell_last_call = [0.0]
 
+# A market reading demand 999,999 is not a market: it is the placeholder a
+# Community Goal station carries. The Ega CG's 1,038,104 Cr stood as "the
+# best price" for three surface commodities under exactly that number, and
+# nobody could sell a hold there once it closed. Such rows are left out.
+PLACEHOLDER_DEMAND = 999999
+
 
 def sell_slug(commodity: str) -> str:
     """Our commodity name as the upstream spells it."""
@@ -1367,6 +1378,8 @@ def fetch_upstream_sell(commodity: str, near_system: str = "",
         sell = int(item.get("sellPrice") or 0)
         if sell <= 0:
             continue
+        if int(item.get("demand") or 0) == PLACEHOLDER_DEMAND:
+            continue
         rows.append({
             "commodity": COMMODITIES.get(fold(item.get("commodityName")))
                          or str(item.get("commodityName") or commodity),
@@ -1383,7 +1396,16 @@ def fetch_upstream_sell(commodity: str, near_system: str = "",
         })
     # The upstream does not sort by price, so we do.
     rows.sort(key=lambda r: (-r["sell"], -(r["demand"] or 0)))
-    return rows[:limit]
+    top = rows[:limit]
+    # The best price in the system asked from goes in whatever it is. Cut at
+    # `limit` by price, the station next door fell off the end whenever
+    # twenty better ones were in range - and "is the drive worth it" is a
+    # question about the price here as much as the price there.
+    if near_system:
+        here = fold(near_system)
+        if not any(fold(r["system"]) == here for r in top):
+            top += [r for r in rows[limit:] if fold(r["system"]) == here][:1]
+    return top
 
 
 def upstream_sell(commodity: str, near_system: str, within_ly: float,
@@ -1445,7 +1467,8 @@ def sell(commodity: str = "", near: str = "",
     known = COMMODITIES.get(fold(commodity)) or commodity
 
     sql = ("SELECT commodity, station, system, sell, demand, seen "
-           "FROM prices WHERE sell > 0 AND commodity = ?")
+           "FROM prices WHERE sell > 0 AND commodity = ? "
+           "AND (demand IS NULL OR demand != %d)" % PLACEHOLDER_DEMAND)
     args: list = [known]
     here = None if None in (near_x, near_y, near_z) else (near_x, near_y, near_z)
     # With a position, `near` is only the centre the upstream measures from.
@@ -2006,6 +2029,90 @@ def grounds():
 def commodities():
     return {"commodities": COMMODITY_NAMES,
             "densities": DENSITY_TIERS}
+
+
+# ------------------------------------------------------ wing link (beta)
+#
+# Commanders mining one body together see each other's Rhinos and rigs on
+# their scopes, so nobody drops a rig on top of somebody else's. Nothing is
+# written to disk: a wing is a handful of positions held in memory, and a
+# member is forgotten WING_TTL_S after their last beat. The code is the only
+# key - six characters one commander reads out to the rest - and each beat
+# answers with everybody else's last one. The server is one process, so one
+# dictionary is the whole of it.
+
+WING_CODE = re.compile(r"^[A-Z2-9]{6}$")
+WING_TTL_S = 120.0
+WING_MAX_MEMBERS = 8
+WING_MAX_WINGS = 5000
+# A member beating faster than this is answered without being re-stored.
+WING_MIN_GAP_S = 1.5
+_wings: dict = {}
+_wings_lock = threading.Lock()
+
+
+class WingRig(BaseModel):
+    n: int = Field(ge=1, le=12)
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
+class WingBeat(BaseModel):
+    member: str = Field(pattern=r"^[A-Za-z0-9]{8,32}$")
+    name: str = Field(default="", max_length=40)
+    system: str = Field(default="", max_length=120)
+    body: str = Field(default="", max_length=120)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+    heading: float | None = Field(default=None, ge=0, le=360)
+    in_srv: bool = False
+    rigs: list[WingRig] = Field(default_factory=list, max_length=12)
+    leave: bool = False
+
+
+def _wing_sweep(now: float) -> None:
+    for code in list(_wings):
+        wing = _wings[code]
+        for member in [m for m, d in wing.items() if now - d["at"] > WING_TTL_S]:
+            del wing[member]
+        if not wing:
+            del _wings[code]
+
+
+@app.post("/v1/wing/{code}")
+def wing_beat(code: str, beat: WingBeat, authorization: str = Header(default="")):
+    """One beat: where this member is, and back, where the rest are."""
+    if WRITE_TOKEN and authorization != f"Bearer {WRITE_TOKEN}":
+        raise HTTPException(401, "bad or missing token")
+    code = (code or "").strip().upper()
+    if not WING_CODE.match(code):
+        raise HTTPException(422, "a wing code is six letters and digits")
+    now = time.time()
+    with _wings_lock:
+        _wing_sweep(now)
+        wing = _wings.get(code)
+        if beat.leave:
+            if wing is not None:
+                wing.pop(beat.member, None)
+                if not wing:
+                    _wings.pop(code, None)
+            return {"code": code, "members": [], "ttl_s": WING_TTL_S}
+        if wing is None:
+            if len(_wings) >= WING_MAX_WINGS:
+                raise HTTPException(503, "too many wings open - try again shortly")
+            wing = _wings[code] = {}
+        last = wing.get(beat.member)
+        if last is None and len(wing) >= WING_MAX_MEMBERS:
+            raise HTTPException(409, "that wing is full - %d is the most"
+                                % WING_MAX_MEMBERS)
+        if last is None or now - last["at"] >= WING_MIN_GAP_S:
+            data = beat.model_dump(exclude={"member", "leave"})
+            data["at"] = now
+            wing[beat.member] = data
+        others = [dict({k: v for k, v in data.items() if k != "at"},
+                       age_s=round(now - data["at"], 1))
+                  for member, data in wing.items() if member != beat.member]
+    return {"code": code, "members": others, "ttl_s": WING_TTL_S}
 
 
 if __name__ == "__main__":

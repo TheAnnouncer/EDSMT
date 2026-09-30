@@ -29,7 +29,8 @@ datas += [(os.path.join(ROOT, "sounds", name), "sounds")
           for name in ("rig-warning.wav", "rig-warning-profane.wav")]
 
 hiddenimports = collect_submodules("customtkinter")
-hiddenimports += ["survey", "planview", "journal", "edonline", "overlay"]
+hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",
+                  "rigplan"]
 
 excludes = [
     "PyQt5", "PyQt6", "PySide2", "PySide6", "wx",
