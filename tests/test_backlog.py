@@ -160,7 +160,12 @@ CHECKS = [
  (134, "delete a session from Earnings",     lambda: wired("delete_session") and "def delete(self, row_id)" in SV),
  (135, "CG placeholder prices left out",     lambda: "PLACEHOLDER_DEMAND" in APP and "PLACEHOLDER_DEMAND" in SRV),
  (123, "FAQ on the download page",           lambda: 'id="faq"' in src("site/index.html")
-        and 'id="faq"' in src("site/edsmt.html")),
+        and 'url=/EDSMT/' in src("site/edsmt.html")),
+ (138, "download page wears the site's shell", lambda: all(t in src("site/index.html") for t in
+        ('class="site-head"', 'class="topbar"', 'class="site-foot"', "/assets/css/raxxla.css",
+         "/assets/js/raxxla.js")) and ":root{" not in src("site/index.html")),
+ (139, "source on GitHub, and how to run it", lambda: "github.com/TheAnnouncer/EDSMT" in src("site/index.html")
+        and "## Run from source" in src("README.md")),
  # journal rules
  ("J1","sticky EOF handled",                 lambda: "seek" in JN and "SEEK_END" in JN),
  ("J2","no mtime gate on Status.json",       lambda: "st_mtime" not in JN.split("def _read_status")[1][:900] if "def _read_status" in JN else True),
