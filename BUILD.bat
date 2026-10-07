@@ -161,6 +161,8 @@ rem  site\ with nothing shipping it - so it existed and nobody could ever
 rem  reach it. index.html is the download page the auto-updater points at;
 rem  this is the page you link from radioraxxla.com.
 if exist "site\edsmt.html" copy /y "site\edsmt.html" "upload\edsmt.html" >nul
+rem  The pictures the page shows. Upload them with it.
+for %%F in (site\*.jpg) do copy /y "%%F" "upload\%%~nxF" >nul
 if exist "site\version.json" copy /y "site\version.json" "upload\version.json" >nul
 if exist "radioraxxla.ico" copy /y "radioraxxla.ico" "upload\favicon.ico" >nul
 if errorlevel 1 goto FAIL

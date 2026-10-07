@@ -462,6 +462,28 @@ def app_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+# The Rhino, shown on the first-run window and in Settings > About EDSMT.
+# Elite Dangerous (c) Frontier Developments plc.
+WELCOME_PICTURE = "rhino-banner.png"
+ABOUT_PICTURE = "rhino-about.png"
+
+
+def picture(name, master=None):
+    """A picture shipped with the app, as a Tk image, or None.
+
+    From the bundle when frozen - the images folder beside the sounds - and from
+    the images folder beside the source otherwise. A file that is missing or will not
+    load is not an error: the window is simply laid out without it, because
+    a decoration is never a reason for a window not to open."""
+    path = os.path.join(getattr(sys, "_MEIPASS", app_dir()), "images", name)
+    try:
+        if os.path.isfile(path):
+            return tk.PhotoImage(master=master, file=path)
+    except Exception:
+        pass
+    return None
+
+
 def flash_lines(text, width=30):
     """A status sentence as a flash: a short heading, the rest under it.
 
@@ -7996,6 +8018,16 @@ class SettingsWindow(ctk.CTkToplevel):
                      justify="left", wraplength=560,
                      anchor="w").pack(fill="x", padx=10, pady=(0, 4))
 
+        self._section(body, "About EDSMT", ABOUT_LINE)
+        self._about_picture = picture(ABOUT_PICTURE, self)
+        if self._about_picture is not None:
+            tk.Label(body, image=self._about_picture, bg=PANEL, bd=0,
+                     highlightthickness=0).pack(anchor="w", padx=10,
+                                                pady=(2, 6))
+        ctk.CTkLabel(body, text=about_text(), font=F_SMALL, text_color=DIM,
+                     justify="left", wraplength=560,
+                     anchor="w").pack(fill="x", padx=10, pady=(0, 8))
+
         buttons = ctk.CTkFrame(self, fg_color="transparent")
         buttons.pack(fill="x", padx=12, pady=(0, 8))
         ctk.CTkButton(buttons, text="Save", width=110, height=32,
@@ -8615,6 +8647,19 @@ class SettingsWindow(ctk.CTkToplevel):
 # Fixing one you got wrong
 # ---------------------------------------------------------------------------
 
+ABOUT_LINE = ("The Radio Raxxla surface-mining companion for the Rhino. "
+              "Free, and every find goes on one community map.")
+
+
+def about_text():
+    """Settings > About EDSMT: which build, whose, and the small print."""
+    return ("EDSMT %s  -  radioraxxla.com/EDSMT\n"
+            "Copyright (C) 2026 Radio Raxxla. GPL-3.0-only - the source is on "
+            "GitHub at TheAnnouncer/EDSMT.\n"
+            "Elite Dangerous and the Rhino are (C) Frontier Developments plc. "
+            "EDSMT is not affiliated with Frontier Developments." % APP_VERSION)
+
+
 class WelcomeWindow(ctk.CTkToplevel):
     """What happens to a find, said once, on first run.
 
@@ -8629,7 +8674,9 @@ class WelcomeWindow(ctk.CTkToplevel):
         super().__init__(app)
         self.app = app
         self.title("EDSMT - The community map")
-        self.geometry("560x460")
+        # The Rhino across the top, when the picture is there to show.
+        self._picture = picture(WELCOME_PICTURE, self)
+        self.geometry("560x620" if self._picture is not None else "560x460")
         self.configure(fg_color=VOID)
         self.transient(app)
         self.resizable(False, False)
@@ -8637,6 +8684,9 @@ class WelcomeWindow(ctk.CTkToplevel):
         body = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0)
         body.pack(fill="both", expand=True, padx=12, pady=12)
         bracket(body, colour=ORANGE)
+        if self._picture is not None:
+            tk.Label(body, image=self._picture, bg=PANEL, bd=0,
+                     highlightthickness=0).pack(padx=16, pady=(16, 0))
 
         ctk.CTkLabel(body, text="One map, everybody's", font=F_TITLE,
                      text_color=ORANGE, anchor="w").pack(fill="x", padx=16, pady=(16, 2))

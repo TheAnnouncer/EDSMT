@@ -578,6 +578,14 @@ settle(2)
 print("== Settings: the rig warning distance is a number or it is refused ==")
 _sw = A.SettingsWindow(app)
 settle(4)
+_about_pics = [w for w in A_walk(_sw) if isinstance(w, tk.Label) and str(w.cget("image"))]
+check("Settings ends with About EDSMT: the Rhino, the build and the small print",
+      "ABOUT EDSMT" in " ".join(texts_in(_sw)).upper() and _about_pics
+      and any(A.APP_VERSION in t and "Frontier Developments" in t
+              for t in texts_in(_sw)),
+      ("ABOUT EDSMT" in " ".join(texts_in(_sw)).upper(), len(_about_pics),
+       [t for t in texts_in(_sw) if "Frontier" in t or "About" in t][:3]))
+settle(4)
 _said = []
 _sw.say = lambda text, colour=None: _said.append(text)
 _saved = []
@@ -1296,6 +1304,17 @@ check("the question opens", len(_welcome) == 1, app.winfo_children())
 check("and nothing behind it can be typed into until it is answered",
       _welcome and app.grab_current() is _welcome[0], str(app.grab_current()))
 check("it has been recorded as asked", app.settings.get("asked_to_share") is True)
+# The Rhino across the top of it, and the answer buttons still in the window.
+_pics = [w for w in A_walk(_welcome[0]) if isinstance(w, tk.Label)
+         and str(w.cget("image"))]
+check("the Rhino is across the top of the first-run window",
+      _pics and _pics[0].winfo_width() >= 500, [p.winfo_width() for p in _pics])
+_credit = next((w for w in A_walk(_welcome[0])
+                if isinstance(w, A.ctk.CTkButton) and w.cget("text") == "Credit me"), None)
+check("with the two answers still inside the window under it",
+      _credit is not None and inside(_credit, _welcome[0]),
+      _credit and (_credit.winfo_rooty(), _welcome[0].winfo_rooty(),
+                   _welcome[0].winfo_height()))
 _welcome[0].answer(False); settle(6)
 check("answering closes it", not _welcome[0].winfo_exists())
 check("and gives the keyboard back", app.grab_current() is None, str(app.grab_current()))
