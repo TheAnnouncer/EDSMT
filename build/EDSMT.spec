@@ -27,6 +27,9 @@ datas += [(ICON, ".")]
 # at run time through sys._MEIPASS like the icon.
 datas += [(os.path.join(ROOT, "sounds", name), "sounds")
           for name in ("rig-warning.wav", "rig-warning-profane.wav")]
+# The Rhino on the first-run window and in Settings > About.
+datas += [(os.path.join(ROOT, "images", name), "images")
+          for name in ("rhino-banner.png", "rhino-about.png")]
 
 hiddenimports = collect_submodules("customtkinter")
 hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",

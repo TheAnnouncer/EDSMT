@@ -122,6 +122,7 @@ jobs:
           Copy-Item site\version.json upload\version.json -Force
           Copy-Item site\index.html upload\index.html -Force
           if (Test-Path site\edsmt.html) { Copy-Item site\edsmt.html upload\edsmt.html -Force }
+          Copy-Item site\*.jpg upload\ -Force
           Get-ChildItem upload | Format-Table Name, Length
 
       - uses: actions/upload-artifact@v6

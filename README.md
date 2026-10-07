@@ -1,5 +1,8 @@
 # EDSMT — Surface Mining Survey
 
+![The Rhino SRV on a planet surface at night, lights on](docs/images/rhino.jpg)
+<sub>The Rhino. Elite Dangerous © Frontier Developments plc.</sub>
+
 Maps surface mining for the Rhino. It reads your journal, so you never type a
 coordinate, a system name or a distance.
 

@@ -856,6 +856,44 @@ check("the Earnings window has the search, the ticks and both views",
       and '"System prices"' in _ew and '"Rhino sessions"' in _ew
       and "system_prices(system, picked" in _ew)
 
+print("== #192: the Rhino on the page, on GitHub and in the app ==")
+_REPO = os.path.dirname(HERE)
+def _png_size(path):
+    with open(path, "rb") as fh:
+        head = fh.read(24)
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+for _name, _size in ((A.WELCOME_PICTURE, (512, 210)), (A.ABOUT_PICTURE, (540, 300))):
+    _path = os.path.join(_REPO, "images", _name)
+    check("images/%s is there, %dx%d" % ((_name,) + _size),
+          os.path.isfile(_path) and _png_size(_path) == _size,
+          os.path.isfile(_path) and _png_size(_path))
+    for _spec in ("EDSMT.spec", "EDSMT-onefile.spec"):
+        _text = open(os.path.join(_REPO, "build", _spec), encoding="utf-8").read()
+        check("and %s ships it" % _spec, '"%s"' % _name in _text and '"images"' in _text)
+check("a picture that is not there is no picture, not an error",
+      A.picture("no-such-picture.png") is None)
+_about = A.about_text()
+check("About says which build, whose, the licence and Frontier's",
+      A.APP_VERSION in _about and "Radio Raxxla" in _about and "GPL-3.0-only" in _about
+      and "Frontier Developments" in _about and "not affiliated" in _about)
+_site = open(os.path.join(_REPO, "site", "index.html"), encoding="utf-8").read()
+for _jpg in ("rhino-1600.jpg", "rhino-800.jpg", "rhino-card.jpg"):
+    check("the download page's %s is in site/" % _jpg,
+          _jpg in _site and os.path.isfile(os.path.join(_REPO, "site", _jpg)))
+check("link previews show the Rhino, large",
+      'og:image" content="https://radioraxxla.com/EDSMT/rhino-card.jpg"' in _site
+      and 'twitter:card" content="summary_large_image"' in _site)
+check("and the page credits Frontier under it", "Frontier Developments plc" in _site)
+_bat = open(os.path.join(_REPO, "BUILD.bat"), encoding="utf-8").read()
+_yml = open(os.path.join(_REPO, ".github", "workflows", "build.yml"), encoding="utf-8").read()
+check("BUILD.bat and the Actions build both put the page's pictures with it",
+      "site\\*.jpg" in _bat and "site\\*.jpg" in _yml)
+_readme = open(os.path.join(_REPO, "README.md"), encoding="utf-8").read()
+check("the README opens on the Rhino, credited",
+      "](docs/images/rhino.jpg)" in _readme.split("## Get it")[0]
+      and os.path.isfile(os.path.join(_REPO, "docs", "images", "rhino.jpg"))
+      and "Frontier Developments plc" in _readme.split("## Get it")[0])
+
 print("== #168: credited ==")
 check("CMDR Todd Jenkins is credited as a tester", "CMDR Todd Jenkins" in A.BETA_TESTERS)
 
