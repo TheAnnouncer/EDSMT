@@ -4,6 +4,71 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10033
+
+### New — look up any system's prices, and tick several commodities
+
+**Earnings → Prices in a system**: type a system, or leave it blank for the
+one you are in, and get the last known sell price of each commodity at every
+market there — station, pad, demand, when it was seen, and whether it came
+from another commander's market read or the market index, whichever is newer.
+**Best market only** shows the best station for each commodity; untick it
+for all of them.
+
+Every commodity box in a search — Find, Where to land, My sites and Prices in
+a system — now ticks several at once. Click to tick, click again to untick,
+**Any** clears them; or type `Monazite, bast` and press Enter. Best sell
+prices answers for each one you ticked, in one table.
+
+### New — a key for the overlay, and the overlay only in the Rhino
+
+**Alt+0** turns the overlay on and off (rebind it in Settings). By default it
+shows only while you are driving a Rhino; switch that off in Settings if you
+want it in the ship too.
+
+### Changed — every find goes on the community map
+
+Sharing is no longer a switch: every deposit you mark and every market you
+open goes on the one community map, and **Find** is open to everybody from
+the start. The first start asks only whether to put your CMDR name on your
+finds — Settings has it after. Your notes, sessions and settings never leave
+your PC.
+
+### New — a backup before every update
+
+**INSTALL UPDATE** now saves a dated backup of your finds and settings to
+Documents → EDSMT backups first, and keeps the last ten.
+
+### New — two Rhinos, and the overlay at any size
+
+- Two Rhinos on one ship: six rigs each, twelve in all, and the rig keys act
+  on the Rhino you are driving. Earnings splits a session per Rhino.
+- Overlay text size now moves the rows instead of stacking them, on every
+  screen from 1024×768 to 7680×2160, ultrawide and 4K included. Layout
+  presets (Standard, Map focus, Minimal, Streamer) and a stronger look for
+  the ground you have swept (Faint, Clear, Solid) are in Settings → Overlay.
+
+### Fixed
+
+- The survey centre and border are kept through a trip back to the ship.
+- The guide no longer sticks on 2/11 when you drop out of supercruise
+  straight at the body.
+- Touching down by a mining location fills in its signal number on a body
+  you have not logged yet.
+- Rigs lost to a disconnect: after a relog EDSMT offers to clear them.
+- The compass letters are no longer cut off at the top of the strip.
+- The top bar no longer squeezes its buttons when the readouts are long.
+- On 768-line and 1080p screens the DEPOSIT box no longer wrote its rows over
+  SIGNAL POINT.
+
+### Also
+
+EDSMT connects to the Radio Raxxla community map only — there is no server
+address to set. The Rhino is on the first-run window and in the new
+**Settings → About EDSMT**. Thanks to CMDR Todd Jenkins for testing.
+
+---
+
 ## 1.10032
 
 ### New — an estimate of what a deposit holds, before you work it

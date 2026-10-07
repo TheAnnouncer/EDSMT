@@ -43,7 +43,7 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10032"
+APP_VERSION = "1.10033"
 # An honest, contactable User-Agent. Bot filters at the edge judge
 # unattended clients on exactly this, and a bare name with no way to
 # reach anyone reads as something worth blocking.

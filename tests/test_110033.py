@@ -883,7 +883,12 @@ for _jpg in ("rhino-1600.jpg", "rhino-800.jpg", "rhino-card.jpg"):
 check("link previews show the Rhino, large",
       'og:image" content="https://radioraxxla.com/EDSMT/rhino-card.jpg"' in _site
       and 'twitter:card" content="summary_large_image"' in _site)
-check("and the page credits Frontier under it", "Frontier Developments plc" in _site)
+check("and the page credits the screenshot and Frontier under it",
+      "screenshot by CMDR TheAnnouncer" in _site and "Frontier Developments plc" in _site)
+check("so do About and the README",
+      "screenshot by CMDR TheAnnouncer" in A.about_text()
+      and "screenshot by CMDR TheAnnouncer" in open(os.path.join(_REPO, "README.md"),
+                                                    encoding="utf-8").read())
 _bat = open(os.path.join(_REPO, "BUILD.bat"), encoding="utf-8").read()
 _yml = open(os.path.join(_REPO, ".github", "workflows", "build.yml"), encoding="utf-8").read()
 check("BUILD.bat and the Actions build both put the page's pictures with it",
