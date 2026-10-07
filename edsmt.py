@@ -466,6 +466,8 @@ def app_dir():
 # Elite Dangerous (c) Frontier Developments plc.
 WELCOME_PICTURE = "rhino-banner.png"
 ABOUT_PICTURE = "rhino-about.png"
+# The first-run window's size, with the picture across its top and without.
+WELCOME_SIZE, WELCOME_SIZE_PLAIN = (560, 620), (560, 460)
 
 
 def picture(name, master=None):
@@ -8676,7 +8678,8 @@ class WelcomeWindow(ctk.CTkToplevel):
         self.title("EDSMT - The community map")
         # The Rhino across the top, when the picture is there to show.
         self._picture = picture(WELCOME_PICTURE, self)
-        self.geometry("560x620" if self._picture is not None else "560x460")
+        self.geometry("%dx%d" % (WELCOME_SIZE if self._picture is not None
+                                 else WELCOME_SIZE_PLAIN))
         self.configure(fg_color=VOID)
         self.transient(app)
         self.resizable(False, False)

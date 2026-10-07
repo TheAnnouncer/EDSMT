@@ -1305,16 +1305,17 @@ check("and nothing behind it can be typed into until it is answered",
       _welcome and app.grab_current() is _welcome[0], str(app.grab_current()))
 check("it has been recorded as asked", app.settings.get("asked_to_share") is True)
 # The Rhino across the top of it, and the answer buttons still in the window.
+# Asked of what the window NEEDS rather than where it is drawn: on the build
+# server a window that has the grab is not always on screen yet when this
+# runs, and an undrawn window reports one pixel for everything.
 _pics = [w for w in A_walk(_welcome[0]) if isinstance(w, tk.Label)
          and str(w.cget("image"))]
 check("the Rhino is across the top of the first-run window",
-      _pics and _pics[0].winfo_width() >= 500, [p.winfo_width() for p in _pics])
-_credit = next((w for w in A_walk(_welcome[0])
-                if isinstance(w, A.ctk.CTkButton) and w.cget("text") == "Credit me"), None)
+      _pics and _pics[0].winfo_reqwidth() >= 500, [p.winfo_reqwidth() for p in _pics])
+_body_needs = _pics[0].master.winfo_reqheight() if _pics else 10 ** 6
+_given = A.WELCOME_SIZE[1]
 check("with the two answers still inside the window under it",
-      _credit is not None and inside(_credit, _welcome[0]),
-      _credit and (_credit.winfo_rooty(), _welcome[0].winfo_rooty(),
-                   _welcome[0].winfo_height()))
+      _body_needs + 24 <= _given, (_body_needs, _given))
 _welcome[0].answer(False); settle(6)
 check("answering closes it", not _welcome[0].winfo_exists())
 check("and gives the keyboard back", app.grab_current() is None, str(app.grab_current()))
