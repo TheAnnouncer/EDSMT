@@ -1094,6 +1094,10 @@ def list_rows(sugg):
 
 def click_row(sugg, name):
     """Click a row of a list the way a mouse does: on the row, then let go."""
+    if not sugg.visible():
+        # The list is the thing under test here, not the desktop's focus -
+        # on the build server a new window does not always get it.
+        sugg.show(); settle(3)
     index = sugg._shown.index(name)
     box = None
     for _ in range(20):
@@ -1115,7 +1119,20 @@ app.open_earnings()
 wait(1.0)
 ledger = app.ledger
 pick = ledger.system_pick
-entry_of(pick).focus_force(); settle(4)
+ledger.deiconify(); ledger.lift(); ledger.focus_force(); settle(4)
+
+
+def click_into(box):
+    """Click into a box the way the mouse does - which also gives it the
+    keyboard, whatever window the desktop thinks is in front."""
+    entry = entry_of(box)
+    entry.focus_force()
+    entry.event_generate("<Button-1>", x=6, y=6, when="now")
+    entry.event_generate("<ButtonRelease-1>", x=6, y=6, when="now")
+    settle(4)
+
+
+click_into(pick)
 ps = pick.suggest
 check("the commodity box under Prices in a system opens its list on click",
       ps.visible() and ps.multi, (ps.visible(), ps.multi))
@@ -1206,7 +1223,8 @@ ledger.destroy(); settle()
 app.open_find(); settle(6)
 finder = app.finder
 fc = finder.commodity
-entry_of(fc).focus_force(); settle(4)
+finder.deiconify(); finder.lift(); finder.focus_force(); settle(4)
+click_into(fc)
 click_row(fc.suggest, "Monazite"); click_row(fc.suggest, "Ruby")
 check("Find: tick two commodities", finder._commodities() == ["Monazite", "Ruby"],
       finder._commodities())
