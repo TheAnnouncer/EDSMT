@@ -73,7 +73,6 @@ version("build/installer.iss", r'VersionInfoVersion=([\d.]+)', "installer.iss Ve
 version("build/version_info.txt", r"filevers=\((\d+,\d+,\d+,\d+)\)", "version_info filevers")
 version("build/version_info.txt", r"'FileVersion', '([\d.]+)'", "version_info FileVersion")
 version("edonline.py", r'APP_VERSION\s*=\s*"([\d.]+)"', "edonline")
-version("server/main.py", r'APP_VERSION\s*=\s*"([\d.]+)"', "server")
 def _norm(v):
     # Strip trailing zero COMPONENTS, not trailing zero characters. A plain
     # rstrip(".0") turns 1.10010 into 1.1001 and then reports drift that is
@@ -84,7 +83,7 @@ def _norm(v):
         parts.pop()
     return ".".join(parts)
 same = {_norm(v) for v in found}
-check("one version across the app, the installer and the API",
+check("one version across the app and the installer",
       len(same) == 1, found)
 
 print("== both build specs are actually used ==")
@@ -106,7 +105,7 @@ for dirpath, dirs, files in os.walk(REPO):
                                   errors="replace").read()
 
 unused_imports, orphans = [], []
-for name in SHIPPED + ["server/main.py"]:
+for name in SHIPPED:
     source = read(*name.split("/"))
     tree = ast.parse(source)
     for node in ast.walk(tree):
@@ -128,8 +127,8 @@ check("no unused imports", not unused_imports, unused_imports)
 check("nothing is written and then never wired up", not orphans, orphans)
 
 print("== the docs do not describe features that were taken out ==")
-# The sweep and the clock were removed from the deposit card on request
-# by testers. The README went on describing both for a
+# The sweep and the clock were removed from the deposit card on request.
+# The README went on describing both for a
 # release. A doc that promises something the app does not do reads, to a
 # commander, exactly like the app being broken.
 _PLAYER_FACING = ("README.md", "CHANGELOG.md", "site/edsmt.html")
@@ -176,7 +175,8 @@ def prose_only(text):
     return "\n".join(out)
 
 
-for doc in ("README.md", "JOURNAL-NOTES.md", "server/DEPLOY.md"):
+for doc in ("README.md", "JOURNAL-NOTES.md", "CONTRIBUTING.md", "SECURITY.md",
+            "docs/SURFACE-MINING-JOURNAL.md"):
     text = prose_only(read(*doc.split("/")))
     # The leading dot matters: ".github/workflows/build.yml" is a real path
     # and dropping the dot makes a present file look missing.
@@ -186,8 +186,7 @@ for doc in ("README.md", "JOURNAL-NOTES.md", "server/DEPLOY.md"):
         if named.rsplit("/", 1)[-1] in KNOWN_OUTPUT or named.startswith(("http", "%")):
             continue
         candidates = [named, "build/" + named, "tests/" + named,
-                      "server/" + named, ".github/workflows/" + named,
-                      named.split("/")[-1], "server/" + named.split("/")[-1]]
+                      ".github/workflows/" + named, named.split("/")[-1]]
         if not any(os.path.exists(os.path.join(REPO, c)) for c in candidates):
             missing.append("%s names %s" % (doc, named))
 check("every file the docs name exists", not missing, missing)
@@ -209,34 +208,6 @@ check("the workpath the specs are built into is the one that gets cleared",
       "--workpath build\\work" in bat)
 check("the build workflow is offered as source, since the README names it",
       "'.github'" not in bat[zip_at:zip_at + 400], "still excluded from the zip")
-
-print("== the container is handed every setting the API reads ==")
-# RR_STAFF was read by main.py and never passed through docker-compose.yml,
-# so the verify endpoint could not have worked on a real deployment however
-# carefully the .env was filled in. Nothing failed; verification simply
-# rejected everyone, quietly, forever. Env vars are wiring like any other.
-api_src = read("server", "main.py")
-compose = read("server", "docker-compose.yml")
-wanted = sorted({m for m in re.findall(r'os\.environ\.get\(\s*"(RR_[A-Z_]+)"', api_src)}
-                - {"RR_DB"})
-unpassed = [name for name in wanted if name + ":" not in compose]
-check("every RR_ setting main.py reads is passed to the container",
-      not unpassed, unpassed)
-check("and the compose file names the port the host binds",
-      "RR_HOST_PORT" in compose)
-
-print("== the server scripts agree with the compose file ==")
-# verify.sh defaulted to 8080 - the port inside the container - while the
-# host binds 9110, so the one command whose whole job is proving the API
-# works connected to nothing and reported failure on a healthy service.
-vsh = read("server", "verify.sh")
-port = re.search(r"RR_HOST_PORT:-(\d+)", compose)
-check("the compose file has a default host port", port is not None)
-check("verify.sh defaults to that same port",
-      port is not None and ("RR_HOST_PORT:-%s" % port.group(1)) in vsh,
-      re.findall(r"127\.0\.0\.1:[^\"}]*", vsh))
-check("nothing in the server scripts still points at the in-container port",
-      "127.0.0.1:8080" not in vsh)
 
 print("== an update replaces the old version and keeps the finds ==")
 # The failure this guards against is silent: install 1.2 over 1.1 and a
@@ -267,13 +238,14 @@ check("the app files overwrite regardless of timestamp",
       "ignoreversion" in iss)
 
 print("== the version can be moved on in one command ==")
-# Six version fields across four files. Every release that edited five of
+# Seven version fields across three files. Every release that edited six of
 # them shipped a build reporting the wrong number somewhere.
 check("build/bump.py exists", os.path.exists(os.path.join(REPO, "build", "bump.py")))
 bump = read("build", "bump.py")
-for path in ("edonline.py", "server/main.py", "build/installer.iss",
-             "build/version_info.txt"):
+for path in ("edonline.py", "build/installer.iss", "build/version_info.txt"):
     check("bump.py covers %s" % path, '"%s"' % path in bump)
+check("and moves the API's number on too, where its source is beside this one",
+      "SERVER_MAIN" in bump)
 check("bump.py refuses a number Windows cannot store", "65535" in bump)
 # Not the README. That one ships inside the installer, and a commander who
 # downloaded a mining tool has no use for a version-bump script - which is
@@ -378,8 +350,7 @@ check("no public address is written into anything that ships",
       not _leaks, _leaks[:8])
 check("no real token is written into anything that ships", not _secrets, _secrets)
 check("there is no .env in the bundle",
-      not os.path.exists(os.path.join(REPO, ".env"))
-      and not os.path.exists(os.path.join(REPO, "server", ".env")))
+      not os.path.exists(os.path.join(REPO, ".env")))
 check("and .gitignore keeps one out", ".env" in read(".gitignore"))
 check("no database is in the bundle either",
       not [_f for _f in os.listdir(REPO) if _f.endswith(".db")])
@@ -467,34 +438,27 @@ check("the installer carries only the player's documents",
       not [d for d in ("RUNBOOK", "DEVLOG", "DECISIONS", "BACKLOG", "CONTRIBUTING",
                        "DEPLOY") if d in read("build", "installer.iss")])
 
-print("== the public deploy guide describes any box, not one box ==")
-_dep = read("server", "DEPLOY.md")
-check("the public API hostname is named, because every copy connects to it",
-      "api.radioraxxla.com" in _dep)
-check("and the guide says up front its names are examples",
-      "is an example" in _dep[:900])
-_compose = read("server", "docker-compose.yml")
-_services = set(re.findall(r"^  ([a-z0-9][a-z0-9_-]*):$", _compose, re.M))
-_cname = re.search(r"container_name:\s*(\S+)", _compose)
-check("the compose service and container agree",
-      _cname and _cname.group(1) in _services, (_cname and _cname.group(1), _services))
-_wrong = []
-for _f in ("server/DEPLOY.md", "README.md", "CONTRIBUTING.md"):
-    for _line in read(*_f.split("/")).split("\n"):
-        _cmd = _line.strip().lstrip("$ ")
-        _m = re.match(r"docker compose (?:exec|run)\s+(?:-\S+\s+)*([a-z][a-z0-9_-]*)", _cmd)
-        if _m and _m.group(1) not in _services:
-            _wrong.append("%s: %s" % (_f, _cmd[:60]))
-check("no public doc execs a compose service that does not exist", not _wrong, _wrong)
-for _name in ("verify.sh", "backup.sh"):
-    if "docker exec" in read("server", _name):
-        check("%s takes the container name from the environment" % _name,
-              "RR_CONTAINER" in read("server", _name))
-check("the settings table covers every RR_ setting the server reads",
-      not [v for v in re.findall(r'os\.environ\.get\(\s*"(RR_[A-Z_]+)"', read("server", "main.py"))
-           if v not in _dep and v != "RR_REGEN_DAYS"],
-      [v for v in re.findall(r'os\.environ\.get\(\s*"(RR_[A-Z_]+)"', read("server", "main.py"))
-       if v not in _dep])
+print("== the API is ours to run, and nobody else's ==")
+# 1 October 2026: "we dont want people hosting their own thing". The API's
+# source, its deploy guide and its container files left this project for
+# good. Nothing public may bring them back or say how to stand one up.
+check("there is no server folder in the public project",
+      not os.path.exists(os.path.join(REPO, "server")))
+check("and git is told to keep one out", "/server/" in read(".gitignore"))
+check("nor will the source zip carry one",
+      "'server'" in read("BUILD.bat")[read("BUILD.bat").find("Compress-Archive") - 400:
+                                         read("BUILD.bat").find("Compress-Archive")])
+_INVITES = ("host your own", "hosting their own", "hosting your own", "run your own copy",
+            "your own server", "self-host", "mirror it", "deploy.md", "docker compose",
+            "own copy of the database", "server/requirements")
+_asked = []
+for _f in ("README.md", "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md",
+           "JOURNAL-NOTES.md", "site/index.html", "site/edsmt.html",
+           "docs/SURFACE-MINING-JOURNAL.md", "edsmt.py", "edonline.py",
+           ".github/workflows/build.yml", "BUILD.bat"):
+    _low = read(*_f.split("/")).lower()
+    _asked += ["%s: %s" % (_f, w) for w in _INVITES if w in _low]
+check("nothing public invites anyone to run their own copy", not _asked, _asked)
 
 print()
 print("FAILURES:", len(fails))

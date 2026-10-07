@@ -7,7 +7,7 @@ VSVersionInfo(
       StringStruct('FileDescription', 'EDSMT - Surface Mining Survey'),
       StringStruct('FileVersion', '1.10032.0.0'),
       StringStruct('InternalName', 'EDSMT'),
-      StringStruct('LegalCopyright', 'GPL-3.0'),
+      StringStruct('LegalCopyright', 'Copyright (C) 2026 Radio Raxxla. GPL-3.0-only'),
       StringStruct('OriginalFilename', 'EDSMT.exe'),
       StringStruct('ProductName', 'EDSMT'),
       StringStruct('ProductVersion', '1.10032.0.0')])]),

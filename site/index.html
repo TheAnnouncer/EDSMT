@@ -148,7 +148,7 @@
       <a class="btn ghost" href="EDSMT.exe">Portable .exe</a>
       <a class="btn ghost" href="EDSMT-source.zip">Source zip</a>
     </div>
-    <p class="note">Free &middot; No account &middot; Nothing is shared until you switch it on</p>
+    <p class="note">Free &middot; No account &middot; Every find goes on the community map</p>
     <p class="build">
       <span>Build <b><!--VERSION-->1.10032<!--/VERSION--></b></span>
       <span>Elite Dangerous <b>4.4.1.1</b></span>
@@ -195,6 +195,10 @@
         <kbd>AltGr+0</kbd>
         <p><b>Every rig up at once.</b> Clears them from the scope and the
         compass, and every rig warning with them.</p></div>
+      <div class="key hud hud-pad">
+        <kbd>Alt+0</kbd>
+        <p><b>Overlay on and off.</b> It only comes up while you are driving
+        a Rhino &mdash; not in the ship, on foot or in the Nomad.</p></div>
     </div>
     <p class="note">None of these is used by any of the game's own
     control schemes. Every one can be changed in Settings.</p>
@@ -368,7 +372,9 @@
         <p>Find answers it from a verified upstream &mdash; nearest first, with
         the distance in light years on every row, and a station in a system
         nobody has placed reads "-" rather than sorting to the top as the
-        closest thing in the galaxy. Your own journal fills the gap those
+        closest thing in the galaxy. Earnings looks up any system by name and
+        lists the last known price of each commodity at every market there,
+        with when it was seen. Your own journal fills the gap those
         services leave: the game writes <code>Market.json</code> every time you
         open a market.</p>
       </div>
@@ -413,10 +419,10 @@
         <p>Another program got it first &mdash; graphics-card overlays, Discord and Steam all grab keys. Pick another in Settings; EDSMT tells you when a key is taken. On UK and European keyboards AltGr is Ctrl+Alt to Windows, which is why the pick-up keys read AltGr there and Ctrl+Alt on a US keyboard.</p></details>
       <details><summary>Alt+3 will not mark the deposit.</summary>
         <p>All four boxes have to be filled in: commodity, rigs, amount and density. The scanner's density counts when the game names one. Half-filled finds were reaching the shared map without the two things somebody deciding whether to fly there needs most.</p></details>
-      <details><summary>Why is Find locked?</summary>
-        <p>Find reads the shared map, and it opens once you have put one deposit of your own on it: switch sharing on in Settings and mark one. It stays open from then on.</p></details>
+      <details><summary>Can I keep my finds to myself, or share them only with my squadron?</summary>
+        <p>No. Every find goes on the community map for everybody, and everybody's comes back to you under Find. That is the whole point of it: there are around 400 billion systems, and a map only some people can see never gets filled in. Your CMDR name on your finds is your choice.</p></details>
       <details><summary>What is shared, and what stays on my PC?</summary>
-        <p>Nothing leaves your PC until you switch sharing on. Then it is the deposits you mark and the prices at markets you open, with your commander name only if you leave name sharing on. Your sessions, settings and everything else stay in your own AppData folder.</p></details>
+        <p>The deposits you mark and the prices at markets you open go on the community map, with your commander name only if you choose. Your notes, sessions, settings and everything else stay in your own AppData folder.</p></details>
       <details><summary>When does an earnings session start and stop?</summary>
         <p>It starts with your first rig down, or your first tonne refined in the Rhino, or Start session. It ends when every rig is back up, when the Rhino comes back aboard, or on End session. Pause stops the clock for a break or the drive to a station. Only what the Rhino dug up is counted &mdash; cargo you bought or hauled is left out.</p></details>
       <details><summary>Where do the sell prices come from?</summary>
@@ -425,8 +431,10 @@
         <p>Two betas, both off until you switch them on in Settings. The rig planner: press AltGr+2, drive the deposit's edge back to where you started, and a pin goes on the scope for each rig that fits, 78 m apart by default &mdash; the community's working figure, which you can change. The wing link: everyone types the same six-character code and sees each other's Rhinos and rigs on the scope &mdash; friends on one body, or crew off one ship with more than one Rhino. The server forgets you two minutes after you stop.</p></details>
       <details><summary>The words in the boxes are too small.</summary>
         <p>Settings has a text size for each box on its own, from 80% to 200%, without making the box itself any bigger. Unlock to drag a box or resize it by its corner.</p></details>
-      <details><summary>How do I update?</summary>
-        <p>EDSMT tells you when there is a new version and installs it on one click. Your deposits, sessions and settings are kept.</p></details>
+      <details><summary>How do I update, and do I back up first?</summary>
+        <p>EDSMT tells you when there is a new version and installs it on one click. Your deposits, sessions and settings are kept. Back up anyway, every time: from 1.10033 EDSMT does it for you before it installs, to Documents &rsaquo; EDSMT backups, and Settings &rsaquo; <b>Back up now</b> makes a copy whenever you like.</p></details>
+      <details><summary>Does it work on GeForce NOW?</summary>
+        <p>Not the live parts. On GeForce NOW the game runs on NVIDIA's machine, so the journal and status files EDSMT reads are written there and never reach your PC. That is true of every tool that reads the journal.</p></details>
       <details><summary>Windows says it protected my PC.</summary>
         <p>A new download trips SmartScreen until enough people have run it. More info, then Run anyway. The source is here too if you would rather read it first.</p></details>
     </div>
@@ -459,9 +467,9 @@
         </div>
       </div>
       <div>
-        <h3 style="font-size:14px;color:var(--signal);letter-spacing:.14em;margin-bottom:12px">Nothing leaves your machine until you say so</h3>
+        <h3 style="font-size:14px;color:var(--signal);letter-spacing:.14em;margin-bottom:12px">What leaves your machine, and what never does</h3>
         <ul>
-          <li><b>Sharing is off by default.</b> The app works standalone, forever, if that is what you want.</li>
+          <li><b>Every find goes on the community map.</b> Position, commodity, how rich, and market prices &mdash; that is what the map is made of.</li>
           <li><b>Your CMDR name is optional.</b> Share anonymously if you prefer.</li>
           <li><b>There is no account and no sign-up.</b></li>
           <li><b>No personal data is stored</b> &mdash; a deposit is a position, a commodity and a date.</li>

@@ -351,10 +351,8 @@ need a "last confirmed by anybody" separate from "first found", and a
 stripped site must be reportable without being deleted — it recovers, because
 that is what the game does.
 
-*This quotation is reproduced from this project's notes. The
-elitedangerous.com update notes returned HTTP 403 to automated fetching on
-17 September 2026, so it has not been re-verified against the published page
-in preparing this document. Check it before citing it.*
+*This quotation is reproduced from this project's notes and has not yet been
+re-verified against the published update notes. Check it before citing it.*
 
 ---
 
@@ -489,8 +487,7 @@ something:**
 - The `Volcanism` empty-string convention (§2.2).
 
 **Not checked:** whether an EDDN schema exists or is proposed for surface
-mining. The EDDN repository's schema list could not be enumerated from this
-environment.
+mining.
 
 ---
 

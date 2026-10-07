@@ -164,6 +164,156 @@ check("STATUS at 150% draws its words half as big again, the box unchanged",
       max(_sizes(OV.STATUS) or [0]) >= round(_before * 1.5) - 1,
       (_before, max(_sizes(OV.STATUS) or [0])))
 ov.settings["overlay_text_status"] = 100
+
+
+def _overlaps(over, panel):
+    """Pairs of words on a box drawn over each other, by Tk's own boxes."""
+    canvas = over.panels[panel].canvas
+    boxes = []
+    for item in canvas.find_all():
+        if canvas.type(item) != "text" or not canvas.itemcget(item, "text").strip():
+            continue
+        box = canvas.bbox(item)
+        if box:
+            boxes.append((canvas.itemcget(item, "text")[:24], box))
+    out = []
+    for i, (ta, a) in enumerate(boxes):
+        for tb, b in boxes[i + 1:]:
+            w = min(a[2], b[2]) - max(a[0], b[0])
+            h = min(a[3], b[3]) - max(a[1], b[1])
+            if w > 3 and h > 3:
+                out.append((ta, tb))
+    return out
+
+
+print("== 1.10033: every layout, every screen, every text size ==")
+# #169: on the standard layout the compass letters were cut off by the top
+# of the box - on every screen, at 100%. At a large text size words ran off
+# the side of a box, or under the next row. A long body name and a long
+# guide sentence, because those are the two that run out of room.
+#
+# Every common screen, not just the one running the tests. The boxes are a
+# share of the screen, so a check passed on a 1600x1000 test display said
+# nothing about a 1080-line monitor - where DEPOSIT at 200% wrote RANGE over
+# SIGNAL POINT - or a 768-line one, where it wrote the telemetry over it at
+# 100%, or the 1024x768 the build server has. 4K and the ultrawides are in
+# it on purpose: a 32:9 screen makes a compass four times wider than it is
+# tall and a status strip barely two lines high.
+#
+# And Windows scaling. Today Tk starts before the app is made DPI-aware, so
+# a 4K screen at 150% draws the overlay's words at the 96 dpi size. The
+# scaled cases are what happens if Windows or a later Tk ever hands Tk the
+# real DPI: every font grows by it, and the rows have to grow with them.
+_KEYS = (OV.RADAR, OV.STRIP, OV.STATUS, OV.TARGETS, OV.GUIDE, OV.DEPOSIT)
+_GUIDE = {"step": 10, "total": 11, "title": "PLACE RIGS  Alt+4-9",
+          "detail": "One key per rig as it goes down: Alt+4-9 is rigs 1 to 6.",
+          "next": "NEXT DEPOSIT"}
+_LONG = "Col 285 Sector ZL-K b22-2 A 1"
+_LONGUIDE = dict(_GUIDE, detail="One key per rig as it goes down: Alt+4-9 is "
+                 "rigs 1 to 6. Press the next rig key as each rig lands and "
+                 "the scope counts them.")
+SCREENS = ((1024, 768), (1366, 768), (1600, 1000), (1920, 1080),
+           (2560, 1080), (2560, 1440), (3440, 1440), (3840, 1080),
+           (3840, 2160), (5120, 1440), (7680, 2160))
+# (width, height, Windows scaling): 1080p at 125%, 1440p at 125%, 4K at
+# 150% and 200% - the scalings Windows picks for those screens itself.
+SCALED = ((1920, 1080, 1.25), (2560, 1440, 1.25), (3840, 2160, 1.5),
+          (3840, 2160, 2.0))
+_SIX = dict({"overlay_show_%s" % k: True for k in _KEYS}, overlay_guide=True)
+
+
+def on_screen(over, size):
+    """Lay `over` out for a screen of `size`, whatever this one is."""
+    over.screen = lambda _win, size=size: size
+    return over
+
+
+def _outside(over, panel):
+    """Words drawn past the edge of their own box, by Tk's own boxes."""
+    canvas = over.panels[panel].canvas
+    w, h = int(canvas.winfo_width()), int(canvas.winfo_height())
+    out = []
+    for item in canvas.find_all():
+        if canvas.type(item) != "text" or not canvas.itemcget(item, "text").strip():
+            continue
+        box = canvas.bbox(item)
+        if box and (box[0] < -2 or box[1] < -2 or box[2] > w + 2 or box[3] > h + 2):
+            out.append((canvas.itemcget(item, "text")[:24], box, (w, h)))
+    return out
+
+
+_sw, _sh = root.winfo_screenwidth(), root.winfo_screenheight()
+_tk_scaling = float(root.tk.call("tk", "scaling"))
+_seen, _six_drawn = [], 0
+_layouts = list(OV.LAYOUT_PRESETS) + [("All six boxes", None)]
+_cases = [(w, h, 1.0) for w, h in SCREENS] + list(SCALED)
+for _w, _h, _dpi in _cases:
+    root.tk.call("tk", "scaling", (96.0 / 72.0) * _dpi if _dpi != 1.0 else _tk_scaling)
+    for (_title, _key), _pct in [(lay, pct) for lay in _layouts
+                                 for pct in (80, 100, 150, 200)]:
+        if _key:
+            _layout, _shown = OV.preset_layout(_key, _w, _h)
+            _set = {"overlay_layout": _layout, "overlay_guide": True}
+            for _k in _KEYS:
+                _set["overlay_show_%s" % _k] = _k in _shown
+        else:
+            _set = dict(_SIX)
+        for _k in _KEYS:
+            _set["overlay_text_%s" % _k] = _pct
+        _name = "%s on %dx%d%s" % (_title, _w, _h,
+                                   "" if _dpi == 1.0 else " at %d%% scaling" % (_dpi * 100))
+        _lay = on_screen(OV.Overlay(root, tk, _set), (_w, _h))
+        _lay.show()
+        _lay.draw(ROWS + [{"commodity": "Haematite", "range_m": 896.0,
+                           "bearing": 300.0, "rigs": 2, "east": -500.0,
+                           "north": 700.0, "id": 2}],
+                  10.0, body=_LONG, guide=_LONGUIDE)
+        pump()
+        if not _key:
+            if all(k in _lay.panels and _lay.panels[k].alive() for k in _KEYS):
+                _six_drawn += 1
+            else:
+                check("all six boxes were drawn: %s at %d%%" % (_name, _pct), False,
+                      [k for k in _KEYS if not (k in _lay.panels
+                                                and _lay.panels[k].alive())])
+        for _k in sorted(_lay.panels):
+            if not _lay.panels[_k].alive():
+                continue
+            _seen.append(_k)
+            _bad = _overlaps(_lay, _k) + _outside(_lay, _k)
+            if _bad:
+                check("%s, %s at %d%%: every word inside its box, none on "
+                      "another" % (_name, _k, _pct), False, _bad[:3])
+        _lay.hide()
+        pump()
+root.tk.call("tk", "scaling", _tk_scaling)
+check("%d screens and %d Windows scalings, every layout, 80-200%%: %d boxes "
+      "drawn, every word inside its box and none on another"
+      % (len(SCREENS), len(SCALED), len(_seen)),
+      len(_seen) >= 600 and not [f for f in fails if "every word inside" in f],
+      [f for f in fails if "every word inside" in f][:4])
+check("all six boxes came up every time they were asked for",
+      _six_drawn == len(_cases) * 4, (_six_drawn, len(_cases) * 4))
+check("and the text scale is back to 100% once drawing is done",
+      OV._TEXT_SCALE == 1.0, OV._TEXT_SCALE)
+check("the screen's scaling is back to 1 too", OV._DPI == 1.0, OV._DPI)
+check("and text is measured off the table again outside a draw",
+      OV._MEASURE is None, OV._MEASURE)
+check("Windows scaling below 120% is left alone; above it, the rows follow it",
+      OV.set_dpi(1.04) == 1.0 and OV.set_dpi(1.5) == 1.5 and OV.set_dpi(9) == 4.0
+      and OV.set_dpi("x") == 1.0)
+OV.set_dpi(1.0)
+_std = OV.Overlay(root, tk, {"overlay_layout": OV.preset_layout("standard", _sw, _sh)[0],
+                             "overlay_show_strip": True})
+_std.show()
+_std.draw(ROWS, 0.0, body="Ega 1")
+pump()
+_c = _std.panels[OV.STRIP].canvas
+_letters = [_c.bbox(i) for i in _c.find_all()
+            if _c.type(i) == "text" and _c.itemcget(i, "text") in ("N", "E", "S", "W")]
+check("#169: the compass letters sit inside the top of the box",
+      _letters and all(b[1] >= 0 for b in _letters), _letters)
+_std.hide()
 ov.hide()
 pump()
 
@@ -235,6 +385,13 @@ def inside(widget, window):
     return (wx >= ox and wy >= oy
             and wx + widget.winfo_width() <= ox + window.winfo_width() + 1
             and wy + widget.winfo_height() <= oy + window.winfo_height() + 1)
+
+def A_walk(widget):
+    """Every widget under `widget`, all the way down."""
+    for child in widget.winfo_children():
+        yield child
+        yield from A_walk(child)
+
 
 def texts_in(widget):
     out = []
@@ -538,6 +695,26 @@ check("and the map zooms out far enough to show the far one", _inside)
 app.plan.show([], caption="")
 settle(2)
 
+print("== 1.10033: dragged off centre, the notice clears the footer ==")
+# A tester's screenshot: "dragged off centre - right-click to recentre" was
+# printed through the legend and the body's facts on the footer line.
+app.plan._pan = [80.0, -60.0]
+app.plan.show([], caption="Signal 3   Rocky body   0.185g   237K   minor "
+              "metallic magma volcanism")
+app.plan.update_idletasks()
+_words = [(app.plan.itemcget(i, "text")[:20], app.plan.bbox(i))
+          for i in app.plan.find_all()
+          if app.plan.type(i) == "text" and app.plan.itemcget(i, "text").strip()]
+_note = [w for w in _words if w[0].startswith("dragged off centre")]
+_over = [w[0] for w in _words if _note and w is not _note[0] and w[1]
+         and min(w[1][2], _note[0][1][2]) - max(w[1][0], _note[0][1][0]) > 2
+         and min(w[1][3], _note[0][1][3]) - max(w[1][1], _note[0][1][1]) > 2]
+check("the notice is drawn, and over nothing else", _note and not _over,
+      (_note, _over))
+app.plan._pan = [0.0, 0.0]
+app.plan.show([], caption="")
+settle(2)
+
 print("== the map is the signal you are at, not the one the box was left on ==")
 def _drow(r, b, i, what, loc):
     return {"range_m": float(r), "bearing": float(b),
@@ -630,6 +807,26 @@ check("because the buttons went under the readouts, not over them",
 app.geometry("1400x900+0+0"); settle(6)
 check_wide("given the width back, the buttons go back beside the readouts",
            lambda: app._top_stacked is False)
+# 1.10033: a tester's screenshot - "mined aboard 59t worth ... Rhino session
+# 8m ..." ran to 130 characters, the label asked for all of it, and the
+# buttons shrank until Where to land read "re to l" and Earnings was gone.
+app.t_earnings.configure(text="mined aboard 59t worth 12,272,059 Cr at Kassovitz "
+                         "Point, up to 28,382,540 Cr within 100 Ly   Rhino "
+                         "session 8m - 59 t mined, 45 t to the ship")
+app.t_detail.configure(text="-37.94006, -143.44643   hdg 158 SSE   DSS: 7 "
+                       "mining location(s)   238 K")
+settle(8)
+_squeezed = [b.cget("text") for b in (_find_button(app, t) for t in
+             ("Find", "My sites", "Where to land", "Earnings", "Settings"))
+             if b is not None and (b.winfo_width() < b.winfo_reqwidth() - 2
+                                   or not inside(b, app))]
+check_wide("a long earnings line wraps; every button keeps its whole width",
+           lambda: not _squeezed and _find_button(app, "Earnings") is not None,
+           lambda: _squeezed)
+check_wide("and the earnings line stays inside the room left of the buttons",
+           lambda: app.t_earnings.winfo_rootx() + app.t_earnings.winfo_width()
+           <= _find_button(app, "Find").winfo_rootx() + 2,
+           lambda: (app.t_earnings.winfo_width(), _find_button(app, "Find").winfo_rootx()))
 lander = app.open_land()
 settle(6)
 check("the window opens on the system you are in",
@@ -859,7 +1056,221 @@ app.community = _real_comm
 app.watcher.holds, app.watcher.cargo = {}, {}
 settle()
 
-print("== first run: the sharing question holds the keyboard until answered ==")
+print("== 1.10033: prices in a system, and several commodities ticked ==")
+# "on the earnings tab can we have a search system price that checks the last
+# known price for the commodities etc. also when searching on any thing that
+# has a find feature we must be able to click muiltiple"
+
+
+class _Rec:
+    """The real client, with every search recorded instead of sent."""
+    can_read = True
+
+    def __init__(self, real):
+        self._real, self.calls = real, []
+
+    def _note(self, name):
+        def call(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+            return True
+        return call
+
+    def __getattr__(self, name):
+        if name in ("system_prices", "sites", "intact", "search", "sell",
+                    "best_prices"):
+            return self._note(name)
+        return getattr(self._real, name)
+
+
+def wait(seconds):
+    end = _time.time() + seconds
+    while _time.time() < end:
+        settle(1); _time.sleep(0.05)
+
+
+def list_rows(sugg):
+    return [sugg.listbox.get(i) for i in range(sugg.listbox.size())]
+
+
+def click_row(sugg, name):
+    """Click a row of a list the way a mouse does: on the row, then let go."""
+    index = sugg._shown.index(name)
+    box = None
+    for _ in range(20):
+        # A list just redrawn has no row boxes until Tk has laid it out.
+        sugg.listbox.see(index); settle(2)
+        box = sugg.listbox.bbox(index)
+        if box is not None:
+            break
+        _time.sleep(0.02)
+    sugg.listbox.event_generate("<ButtonRelease-1>", x=box[0] + 4,
+                                y=box[1] + box[3] // 2, when="now")
+    settle(4)
+
+
+_real_comm = app.community
+app.community = _Rec(_real_comm)
+app.watcher.system = "HR 7280"
+app.open_earnings()
+wait(1.0)
+ledger = app.ledger
+pick = ledger.system_pick
+entry_of(pick).focus_force(); settle(4)
+ps = pick.suggest
+check("the commodity box under Prices in a system opens its list on click",
+      ps.visible() and ps.multi, (ps.visible(), ps.multi))
+check("and the list is a list of tick boxes",
+      any(r.strip().startswith("[ ]") for r in list_rows(ps)), list_rows(ps)[:3])
+click_row(ps, "Magnesite")
+check("clicking one ticks it", pick.get() == "Magnesite", pick.get())
+check("and the list stays open for the next", ps.visible())
+click_row(ps, "Bastnäsite")
+check("clicking another ticks that as well", pick.get() == "Magnesite, Bastnäsite",
+      pick.get())
+check("both are shown ticked",
+      sum(1 for r in list_rows(ps) if r.strip().startswith("[x]")) == 2,
+      list_rows(ps))
+click_row(ps, "Magnesite")
+check("clicking a ticked one again unticks it", pick.get() == "Bastnäsite", pick.get())
+click_row(ps, "Magnesite")
+pick._dropdown_callback("Sapphire"); settle(3)
+check("the box's own arrow list ticks too, instead of throwing the others away",
+      pick.get() == "Bastnäsite, Magnesite, Sapphire", pick.get())
+pick._dropdown_callback("Sapphire"); settle(3)
+ledger.system_box.delete(0, "end")
+ledger.system_box.insert(0, "Wyrd")
+ledger.search_system(); settle(3)
+_asked = [c for c in app.community.calls if c[0] == "system_prices"]
+check("Search system asks for that system and the ticked commodities, in one go",
+      len(_asked) == 1 and _asked[0][1][:2] == ("Wyrd", ["Bastnäsite", "Magnesite"])
+      and _asked[0][2].get("tag") == A.SYSTEM_PRICE_TAG, _asked)
+ledger.system_box.delete(0, "end")
+ledger.search_system(); settle(2)
+_asked = [c for c in app.community.calls if c[0] == "system_prices"]
+check("left blank, it is the system the game has us in",
+      len(_asked) == 2 and _asked[1][1][0] == "HR 7280", _asked[-1:])
+_ANSWER = {"system": "Wyrd", "upstream": "index", "upstream_status": "live",
+           "commodities": ["Bastnäsite", "Magnesite"], "count": 4, "prices": [
+    {"commodity": "Bastnäsite", "station": "Black Hide", "station_type": "CraterOutpost",
+     "pad": 2, "sell": 49538, "demand": 3, "seen": "2026-10-07T00:41:01.000Z",
+     "source": "index"},
+    {"commodity": "Magnesite", "station": "Vonarburg Co-operative",
+     "station_type": "Orbis", "pad": 3, "sell": 120500, "demand": 40,
+     "seen": SV.utc_now(), "source": "community"},
+    {"commodity": "Magnesite", "station": "Bokeili Station", "station_type": "Orbis",
+     "pad": 3, "sell": 41239, "demand": 0, "seen": "2026-10-06T22:59:24.000Z",
+     "source": "index"},
+    {"commodity": "Magnesite", "station": "Black Hide", "station_type": "CraterOutpost",
+     "pad": 2, "sell": 22911, "demand": 0, "seen": "2026-08-01T00:41:01.000Z",
+     "source": "index"}]}
+app.worker.results.put((A.SYSTEM_PRICE_TAG, True, json.dumps(_ANSWER)))
+app.collect_results(); settle(6)
+_cells = texts_in(ledger.table)
+check("the answer lands in the Earnings window, on the System prices view",
+      ledger._view == "prices" and "Commodity" in " ".join(_cells), _cells[:12])
+check("best market only: one row a commodity, the best one",
+      "120,500" in _cells and "41,239" not in _cells and "49,538" in _cells, _cells)
+check("with the station, its pad and how many markets buy it",
+      "Vonarburg Co-operative" in _cells and "L" in _cells and "3" in _cells, _cells)
+check("and when that price was last known, and whose it is",
+      any(c.startswith("today") for c in _cells) and "community" in _cells, _cells)
+check("the status line says what came back",
+      "Wyrd: 2 commodities priced at 3 markets." in ledger.status.cget("text"),
+      ledger.status.cget("text"))
+ledger.system_best.set(False); ledger._paint(); settle(6)
+_cells = texts_in(ledger.table)
+check("unticked, every market is listed", "41,239" in _cells and "22,911" in _cells,
+      _cells)
+_sell_head = next(w for w in ledger.table.winfo_children()
+                  if isinstance(w, A.ctk.CTkButton) and _text_of(w).startswith("Sell"))
+_sell_head.invoke(); settle(6)
+_sorted_sells = [int(c.replace(",", "")) for c in texts_in(ledger.table)
+                 if c.replace(",", "").isdigit() and len(c) > 4]
+check("click Sell to sort on it", _sorted_sells == sorted(_sorted_sells), _sorted_sells)
+ledger.copy_all(); settle(2)
+_clip = app.clipboard_get()
+check("Copy all copies the prices while they are showing",
+      _clip.startswith("Wyrd - last known prices") and "Vonarburg Co-operative" in _clip,
+      _clip[:120])
+check_wide("Search system is inside the window",
+           lambda: inside(next(w for w in A_walk(ledger)
+                               if _text_of(w) == "Search system"), ledger),
+           lambda: "Search system is off the edge")
+ledger.show_view("sessions"); settle(6)
+check("the Rhino sessions button puts the sessions back",
+      "Copy / delete" in texts_in(ledger.table) or
+      any("No Rhino sessions" in t or "Rhino" in t for t in texts_in(ledger.table)),
+      texts_in(ledger.table)[:6])
+ledger.destroy(); settle()
+
+app.open_find(); settle(6)
+finder = app.finder
+fc = finder.commodity
+entry_of(fc).focus_force(); settle(4)
+click_row(fc.suggest, "Monazite"); click_row(fc.suggest, "Ruby")
+check("Find: tick two commodities", finder._commodities() == ["Monazite", "Ruby"],
+      finder._commodities())
+fe = entry_of(fc)
+fe.focus_force(); settle(3)
+fe.icursor("end")
+for ch, sym in ((",", "comma"), (" ", "space"), ("s", "s"), ("a", "a"), ("p", "p")):
+    press(fe, sym, ch)
+check("typing after a comma filters on the new word only",
+      fc.suggest._shown and fc.suggest._shown[0] == "Sapphire", fc.suggest._shown[:3])
+press(fe, "Return")
+check("and Enter adds it to the two already ticked",
+      fc.get() == "Monazite, Ruby, Sapphire", fc.get())
+click_row(fc.suggest, "Sapphire")
+check("a click takes it off again", fc.get() == "Monazite, Ruby", fc.get())
+for ch, sym in ((",", "comma"), ("q", "q"), ("q", "q")):
+    press(fe, sym, ch)
+check("a word that matches nothing shows nothing - not a lone Any",
+      not fc.suggest.visible(), fc.suggest._shown)
+press(fe, "Return")
+check("so Enter on a typo cannot wipe what is ticked",
+      fc.suggest.picked() == ["Monazite", "Ruby"], fc.get())
+press(fe, "Tab")
+check("and leaving the box tidies the typo away",
+      fc.get() == "Monazite, Ruby", fc.get())
+app.community.calls.clear()
+finder.search_sites(); settle(2)
+_s = [c for c in app.community.calls if c[0] == "sites"]
+check("Search sites asks for either of them, in one request",
+      _s and _s[0][2].get("commodity") == "Monazite,Ruby", _s)
+finder.results("sites", json.dumps({"sites": []}), True); settle(4)
+check("a server that does not understand two is said so, not shown as nothing found",
+      "updated" in finder.status.cget("text"), finder.status.cget("text"))
+finder.results("sites", json.dumps(dict(SITES, commodities=["Monazite", "Ruby"])), True)
+settle(4)
+check("and a server that does gets its table drawn",
+      "Col 285 Sector ZL-K b22-2" in texts_in(finder.table))
+app.community.calls.clear()
+finder.search_prices(); settle(2)
+_sells = [c for c in app.community.calls if c[0] == "sell"]
+check("Best sell prices for two: the first goes straight away",
+      [c[2].get("commodity") for c in _sells] == ["Monazite"], _sells)
+wait(A.QUOTE_GAP_MS / 1000.0 + 0.6)
+_sells = [c for c in app.community.calls if c[0] == "sell"]
+check("and the second a moment after, so the market index is not hammered",
+      [c[2].get("commodity") for c in _sells] == ["Monazite", "Ruby"], _sells)
+finder.results("sell", json.dumps({"commodity": "Monazite", "market": [
+    {"commodity": "Monazite", "station": "Port A", "system": "Sys A", "sell": 300000,
+     "distance_ly": 5, "seen": "2026-10-06", "source": "index"}], "community": []}), True)
+settle(4)
+check("the first answer is shown at once, and it says the other is coming",
+      "300,000" in texts_in(finder.table) and "1 of 2" in finder.status.cget("text"),
+      finder.status.cget("text"))
+finder.results("sell", json.dumps({"commodity": "Ruby", "market": [
+    {"commodity": "Ruby", "station": "Port B", "system": "Sys B", "sell": 90000,
+     "distance_ly": 9, "seen": "2026-10-06", "source": "index"}], "community": []}), True)
+settle(4)
+check("and the second joins it in the same table",
+      "300,000" in texts_in(finder.table) and "90,000" in texts_in(finder.table),
+      texts_in(finder.table)[:20])
+finder.destroy(); settle()
+app.community = _real_comm
+
+print("== first run: the community-map notice holds the keyboard until answered ==")
 app.settings["asked_to_share"] = False
 app.ask_to_share(); settle(6)
 _welcome = [w for w in app.winfo_children() if isinstance(w, A.WelcomeWindow)]
@@ -870,7 +1281,9 @@ check("it has been recorded as asked", app.settings.get("asked_to_share") is Tru
 _welcome[0].answer(False); settle(6)
 check("answering closes it", not _welcome[0].winfo_exists())
 check("and gives the keyboard back", app.grab_current() is None, str(app.grab_current()))
-check("Not now leaves sharing off", app.settings.get("community_enabled") is False)
+check("Stay anonymous takes the name off, and the finds are still shared",
+      app.settings.get("community_share_cmdr_name") is False
+      and app.settings.get("community_enabled") is True)
 entry_of(app.fields["commodity"]).focus_force(); settle(4)
 press(entry_of(app.fields["commodity"]), "Escape")
 app.fields["commodity"].set("")

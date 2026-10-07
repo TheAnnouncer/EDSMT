@@ -3,7 +3,8 @@
 Maps surface mining for the Rhino. It reads your journal, so you never type a
 coordinate, a system name or a distance.
 
-Original work. Not affiliated with Frontier Developments. GPL-3.0.
+Original work. Not affiliated with Frontier Developments.
+Copyright (C) 2026 Radio Raxxla. GPL-3.0-only.
 
 Built for Elite Dangerous 4.4.1.1.
 
@@ -109,6 +110,10 @@ signal** — step 3 is Alt+3. The number row, not the number pad.
 | AltGr+3 | Update the deposit I am on |
 | AltGr+0 | Every rig up |
 | AltGr+2 | Rig planner: trace the deposit's edge (beta, off until switched on) |
+| Alt+0 | Overlay on / off |
+
+The overlay only comes up while you are driving a Rhino - not in the ship,
+on foot or in the Nomad. Settings > Overlay can show it everywhere.
 
 **AltGr** is what UK and European keyboards call the right-hand Alt key.
 Windows sees it as Ctrl+Alt, so on a keyboard without one — a US layout —
@@ -265,6 +270,17 @@ average, the best in **this system**, and the **best within** the distance —
 so you can see that the station two jumps away pays more before you fly
 there. The strip in the main window quotes the total too.
 
+**Prices in a system** looks up any system you name — or the one you are in,
+if you leave it blank — and lists the **last known sell price** of each
+commodity at every market there: the station, its type and largest pad, the
+demand, **when** the price was last seen and **whose** reading it is — another
+commander's market read or the market index, whichever is newer. Tick the
+commodities you want (as many as you like) or leave it on **Any** for all
+thirteen. **Best market only** shows the best station for each commodity
+with how many markets there buy it; untick it to see every one. The answer
+opens on the **System prices** view of the table; **Rhino sessions** puts the
+sessions back, and **Copy all** copies whichever is showing.
+
 **Tonnes mined per deposit.** The game writes one line in the journal for
 every tonne refined. EDSMT puts each one against the marked deposit it came
 off — the one of the same commodity first, then the nearest — and the
@@ -402,9 +418,11 @@ marked a find — every body, every system, not just the one you are on.
 | **Mined** | the tonnes refined there |
 | **Last there** | when you last logged or marked something there |
 
-Type in **Filter** to narrow it by system, body or commodity. **system** copies
-the system name — paste it into the galaxy map to plot a route back. Where you
-are now is in green.
+Type in **Filter** to narrow it by system, body or commodity — commas between
+words mean any of them, so `Ega, Col 285` is both. **Commodity** ticks as many
+commodities as you like and keeps the sites carrying any of them. **system**
+copies the system name — paste it into the galaxy map to plot a route back.
+Where you are now is in green.
 
 ### The deposit you are on, and the one you are going to
 
@@ -457,8 +475,8 @@ FSS, map one with the DSS, and it keeps up without a click.
 
 The value is an estimate and says so. Click a heading to sort by it;
 **Copy all** puts the list on the clipboard for Discord. **Carrying** narrows
-it to the bodies that carry one commodity — what their ground is known or
-expected to carry, and what has been found on them.
+it to the bodies that carry the commodities you tick — one or several — what
+their ground is known or expected to carry, and what has been found on them.
 
 ---
 
@@ -619,16 +637,25 @@ seen it yet.
 
 ## Sharing
 
-EDSMT asks you once, the first time it starts, and takes no for an answer.
-Nothing leaves your machine unless you say yes, and Settings has the switch
-either way.
+Every deposit you mark goes on the community map, and everyone else's turns
+up under **Find** and on your map. That is not a switch: the map is a
+database of every surface-mining site anybody has found, and it is only
+worth something because everybody's finds go into it. One commander cannot
+cover a galaxy; a few thousand can.
 
-Please say yes. One commander cannot cover a galaxy; a few thousand can.
+What goes up is the system, body, commodity, position and how rich it was,
+and the prices at markets you open. Your CMDR name goes on your finds only if
+you choose - the first start asks, and Settings has it after. Your notes,
+sessions and settings never leave your PC.
 
-With it on, what you map is shared and everyone else's turns up under
-**Find**, which opens once the server has taken one deposit of your own —
-reading the shared map starts with adding to it. Find is filtered by commodity, minimum rigs, how many different
+Find is filtered by commodity, minimum rigs, how many different
 commodities sit in one patch, and how recently anybody confirmed it.
+
+**Tick several commodities.** Every commodity box in a search — Find, Where
+to land, My sites and Prices in a system — opens a list of tick boxes. Click
+one, click another, click a ticked one again to take it off; **Any** clears
+them. Or type: `Monazite, Bast` and Enter ticks Bastnäsite beside it. The
+search then finds anything carrying **any** of the ticked commodities.
 
 Age is part of the ranking, not a column you are left to interpret. Ring
 hotspots are permanent; surface deposits are not. Frontier were explicit that
@@ -637,15 +664,15 @@ months sinks below a smaller one confirmed last week.
 
 ### Best sell prices
 
-**Find → Sell** answers *where does this actually sell*, nearest first, with
-the distance in light years on every row. It combines live market data with
+**Find → Best sell prices** answers *where does this actually sell*, nearest
+first, with the distance in light years on every row — for every commodity
+you ticked, in one table. It combines live market data with
 what other commanders' games have read at markets, and says which is which.
 A station in a system nobody has placed reads "-" rather than sorting to the
 top as the closest thing in the galaxy.
 
-With price sharing on, your own game fills the gap: every time you open a
-commodity market EDSMT reads the surface-mining prices out of it and adds
-them to the community's.
+Your own game fills the gap: every time you open a commodity market EDSMT
+reads the surface-mining prices out of it and adds them to the community's.
 
 ---
 
@@ -695,7 +722,7 @@ in `%LOCALAPPDATA%\RadioRaxxla\EDSMT`. Attach it.
 |---|---|
 | The overlay does not appear over the game | Elite is in exclusive fullscreen. Set it to borderless or windowed — that is DirectX, not this app |
 | An overlay box is off-screen | Settings → **Reset box positions** |
-| Find returns nothing at all | Check the Community URL in Settings, and that sharing is switched on |
+| Find returns nothing at all | Check you are online and that api.radioraxxla.com opens in a browser. Nobody may have mapped that commodity yet |
 | Find says the server is unreachable | It will say why. Usually the server is down or the network is blocking it |
 | System and body do not fill in | The app needs the game's journal folder. Settings → Journal folder |
 | **NO ACCESS** in red at the top | Windows is refusing to let EDSMT read the journal folder — usually a hidden or protected Saved Games folder, or security software. Allow EDSMT, or point Settings → Journal folder at a copy it can read |
@@ -706,5 +733,6 @@ in `%LOCALAPPDATA%\RadioRaxxla\EDSMT`. Attach it.
 Bug reports and ideas: open an issue on the repository, or post in the Radio
 Raxxla Discord.
 
-EDSMT is free and GPL-3.0. See LICENSE.
+EDSMT is free. Copyright (C) 2026 Radio Raxxla, released under the GNU
+General Public License version 3 only (GPL-3.0-only). See LICENSE.
 

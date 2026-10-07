@@ -4,8 +4,8 @@
 # Push a tag and the installer plus the portable exe are attached to a
 # GitHub release, ready to be uploaded to radioraxxla.com/EDSMT/:
 #
-#     git tag v1.0
-#     git push origin v1.0
+#     git tag v1.10033
+#     git push origin v1.10033
 #
 # Every other push just builds and keeps the files as artifacts for 30 days,
 # so a broken build is caught before a release, not during one.
@@ -44,16 +44,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt "pyinstaller>=6.0,<7"
-
-      # The API suite is SKIPPED rather than failed when FastAPI is missing,
-      # and a skipped suite is not a pass. Install it so the release build
-      # actually tests the server half, the same way BUILD.bat does.
-      # Best effort, exactly as BUILD.bat treats it: the API is a separate
-      # thing that runs on a server, and not being able to resolve its
-      # dependencies must not stop the app from being built.
-      - name: Install the API's dependencies too, so its suite is not skipped
-        continue-on-error: true
-        run: pip install -r server/requirements.txt
 
       # The runner's desktop is 1024x768, too small for the checks about
       # what fits in a 1400-pixel window. Ask for 1920x1080 first. Best
@@ -112,7 +102,7 @@ jobs:
           if (Test-Path build\work) { Remove-Item -Recurse -Force build\work }
           Get-ChildItem -Path . -Recurse -Force -Directory -Filter __pycache__ |
             Remove-Item -Recurse -Force
-          $skip = @('.git', '.venv', '.venv-build', 'dist', 'upload', '__pycache__', 'internal')
+          $skip = @('.git', '.venv', '.venv-build', 'dist', 'upload', '__pycache__', 'internal', 'server')
           $items = Get-ChildItem -Path . -Force | Where-Object { $_.Name -notin $skip }
           New-Item -ItemType Directory -Force -Path upload | Out-Null
           Compress-Archive -Path $items.FullName -DestinationPath upload\EDSMT-source.zip -Force
@@ -164,8 +154,13 @@ jobs:
           name: EDSMT-windows
           path: upload
 
+      # The downloads and the source only. The web page and version.json
+      # are for radioraxxla.com and go there, not on the release.
       - name: Attach to the release
         uses: softprops/action-gh-release@v3
         with:
-          files: upload/*
+          files: |
+            upload/EDSMT-Setup.exe
+            upload/EDSMT.exe
+            upload/EDSMT-source.zip
           body_path: release-notes.md

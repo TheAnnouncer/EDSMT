@@ -4,7 +4,7 @@ Driven from a synthetic journal - FSS scans, one DSS map, one body mapped
 and found empty - plus a server answer for what each kind of ground carries
 and which sites are already shared. No display, no network.
 """
-import ast, io, json, os, sys, shutil, tempfile
+import json, os, sys, shutil, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import survey as S
@@ -19,26 +19,9 @@ TMP = tempfile.mkdtemp(prefix="edsmt-land-")
 SYSTEM = "Col 285 Sector ZL-K b22-2"
 ROCKY, HMC, ICY = S.ROCKY, S.HMC, S.ICY
 
-print("== the app and the server name a kind of ground the same way ==")
-# The server counts sites per ground and the app looks them up by name. If
-# the two spell one ground differently, every lookup misses and the window
-# quietly falls back to the tables for everything.
-tree = ast.parse(io.open("server/main.py", encoding="utf-8").read())
-fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "ground_of")
-fn.returns = None
-for a in fn.args.args:
-    a.annotation = None
-space = {}
-exec(compile(ast.Module(body=[fn], type_ignores=[]), "server-ground_of", "exec"), space)
-server_ground = space["ground_of"]
-SAMPLES = [(ROCKY, ""), (ROCKY, "None"), (ROCKY, "No volcanism"),
-           (ROCKY, "major silicate vapour geysers volcanism"),
-           ("  High metal content  body ", "Minor Metallic Magma Volcanism"),
-           ("", "water geysers volcanism"), (ICY, None), (None, None)]
-check("every sample gives the same ground on both sides",
-      all(S.ground_of(*s) == server_ground(*s) for s in SAMPLES),
-      [(s, S.ground_of(*s), server_ground(*s)) for s in SAMPLES
-       if S.ground_of(*s) != server_ground(*s)])
+print("== a kind of ground is named one way ==")
+# The API counts sites per ground and the app looks them up by name; the
+# two are compared beside the API's source. These are the app's half.
 check("no volcanism is just the body class",
       S.ground_of(ROCKY, "No volcanism") == ROCKY == S.ground_of(ROCKY, ""))
 check("volcanism is kept, without the word itself",

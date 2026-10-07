@@ -354,75 +354,8 @@ check("switched off, it says goodbye once and forgets the wing",
       wapp.community.beats[-1][1]["leave"] is True and wapp.wing_mates == []
       and wapp.wing_tick(now=1200.0) is False)
 
-print("== the wing link: the server ==")
-try:
-    os.environ["RR_DB"] = os.path.join(TMP, "wing.db")
-    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "server"))
-    import main as SERVER  # noqa
-    from fastapi.testclient import TestClient
-    client = TestClient(SERVER.app)
-except Exception as exc:                                   # noqa: BLE001
-    client = None
-    print("  SKIP  no FastAPI here (%s)" % exc.__class__.__name__)
-if client is not None:
-    one = {"member": "aaaaaaaa11", "name": "CMDR A", "system": "Ega",
-           "body": "Ega 1", "lat": 1.0, "lon": 2.0, "heading": 90,
-           "in_srv": True, "rigs": [{"n": 1, "lat": 1.0001, "lon": 2.0}]}
-    two = dict(one, member="bbbbbbbb22", name="CMDR B", rigs=[])
-    client.post("/v1/wing/ABC234", json=one)
-    got = client.post("/v1/wing/abc234", json=two).json()
-    check("the second member hears the first, rigs and all",
-          len(got["members"]) == 1 and got["members"][0]["name"] == "CMDR A"
-          and got["members"][0]["rigs"][0]["n"] == 1, got)
-    check("and never anybody's slot - that is what stops impersonation",
-          "member" not in got["members"][0], got["members"][0])
-    check("a bad code is refused",
-          client.post("/v1/wing/ABC23", json=one).status_code == 422)
-    check("so is a slot that is not one",
-          client.post("/v1/wing/ABC234", json=dict(one, member="x")).status_code == 422)
-    client.post("/v1/wing/ABC234", json=dict(one, leave=True))
-    check("leaving is immediate",
-          client.post("/v1/wing/ABC234", json=two).json()["members"] == [])
-    for i in range(8):
-        client.post("/v1/wing/FULL22", json=dict(one, member="m%09d" % i))
-    check("a wing holds eight", client.post(
-        "/v1/wing/FULL22", json=dict(one, member="n000000009")).status_code == 409)
-    SERVER._wings["OLD234"] = {"cccccccc33": dict(one, at=time.time() - 500)}
-    client.post("/v1/wing/NEW234", json=one)
-    check("a member not heard from for two minutes is forgotten",
-          "OLD234" not in SERVER._wings)
-    import re as _re
-    _server_src = open(os.path.join(os.path.dirname(HERE), "server", "main.py"),
-                       encoding="utf-8").read()
-    check("nothing about wings is written to the database",
-          not _re.search(r"(CREATE TABLE|INSERT INTO|UPDATE)\s+\w*wing",
-                         _server_src, _re.I))
-
-    print("== the server: the price in the system you are in ==")
-    import urllib.request as _ur
-
-    class _Reply:
-        def __init__(self, data): self.data = data
-        def read(self): return json.dumps(self.data).encode()
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-
-    rows = [{"commodityName": "ruby", "stationName": "S%d" % i,
-             "systemName": "Far %d" % i, "sellPrice": 900000 - i * 1000,
-             "demand": 10, "distance": 20.0} for i in range(30)]
-    rows.append({"commodityName": "ruby", "stationName": "Home Dock",
-                 "systemName": "HR 7280", "sellPrice": 1000, "demand": 10,
-                 "distance": 0.0})
-    _was_open, _was_base = _ur.urlopen, SERVER.SELL_UPSTREAM_BASE
-    _ur.urlopen = lambda req, timeout=None: _Reply(rows)
-    SERVER.SELL_UPSTREAM_BASE = "https://index.invalid"
-    try:
-        got = SERVER.fetch_upstream_sell("Ruby", "HR 7280", 50, 20)
-    finally:
-        _ur.urlopen, SERVER.SELL_UPSTREAM_BASE = _was_open, _was_base
-    check("the station in your own system is kept even when twenty better "
-          "ones are in range", any(r["system"] == "HR 7280" for r in got)
-          and len(got) == 21, [r["system"] for r in got][-3:])
+# The server half of the wing link and of the price in your own
+# system is checked beside the server's source, which is private.
 
 # ---------------------------------------------------------------------------
 print("== text size per box, apart from the box ==")
@@ -449,16 +382,16 @@ check("and Settings has a size for each", SRC.count('"Text size: %s" % name') ==
                                           "MINERAL DEPOSIT", "GUIDE")))
 
 # ---------------------------------------------------------------------------
-print("== Find opens once you have shared ==")
+print("== the first find of your own on the map is noticed ==")
+# 1.10033: Find is open to everybody (sharing is always on); the first find
+# the server takes is still noted, and still thanked for.
 fapp = A.EDSMT.__new__(A.EDSMT)
 fapp.settings = dict(A.DEFAULT_SETTINGS)
 fapp.store = SV.Survey(os.path.join(TMP, "find"))
 fapp.said = []
 fapp.say = lambda text, colour=None: fapp.said.append(text)
-check("a new commander is told how to open it", fapp.open_find() is None
-      and "shared a deposit of your own" in fapp.said[-1], fapp.said[-1:])
-check("the server taking one opens it for good",
-      fapp.note_shared("1 shared, 0 already known") and fapp.find_unlocked())
+check("the server taking one is remembered",
+      fapp.note_shared("1 shared, 0 already known") and fapp.settings["find_unlocked"])
 check("an answer that took nothing does not",
       A.EDSMT.note_shared(type("X", (), {"settings": {}, "say": lambda *a: None})(),
                           "0 shared, 0 already known") is False)

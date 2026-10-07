@@ -388,6 +388,23 @@ class JournalWatcher:
         # The last body approached, with its system - the guide's second
         # step, "pick where to land", is done once you head for one.
         self.approached = ("", "")
+        # Which vehicle the commander is in, by the game's own ID. A Panther
+        # Clipper carries two Rhinos and a Nomad: seen in a real 1.10032-era
+        # journal, the commander parks one Rhino, flies off, launches the
+        # other, and later walks back and climbs into the first. Those swaps
+        # are Disembark / Embark with SRV true and the vehicle's ID - not
+        # LaunchSRV / DockSRV - so following only those lost track of which
+        # Rhino was being driven. kinds: "rhino", "srv", "nomad", "ship".
+        self.vehicle_id = None
+        self.vehicle_kinds = {}
+        self.last_rhino = None         # the Rhino most recently driven
+        # Touchdown and Liftoff name the nearest mining location:
+        # "$SAA_Unknown_Signal:#type=$PlanetaryMiningLocation_Name;:#index=4;".
+        # Nearest, not selected - a hint, never the last word.
+        self.touchdown_signal = ""
+        # When this game session began (LoadGame), as epoch seconds. Rigs
+        # marked before it may not have survived the logout.
+        self.game_started = None
         self._seq = {}                 # (event, when, what) -> times seen
         self._journal = None
         self._handle = None
@@ -404,6 +421,60 @@ class JournalWatcher:
     @property
     def has_position(self):
         return self.lat is not None and self.lon is not None
+
+    @property
+    def in_rhino(self):
+        """In an SRV that is not known to be something else.
+
+        The Nomad sets the same In SRV flag as a Rhino, so the flag alone
+        cannot say "Rhino". An SRV the journal has not introduced - the log
+        began with the commander already out - is taken to be a Rhino, as
+        it always was."""
+        if not self.in_srv:
+            return False
+        return self.vehicle_kinds.get(self.vehicle_id) not in (
+            "nomad", "ship", "srv-other")
+
+    def current_rhino(self):
+        """The ID of the Rhino the rig keys act on: the one being driven,
+        else the last one driven. None when the journal has named none."""
+        if self.vehicle_id is not None and \
+                self.vehicle_kinds.get(self.vehicle_id) in ("rhino", "srv") and \
+                self.in_srv:
+            return self.vehicle_id
+        return self.last_rhino
+
+    def _vehicle(self, name, event):
+        """Follow the commander from vehicle to vehicle by the game's IDs.
+
+        Returns a note for the books when the change matters to them."""
+        vid = event.get("ID")
+        if name == "LaunchVessel":
+            if vid is not None:
+                self.vehicle_kinds[vid] = "nomad"
+                if event.get("PlayerControlled") is not False:
+                    self.vehicle_id = vid
+            return None
+        if name not in ("Embark", "Disembark") or event.get("Taxi"):
+            return None
+        srv = bool(event.get("SRV"))
+        if vid is not None and not srv:
+            self.vehicle_kinds.setdefault(vid, "ship")
+        kind = self.vehicle_kinds.get(vid)
+        if srv and vid is not None and kind is None:
+            kind = self.vehicle_kinds[vid] = "srv"
+        if name == "Embark":
+            self.vehicle_id = vid
+        else:
+            self.vehicle_id = None
+        if srv and kind in ("rhino", "srv"):
+            self.last_rhino = vid
+        if not srv:
+            return None
+        return {"event": "SRVEmbark" if name == "Embark" else "SRVDisembark",
+                "when": str(event.get("timestamp") or ""),
+                "srv_id": vid, "rhino": kind in ("rhino", "srv"),
+                "system": self.system, "body": self.body, "cmdr": self.cmdr}
 
     @property
     def where(self):
@@ -759,6 +830,11 @@ class JournalWatcher:
                     self.cmdr = str(event["Commander"])
                 if event.get("FID"):
                     self.fid = str(event["FID"])
+                if name == "LoadGame":
+                    self.game_started = SV._epoch(event.get("timestamp")) or None
+                    # A new game session: nobody is in any vehicle until the
+                    # journal or Status.json says so again.
+                    self.vehicle_id = None
                 continue
 
             if name == "Fileheader":
@@ -798,7 +874,24 @@ class JournalWatcher:
                         "cmdr": self.cmdr}
                 if event.get("ID") is not None:
                     note["srv_id"] = event.get("ID")
+                    vid = event.get("ID")
+                    if name == "LaunchSRV":
+                        self.vehicle_kinds[vid] = "rhino" if note["rhino"] \
+                            else "srv-other"
+                        if note["player"]:
+                            self.vehicle_id = vid
+                            if note["rhino"]:
+                                self.last_rhino = vid
+                    elif self.vehicle_id == vid:
+                        # Docked or destroyed with the commander in it.
+                        self.vehicle_id = None
                 self._queue_run(note)
+                continue
+
+            # The Nomad: "LaunchVessel", VesselType "lander01". It sets the
+            # In SRV flag like a Rhino but carries no rigs and mines nothing.
+            if name == "LaunchVessel":
+                self._vehicle(name, event)
                 continue
 
             if name == "Loadout":
@@ -882,8 +975,26 @@ class JournalWatcher:
 
             if name == "ApproachBody" and body:
                 self.approached = (self.system, str(body))
+            # Dropping out of supercruise right at a planet is arriving at it
+            # too. A commander who never enters orbital cruise gets no
+            # ApproachBody at all - a tester's journal, 1 October: SupercruiseExit
+            # at "ABC 3", BodyType Planet, and the guide sat on 2/11.
+            if name == "SupercruiseExit" and body and \
+                    str(event.get("BodyType") or "") == "Planet":
+                self.approached = (self.system, str(body))
+            if name in ("Embark", "Disembark"):
+                swapped = self._vehicle(name, event)
+                if swapped:
+                    self._queue_run(swapped)
+            if name in ("Touchdown", "Liftoff"):
+                nearest = re.search(r"#index=(\d+)",
+                                    str(event.get("NearestDestination") or ""))
+                if nearest and "PlanetaryMiningLocation" in \
+                        str(event.get("NearestDestination") or ""):
+                    self.touchdown_signal = str(int(nearest.group(1)))
             if name in ("FSDJump", "CarrierJump"):
                 self.approached = ("", "")
+                self.touchdown_signal = ""
             if name in ("FSDJump", "CarrierJump", "SupercruiseEntry"):
                 self.body = ""
 
@@ -1199,6 +1310,8 @@ class JournalWatcher:
                          "n": self._nth("Refined", when, commodity),
                          "lat": self.lat, "lon": self.lon,
                          "radius_m": self.radius_m, "in_srv": self.in_srv,
+                         # Which Rhino dug it up, for the per-Rhino split.
+                         "srv_id": self.current_rhino(),
                          "system": self.system, "body": self.body,
                          "cmdr": self.cmdr})
 

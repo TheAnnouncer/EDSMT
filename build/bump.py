@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Move the version on, in every file that carries it, in one go.
 
-The version lives in six places across four files, and every release that
-edited five of them shipped a build that reported the wrong number
+The version lives in seven fields across three files, and every release that
+edited six of them shipped a build that reported the wrong number
 somewhere. This is not a nicety - it is the only way the audit stays true.
 
     python build/bump.py            1.10001 -> 1.10002
@@ -18,7 +18,6 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # path, pattern, how to write the new version into it
 TARGETS = [
     ("edonline.py",           r'(APP_VERSION\s*=\s*")([\d.]+)(")',        "plain"),
-    ("server/main.py",        r'(APP_VERSION\s*=\s*")([\d.]+)(")',        "plain"),
     ("build/installer.iss",   r'(#define AppVersion ")([\d.]+)(")',       "plain"),
     ("build/installer.iss",   r'(VersionInfoVersion=)([\d.]+)()',         "quad"),
     ("build/version_info.txt", r'(filevers=\()([\d, ]+)(\))',             "tuple"),
@@ -26,6 +25,13 @@ TARGETS = [
     ("build/version_info.txt", r"('FileVersion', ')([\d.]+)(')",          "quad"),
     ("build/version_info.txt", r"('ProductVersion', ')([\d.]+)(')",       "quad"),
 ]
+
+# The API carries the same number. Its source is not in this project; on
+# the machine that builds releases it is in the private folder beside it,
+# and moves on with everything else. Anywhere else there is nothing to move.
+SERVER_MAIN = os.path.join("..", "EDSMT-Private", "server", "main.py")
+if os.path.exists(os.path.join(REPO, SERVER_MAIN)):
+    TARGETS.append((SERVER_MAIN, r'(APP_VERSION\s*=\s*")([\d.]+)(")', "plain"))
 
 
 def read(path):

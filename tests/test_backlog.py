@@ -15,9 +15,10 @@ import ast, io, os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def src(f): return io.open(f, encoding="utf-8").read()
-APP, OV, PV, SV, EDO, SRV, JN = (src("edsmt.py"), src("overlay.py"),
-    src("planview.py"), src("survey.py"), src("edonline.py"),
-    src("server/main.py"), src("journal.py"))
+# The API's half of a row is checked beside the API's source, which is
+# private; what is here is the app's half.
+APP, OV, PV, SV, EDO, JN = (src("edsmt.py"), src("overlay.py"),
+    src("planview.py"), src("survey.py"), src("edonline.py"), src("journal.py"))
 tree = ast.parse(APP)
 DEFS = {n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
 CALLED = {getattr(n.func, "attr", getattr(n.func, "id", ""))
@@ -69,13 +70,8 @@ CHECKS = [
  (27, "credits on the map",                  lambda: "deposit_value" in PV and "deposit_value" in OV),
  (28, "drive route numbered",                lambda: "drive_route" in PV and "drive_route" in OV),
  (29, "another tool's CSV import",           lambda: wired("import_finds") and "detect_import_format" in DEFS),
- (30, "/v1/sites returns status+uploader",   lambda: "AS uploader" in SRV and "AS status" in SRV),
- (31, "/v1/deposits has worked_out",         lambda: "depleted" in SRV),
- (32, "system is a prefix match",            lambda: "prefix_pattern" in SRV),
- (33, "proximity search",                    lambda: "near_clause" in SRV and "systems" in SRV),
- (34, "site roll-up has a LIMIT",            lambda: "LIMIT ?" in SRV),
- (35, "commodity filter uses an index",      lambda: "EXISTS (SELECT 1 FROM deposits t" in SRV),
- (37, "best sell prices",                    lambda: "/v1/sell" in SRV and "def sell" in EDO),
+ # 30-35 are the API's alone.
+ (37, "best sell prices",                    lambda: "/v1/sell" in EDO and "def sell" in EDO),
  (38, "auto-updater",                        lambda: wired("check_updates") and "self.updates.check(" in APP),
  ("38a","update downloads itself, checked",  lambda: wired("fetch_update") and wired("update_downloaded")
         and "def download_verified" in EDO and "sha256" in src("build/site.py")),
@@ -90,7 +86,7 @@ CHECKS = [
  (48, "EDCD writeup exists",                 lambda: os.path.exists("docs/SURFACE-MINING-JOURNAL.md")),
  (49, "landing page exists",                 lambda: os.path.exists("site/edsmt.html")),
  (50, "where to land, ranked and live",     lambda: wired("open_land") and "SV.rank_bodies" in APP
-        and wired("follow_land") and "def system_bodies" in JN and "/v1/grounds" in SRV),
+        and wired("follow_land") and "def system_bodies" in JN and "/v1/grounds" in EDO),
  (51, "survey area: centre, border, swept %", lambda: wired("set_survey_centre") and wired("set_survey_border")
         and "AREA SWEPT" in OV),
  (52, "UPDATE a deposit's Amount in place",  lambda: wired("update_deposit_here") and "btn_update_deposit" in APP),
@@ -107,7 +103,7 @@ CHECKS = [
  (63, "tonnes mined per deposit",            lambda: wired("credit_refined") and "def credit_refined" in SV),
  (64, "cargo aboard, no double count",       lambda: "sessions-seen.json" in SV and wired("hold_now")),
  (65, "where to sell from here",             lambda: wired("quote_hold") and wired("take_quote")),
- (66, "Find paged, Last seen",               lambda: "last_seen" in SRV and "def last_seen" in APP),
+ (66, "Find paged, Last seen",               lambda: 'row.get("last_seen")' in APP and "def last_seen" in APP),
  (67, "names from symbols (Eau)",            lambda: "def english_name" in SV and "hold_label" in JN),
  (68, "targeted signal picked",              lambda: wired("follow_target") and "#index=" in JN),
  (69, "scope is the signal you are at",      lambda: wired("follow_arrival") and "near_m=PV.SIGNAL_REACH_M" in OV
@@ -138,19 +134,19 @@ CHECKS = [
  (112, "a key down and up for every rig",    lambda: '"hotkey_rig%d" % n: "ALT+%d" % (n + 3)' in OV
         and '"hotkey_rig%dup" % n: "CTRL+ALT+%d" % (n + 3)' in OV and wired("rig_up")),
  (113, "MARK needs all four boxes",          lambda: wired("missing_fields") and wired("clear_deposit_boxes")),
- (114, "Find opens after a find of your own", lambda: wired("find_unlocked") and wired("note_shared")),
+ (114, "Find for everybody (was: after a find of your own; #186)",
+        lambda: wired("note_shared") and "find_unlocked" not in APP.split("    def open_find(self):")[1].split("\n    def ")[0]),
  (115, "the guide retires itself",           lambda: wired("retire_guide")),
  (116, "sessions on rigs, not the launch",   lambda: 'name == "RigDown"' in SV and 'name == "RigsUp"' in SV
         and wired("rig_event") and wired("mined_aboard")),
  (117, "Pause",                              lambda: "def pause(self" in SV and wired("pause_session")),
- (118, "three prices",                       lambda: wired("galactic_average") and "def market_means" in JN
-        and "fold(r[\"system\"]) == here" in SRV),
+ (118, "three prices",                       lambda: wired("galactic_average") and "def market_means" in JN),
  (119, "finds draw fast",                    lambda: wired("mini_button") and wired("row_buttons")),
  (120, "text size per box",                  lambda: "def scaled_canvas" in OV and "overlay_text_%s" in APP),
  (121, "rig planner",                        lambda: wired("planner_trace") and wired("follow_trace")
         and wired("plan_marks") and os.path.exists("rigplan.py")),
  (122, "wing link and shared ship",          lambda: wired("wing_tick") and wired("take_wing")
-        and '@app.post("/v1/wing/{code}")' in SRV and '"player"' in JN),
+        and "/v1/wing/" in EDO and '"player"' in JN),
  (129, "next pin on the compass tape",       lambda: '"pintape"' in OV),
  (130, "a rig counts within half the spacing", lambda: wired("pin_reach")),
  (131, "shared finds through a paste box",   lambda: "self.paste_box" in APP and wired("_paste_enter")
@@ -158,7 +154,7 @@ CHECKS = [
  (132, "est. held and left before working it", lambda: "def estimate_tonnes" in SV
         and "SV.estimate_tonnes(" in APP),
  (134, "delete a session from Earnings",     lambda: wired("delete_session") and "def delete(self, row_id)" in SV),
- (135, "CG placeholder prices left out",     lambda: "PLACEHOLDER_DEMAND" in APP and "PLACEHOLDER_DEMAND" in SRV),
+ (135, "CG placeholder prices left out",     lambda: "PLACEHOLDER_DEMAND" in APP),
  (123, "FAQ on the download page",           lambda: 'id="faq"' in src("site/index.html")
         and 'url=/EDSMT/' in src("site/edsmt.html")),
  (138, "download page wears the site's shell", lambda: all(t in src("site/index.html") for t in

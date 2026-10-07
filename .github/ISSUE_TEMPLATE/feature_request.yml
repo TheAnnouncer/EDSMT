@@ -52,9 +52,9 @@ body:
     attributes:
       label: Version, from the title bar
       description: >-
-        So the answer can be "that shipped in 1.10016" rather than a
+        So the answer can be "that shipped in an earlier build" rather than a
         conversation about what you already have.
-      placeholder: "1.10016"
+      placeholder: "1.100xx"
     validations:
       required: true
 

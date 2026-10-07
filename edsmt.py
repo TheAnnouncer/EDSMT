@@ -242,6 +242,9 @@ PLAN_SPACING_MAX_M = 500.0
 WING_BEAT_S = 4.0
 # A second press on the same Earnings row inside this long deletes it.
 DELETE_CONFIRM_S = 6
+# With two Rhinos' rigs down, RIGS UP takes up the rigs of the Rhino you are
+# in; pressed again inside this long it takes up the other Rhino's as well.
+RIGS_ALL_CONFIRM_S = 6
 # The demand a Community Goal station shows: a placeholder, not a market.
 PLACEHOLDER_DEMAND = 999999
 WING_STALE_S = 30.0
@@ -306,7 +309,7 @@ NO_DISTANCE_LIMIT = "Anywhere"
 # next name is one line and never touches the window code.
 BETA_TESTERS = [
     "CMDR MJH430", "CMDR StarTopaz", "CMDR Flossy", "CMDR Gamer Joe",
-    "CMDR Rumphrend",
+    "CMDR Rumphrend", "CMDR Todd Jenkins",
 ]
 
 # What a find is credited to when the commander who shared it chose not to
@@ -554,15 +557,79 @@ def _writable(path):
 DATA_DIR = data_dir()
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
+# Before every INSTALL UPDATE the finds, sessions and settings are backed up
+# (#143: "REMIND PEOPLE TO BACKUP SETTINGS BEFORE THEY UPDATE"). Into
+# Documents, where people look, not AppData, where they do not. The newest
+# AUTO_BACKUPS_KEPT of THESE are kept; a backup made by hand is never
+# touched. A backup that cannot be written stops the install, and pressing
+# INSTALL UPDATE again within UPDATE_NO_BACKUP_S goes ahead without one.
+AUTO_BACKUP_PREFIX = "EDSMT-before-update-"
+AUTO_BACKUPS_KEPT = 10
+UPDATE_NO_BACKUP_S = 30
+
+
+def documents_dir():
+    """The commander's Documents folder, wherever Windows keeps it - which,
+    with OneDrive, is not always under the profile."""
+    if os.name == "nt":
+        try:
+            path = ctypes.c_wchar_p()
+            # FOLDERID_Documents {FDD39AD0-238F-46AF-ADB4-6C85480369C7}
+            guid = (ctypes.c_ubyte * 16)(*bytes.fromhex(
+                "D09AD3FD8F23AF46ADB46C85480369C7"))
+            shell = ctypes.windll.shell32
+            if shell.SHGetKnownFolderPath(ctypes.byref(guid), 0, None,
+                                          ctypes.byref(path)) == 0:
+                folder = path.value
+                ctypes.windll.ole32.CoTaskMemFree(path)
+                if folder:
+                    return folder
+        except Exception:
+            pass
+    return os.path.join(os.path.expanduser("~"), "Documents")
+
+
+def backups_dir():
+    """Where the automatic backups go: Documents > EDSMT backups."""
+    return os.path.join(documents_dir(), "EDSMT backups")
+
+
+def tidy_auto_backups(folder, keep=AUTO_BACKUPS_KEPT):
+    """Keep the newest `keep` automatic backups in `folder`. Only files
+    this made are ever removed - a backup made by hand is never touched."""
+    try:
+        mine = sorted((name for name in os.listdir(folder)
+                       if name.startswith(AUTO_BACKUP_PREFIX)
+                       and name.endswith(".zip")),
+                      key=lambda name: os.path.getmtime(os.path.join(folder, name)))
+    except OSError:
+        return 0
+    gone = 0
+    for name in mine[:max(0, len(mine) - keep)]:
+        try:
+            os.remove(os.path.join(folder, name))
+            gone += 1
+        except OSError:
+            pass
+    return gone
+
+# The key that turns the overlay on and off. Not bound by the game's own
+# schemes, by Windows or by the overlays that grab keys - the same checks as
+# the work keys beside it (OV.WORK_KEYS).
+OVERLAY_KEY = "ALT+0"
+
 DEFAULT_SETTINGS = {
     "_readme": "Everything here has a Settings window in the app.",
     "inara_enabled": False,
     "inara_api_key": "",
     "inara_is_being_developed": False,
-    "community_enabled": False,
-    # Pre-filled, because a shared database that every commander has to be
-    # told the address of is not a shared database. Nothing is sent until
-    # community_enabled is switched on, which is a decision, not a default.
+    # Every find is shared with every commander, always (October 2026: "we
+    # do not hold back on that information"). These three are no longer
+    # choices - ALWAYS_SHARED puts them back on in any file that says
+    # otherwise. Your CMDR name on them is still yours to give or not.
+    "community_enabled": True,
+    # The address is fixed in edonline; this key is kept only so that older
+    # settings files read the same way.
     "community_url": "https://api.radioraxxla.com",
     # Whether the share question has been put to this commander yet. The
     # database is only worth searching if people contribute to it, and a
@@ -598,6 +665,9 @@ DEFAULT_SETTINGS = {
     # from a flight sim without being asked is two too many, and the button
     # in the title bar does the same job.
     "hotkey_lock": "",
+    # The overlay on and off from the game, without reaching for EDSMT's
+    # window (asked for on the forum). Alt+0, next to the work keys.
+    "hotkey_overlay": OVERLAY_KEY,
     # Standing on a deposit you already marked, to write down that its
     # Amount has dropped: the last thing done at a deposit, so the last key.
     "hotkey_update": OV.WORK_KEYS["hotkey_update"],
@@ -643,6 +713,10 @@ DEFAULT_SETTINGS = {
     # The in-game overlay. Off until asked for: it puts a window over the
     # game, and that should never be a surprise.
     "overlay_enabled": False,
+    # The boxes only while a Rhino is being driven: down in the ship, on
+    # foot and in the Nomad, back up when the Rhino is. Unlocked, to arrange
+    # them, they stay up anywhere.
+    "overlay_rhino_only": True,
     # Only while the game is the window in front. Left up over everything,
     # the boxes sat on top of EDSMT's own Find and Earnings windows.
     "overlay_only_over_game": True,
@@ -689,7 +763,8 @@ DEFAULT_SETTINGS = {
     # Settings, it stays on.
     "guide_done": False,
     # Set the first time the server takes a deposit of this commander's own.
-    # Find - reading the shared map - opens then. See find_unlocked.
+    # Whether the server has taken a find of yours yet: the first is thanked
+    # for. (Find itself is open to everybody.)
     "find_unlocked": False,
     # The rig planner (beta): drive a deposit's edge once and get a pin for
     # each rig where they fit. Off until switched on in Settings - a beta
@@ -716,6 +791,13 @@ DEFAULT_SETTINGS = {
     "overlay_layout": {},
     # See upgrade_layout: which default layout this file has been given.
     "overlay_layout_level": 2,
+    # The last layout preset applied - Standard, Map focus, Minimal or
+    # Streamer (OV.LAYOUT_PRESETS). Applying one writes overlay_layout and
+    # the overlay_show_* switches; the boxes can be dragged from there.
+    "overlay_preset": "standard",
+    # How the ground already swept shows on the scope: faint, clear or
+    # solid (OV.SWEPT_LOOKS). Clear from 1.10033 - faint was hard to see.
+    "overlay_swept": "clear",
     "overlay_opacity": 0.88,
     # Blank means "work it out from the screen". 900x120 at 60,40 is most of
     # a 1080p monitor and a postage stamp on a 4K one, so a fixed default is
@@ -740,6 +822,9 @@ DEFAULT_SETTINGS = {
 # default that only appeared later. That is how upgrading disconnects
 # somebody from the map and then tells them to go and set a URL.
 NEVER_BLANK = ("community_url",)
+# The map is everybody's: what you find goes on it, what anybody finds comes
+# back under Find. Not switches any more, whatever an older file says.
+ALWAYS_SHARED = ("community_enabled", "community_auto_share", "share_market_prices")
 
 
 def build_kind():
@@ -935,7 +1020,15 @@ def load_settings():
     for key in NEVER_BLANK:
         if not str(merged.get(key) or "").strip():
             merged[key] = DEFAULT_SETTINGS[key]
-    return upgrade_layout(upgrade_hotkeys(merged, data), data)
+    if data.get("community_enabled") is False:
+        SETTINGS_NOTICE.append(
+            "Sharing is always on from this version: every find goes on the "
+            "community map, and Find is open to you. Your CMDR name goes on "
+            "them only if \"Credit finds to my CMDR name\" is on in Settings.")
+    for key in ALWAYS_SHARED:
+        merged[key] = True
+    return keep_new_keys_free(upgrade_layout(upgrade_hotkeys(merged, data), data),
+                              data)
 
 
 # The overlay layout this build ships, as a number. Up to 1.10029 every
@@ -1003,6 +1096,20 @@ OLD_DEFAULT_KEYS[2] = OLD_DEFAULT_KEYS[1]
 # 1000 m was the rig warning's default until 1.10029, and a guess. A file
 # still holding exactly that gets the measured one.
 OLD_RIG_WARN_M = 1000
+
+
+def keep_new_keys_free(merged, saved):
+    """A key added since this settings file was written gets its default
+    only if nothing in the file is already on that key - two actions on one
+    key would each fire half the time. Otherwise it starts blank, and
+    Settings has it."""
+    saved = saved or {}
+    if "hotkey_overlay" not in saved:
+        taken = {str(value or "").strip().upper() for name, value in saved.items()
+                 if name.startswith("hotkey_") and name != "hotkey_defaults"}
+        if OVERLAY_KEY in taken:
+            merged["hotkey_overlay"] = ""
+    return merged
 
 
 def upgrade_hotkeys(merged, saved):
@@ -2236,9 +2343,11 @@ class PlanView(tk.Canvas):
             self._rig_marks(viewport, rigs)
         self._deposits(self._plan)
         self._me(viewport, self._plan)
-        self._footer(width, height, self._plan)
+        top = self._footer(width, height, self._plan)
         if viewport.panned:
-            self.create_text(width / 2, height - 10, anchor="s", fill=AMBER,
+            # Above the footer, not on it: centred on the same line it was
+            # printed through the legend and the body's facts.
+            self.create_text(width / 2, top - 4, anchor="s", fill=AMBER,
                              font=F_SMALL,
                              text="dragged off centre - right-click to recentre")
 
@@ -2472,6 +2581,15 @@ class PlanView(tk.Canvas):
                     self.coords(right, width - 10, height - 26)
             except (TypeError, IndexError, tk.TclError):
                 pass
+        # Where the footer starts, so whatever goes above it clears it.
+        tops = []
+        for item in (left, right if self.caption else None):
+            try:
+                if item is not None:
+                    tops.append(float(self.bbox(item)[1]))
+            except (TypeError, IndexError, tk.TclError):
+                pass
+        return min(tops) if tops else height - 26
 
 
 # Where high gravity starts, in g. From Settings; kept here as well so the
@@ -2664,7 +2782,7 @@ class EDSMT(ctk.CTk):
             notice = "  ".join(SETTINGS_NOTICE)
             self.after(2500, lambda: self.say(notice, AMBER))
         if self.settings.get("overlay_enabled"):
-            self.after(600, self.overlay.show)
+            self.after(600, self.follow_vehicle_overlay)
         if not self.settings.get("asked_to_share"):
             self.after(900, self.ask_to_share)
         # Once, a couple of seconds in, so it never delays the window
@@ -2695,20 +2813,20 @@ class EDSMT(ctk.CTk):
         self.settings["asked_to_share"] = True
         save_settings(self.settings)
 
-    def set_sharing(self, wanted):
-        """Answer from the first-run window, or the Settings switch."""
-        self.settings["community_enabled"] = bool(wanted)
+    def set_name_credit(self, wanted):
+        """The first-run answer: whether your CMDR name goes on your finds.
+        Whether they are shared is not a question - they always are."""
+        self.settings["community_share_cmdr_name"] = bool(wanted)
         save_settings(self.settings)
         self.community.configure(self.settings.get("community_url", ""),
                                  self.settings.get("community_token", ""),
-                                 bool(wanted),
-                                 self.settings.get("community_share_cmdr_name", True))
+                                 True, bool(wanted))
         if wanted:
-            self.say("Sharing on. Your finds go to the community map, and "
-                     "Find searches everyone else's.", GREEN)
+            self.say("Your finds go on the community map with your CMDR name "
+                     "on them.", GREEN)
         else:
-            self.say("Sharing off. Nothing leaves this machine. "
-                     "Settings has it whenever you want it.")
+            self.say("Your finds go on the community map without your name. "
+                     "Settings has it whenever you want it.", GREEN)
 
     # -- the overlay -----------------------------------------------------
 
@@ -2716,22 +2834,59 @@ class EDSMT(ctk.CTk):
         """Turn the in-game strip on or off."""
         self.settings["overlay_enabled"] = bool(wanted)
         save_settings(self.settings)
-        if wanted:
+        if not wanted:
+            self.overlay.hide()
+        elif self.overlay_wanted_now():
             self.overlay.show()
             self.overlay.refresh_settings(self.settings)
             self.redraw()
-        else:
-            self.overlay.hide()
         self.show_overlay_state()
 
     def toggle_overlay(self):
+        """The Overlay button, and its key (Alt+0)."""
         self.set_overlay(not self.settings.get("overlay_enabled"))
-        if self.settings.get("overlay_enabled"):
+        if not self.settings.get("overlay_enabled"):
+            self.say("Overlay off.")
+        elif self.overlay_wanted_now():
             self.say("Overlay on. It shows while the game is in front - "
                      "borderless or windowed only, never over exclusive "
                      "fullscreen.", AMBER)
         else:
-            self.say("Overlay off.")
+            self.say("Overlay on. It comes up when you are driving a Rhino "
+                     "- Settings > Overlay can show it everywhere.", AMBER)
+
+    def overlay_wanted_now(self):
+        """Whether the boxes should be up this moment.
+
+        Up when switched on - and, with "only in the Rhino" (the default),
+        only while a Rhino is being driven: in the ship, on foot or in the
+        Nomad they are down, and they come back with the Rhino. Unlocked to
+        be arranged, they stay up wherever you are."""
+        if not self.settings.get("overlay_enabled"):
+            return False
+        if not self.settings.get("overlay_rhino_only", True):
+            return True
+        overlay = attr(self, "overlay", None)
+        if overlay is not None and not overlay.locked:
+            return True
+        return bool(getattr(attr(self, "game"), "in_rhino", False))
+
+    def follow_vehicle_overlay(self):
+        """Put the boxes up or take them down as the Rhino comes and goes.
+        True when it changed anything."""
+        overlay = attr(self, "overlay", None)
+        if overlay is None:
+            return False
+        wanted = self.overlay_wanted_now()
+        if wanted and not overlay.showing:
+            overlay.show()
+            overlay.refresh_settings(self.settings)
+            self.redraw()
+            return overlay.showing
+        if not wanted and overlay.showing:
+            overlay.hide()
+            return True
+        return False
 
     @staticmethod
     def wanted_hotkeys(data):
@@ -2742,7 +2897,7 @@ class EDSMT(ctk.CTk):
         is reported to the commander as "already taken by another program",
         which would be a lie about a key they deliberately cleared.
         """
-        actions = ("deposit", "location", "lock", "update", "centre",
+        actions = ("deposit", "location", "lock", "overlay", "update", "centre",
                    "border", "rigs", "allup", "trace") \
             + tuple("rig%d" % n for n in range(1, MAX_RIGS + 1)) \
             + tuple("rig%dup" % n for n in range(1, MAX_RIGS + 1))
@@ -2769,6 +2924,9 @@ class EDSMT(ctk.CTk):
                             "arrange the boxes.", AMBER)
         locked = self.overlay.set_locked(not self.overlay.locked)
         save_settings(self.settings)
+        # Unlocked to be arranged, the boxes are up even out of the Rhino;
+        # locked again, they follow the Rhino.
+        self.follow_vehicle_overlay()
         self.show_overlay_state()
         self.redraw()
         if locked:
@@ -2776,6 +2934,19 @@ class EDSMT(ctk.CTk):
         else:
             self.say("Overlay unlocked. Drag each box by its bar, resize it "
                      "by the bottom-right corner, then lock it again.", AMBER)
+
+    def apply_overlay_preset(self, name):
+        """A whole overlay layout in one pick (OV.LAYOUT_PRESETS). Returns
+        the set of boxes switched on."""
+        shown = self.overlay.apply_preset(name)
+        save_settings(self.settings)
+        if self.settings.get("overlay_enabled"):
+            # Boxes switched off close, boxes switched on open, every one
+            # where the preset put it.
+            self.overlay.hide()
+            self.overlay.show()
+        self.redraw()
+        return shown
 
     def reset_overlay_layout(self):
         """Put every box back where it started."""
@@ -2870,7 +3041,9 @@ class EDSMT(ctk.CTk):
             getattr(state, "landed", False) or getattr(state, "in_srv", False)
             or (not gliding and height is not None
                 and height <= DEPLOY_BELOW_M)))
-        facts["rhino"] = bool(getattr(state, "in_srv", False))
+        # The Nomad sets the same In SRV flag: only a Rhino is the Rhino.
+        facts["rhino"] = bool(getattr(state, "in_rhino",
+                                      getattr(state, "in_srv", False)))
         try:
             row = self.store.location(system, body, signal)
             facts["centre"] = bool(row and str(row.get("lat") or "").strip())
@@ -3079,18 +3252,18 @@ class EDSMT(ctk.CTk):
             row=4, column=0, columnspan=4, sticky="ew")
 
         self.t_where = ctk.CTkLabel(bar, text="Looking for Elite Dangerous...",
-                                    font=F_HEAD,
+                                    font=F_HEAD, justify="left",
                                     text_color=TEXT, anchor="w")
         self.t_where.grid(row=0, column=1, sticky="w", pady=(9, 0))
         self.t_detail = ctk.CTkLabel(bar, text="", font=F_READOUT,
-                                     text_color=DIM, anchor="w")
+                                     justify="left", text_color=DIM, anchor="w")
         self.t_detail.grid(row=1, column=1, sticky="w")
         # What the run is worth, on its own line under where you are. The
         # two answer different questions and a commander reads one of them
         # while driving and the other while deciding whether to go home,
         # so they do not share a line.
         self.t_earnings = ctk.CTkLabel(bar, text="", font=F_READOUT,
-                                       text_color=AMBER, anchor="w")
+                                       justify="left", text_color=AMBER, anchor="w")
         self.t_earnings.grid(row=2, column=1, sticky="w", pady=(0, 9))
 
         # Two groups. Where things are - Find, My sites, Where to land,
@@ -3155,10 +3328,17 @@ class EDSMT(ctk.CTk):
             width = int(bar.winfo_width())
             if width <= 1:
                 return
-            needed = (170 + TOP_READOUT_ROOM + int(side.winfo_reqwidth())
-                      + (int(nav.winfo_reqwidth()) + 16 if nav is not None else 0)
-                      + 24)
-            stack = width < needed
+            buttons = (int(side.winfo_reqwidth())
+                       + (int(nav.winfo_reqwidth()) + 16 if nav is not None else 0)
+                       + 24)
+            room = width - 170 - buttons
+            stack = room < TOP_READOUT_ROOM
+            # The readouts wrap inside the room they have rather than take
+            # the buttons' room. "mined aboard ... worth ... at ..." runs to
+            # a hundred and thirty characters, and a label asks for all of
+            # it: the column grew, the buttons shrank, and "Where to land"
+            # read "re to l" with Earnings pushed off the end.
+            self._wrap_readouts(width - 170 - 24 if stack else room)
             if stack == attr(self, "_top_stacked", False):
                 return
             self._top_stacked = stack
@@ -3176,6 +3356,24 @@ class EDSMT(ctk.CTk):
                                     sticky="e", padx=12, pady=0)
         except Exception:
             pass
+
+    def _wrap_readouts(self, room):
+        """Wrap the three readout lines at `room` pixels. Only when it
+        changes: a label that rewraps resizes the bar, and the bar
+        resizing calls the fitter again."""
+        room = max(240, int(room))
+        if room == attr(self, "_readout_room", None):
+            return
+        self._readout_room = room
+        for name in ("t_where", "t_detail", "t_earnings"):
+            label = attr(self, name)
+            if label is None:
+                continue
+            try:
+                scale = float(label._apply_widget_scaling(1.0)) or 1.0
+            except Exception:
+                scale = 1.0
+            label.configure(wraplength=int(room / scale))
 
     def open_download_page(self):
         """Send them to the download page. Do not fetch or run anything."""
@@ -3512,6 +3710,10 @@ class EDSMT(ctk.CTk):
             self.follow_land()
             self.follow_update()
             try:
+                self.follow_vehicle_overlay()
+            except Exception as exc:
+                self.trouble("Overlay", exc)
+            try:
                 self.wing_tick()
             except Exception as exc:
                 self.trouble("Wing link", exc)
@@ -3576,6 +3778,7 @@ class EDSMT(ctk.CTk):
         table = {
             "location": ("Log location", self.log_location),
             "lock": ("Overlay lock", self.toggle_overlay_lock),
+            "overlay": ("Overlay", self.toggle_overlay),
             "update": ("Update deposit", self.update_deposit_here),
             "centre": ("Survey centre", self.set_survey_centre),
             "border": ("Survey border", self.set_survey_border),
@@ -3714,6 +3917,7 @@ class EDSMT(ctk.CTk):
 
         self.t_where.configure(text=state.where, text_color=TEXT)
         self.follow_target(state)
+        self.follow_touchdown(state)
         self.follow_arrival(state)
         self.follow_deposit(state)
         self.follow_gravity(state)
@@ -3944,7 +4148,7 @@ class EDSMT(ctk.CTk):
         """
         community = attr(self, "community")
         if community is None or not community.can_read:
-            return 0, "No community URL set. Settings has it."
+            return 0, "Not connected to the community map - check Settings > Community."
         system = str(getattr(attr(self, "watcher"), "system", "") or "")
         if not system:
             return 0, "The game has not said which system you are in yet."
@@ -4641,6 +4845,32 @@ class EDSMT(ctk.CTk):
             except Exception as exc:
                 self.trouble("Signal from the game", exc)
 
+    def follow_touchdown(self, state):
+        """The mining location the game says you touched down nearest.
+
+        Touchdown and Liftoff name it: "#index=4" in NearestDestination.
+        Nearest, not chosen, so it is a hint: on a body with nothing logged
+        yet, and nothing targeted, it sets the Signal box; otherwise it is
+        only said. Once each time it changes."""
+        touched = str(getattr(state, "touchdown_signal", "") or "").strip()
+        if not touched or touched == attr(self, "_touchdown_applied", ""):
+            return
+        self._touchdown_applied = touched
+        if str(getattr(state, "target_signal", "") or "").strip():
+            return
+        try:
+            system, body = self.here()
+            fresh = not self.store.locations_on(system, body)
+            if fresh and touched != str(self.signal()).strip():
+                self.choose_signal(touched)
+                self.say("Touched down by mining location %s - the Signal box "
+                         "is set to it." % touched, CYAN)
+            else:
+                self.say("Touched down nearest mining location %s." % touched,
+                         DIM)
+        except Exception as exc:
+            self.trouble("Signal from the touchdown", exc)
+
     def follow_arrival(self, state):
         """Pick the logged signal you have driven into, once per arrival.
 
@@ -4941,6 +5171,52 @@ class EDSMT(ctk.CTk):
             return []
         return list(rigs["rigs"])
 
+    # -- several Rhinos off one ship ---------------------------------------
+    #
+    # A Panther Clipper carries two Rhinos: six rigs each, twelve on the
+    # ground. The game gives each Rhino its own ID, and the journal says
+    # which one the commander climbs into. The rig keys act on the Rhino
+    # being driven - or, on foot or in the ship, the last one driven - so
+    # Alt+4 is rig 1 of whichever Rhino you are in. With rigs from two
+    # Rhinos down they show as A1-A6 and B1-B6, in the order each Rhino
+    # dropped its first; with one Rhino's, plain 1-6 as ever.
+
+    def _rhino_now(self):
+        """The Rhino the rig keys act on, by the game's ID, or None."""
+        state = attr(self, "game", None)
+        try:
+            rid = state.current_rhino() if state is not None else None
+        except Exception:
+            rid = None
+        return None if rid is None else str(rid)
+
+    def _rig_rhinos(self):
+        """The Rhinos with rigs marked here, in the order each dropped one."""
+        rigs = attr(self, "rigs_at", None) or {}
+        order = list(rigs.get("rhinos") or [])
+        for rig in rigs.get("rigs") or []:
+            if rig.get("srv") not in order:
+                order.append(rig.get("srv"))
+        return order
+
+    def rig_label(self, rig):
+        """'3' while only one Rhino's rigs are down, 'A3' or 'B3' once two."""
+        order = [srv for srv in self._rig_rhinos() if srv is not None]
+        n = rig.get("n")
+        if len(order) < 2:
+            return "%s" % n
+        try:
+            letter = SV.RHINO_LETTERS[order.index(rig.get("srv"))]
+        except (ValueError, IndexError):
+            letter = "?"
+        return "%s%s" % (letter, n)
+
+    @staticmethod
+    def _same_rhino(rig, rhino):
+        """Whether a rig belongs to this Rhino. Not knowing either side
+        means yes - one Rhino, as it always was."""
+        return rhino is None or rig.get("srv") is None or rig.get("srv") == rhino
+
     def drop_rigs(self, n=None):
         """A rig down, where the SRV is standing now.
 
@@ -4958,7 +5234,9 @@ class EDSMT(ctk.CTk):
                             "a rig key from the SRV as you drop each rig.", AMBER)
         rigs = self._rigs_here()
         if not rigs:
-            self.rigs_at = {"system": system, "body": body, "rigs": []}
+            self.rigs_at = {"system": system, "body": body, "rigs": [],
+                            "rhinos": []}
+        rhino = self._rhino_now()
         radius = state.radius_m or 0
 
         def metres_to(rig):
@@ -4976,33 +5254,43 @@ class EDSMT(ctk.CTk):
             if not 1 <= n <= MAX_RIGS:
                 return self.say("There are %d rigs - no rig %s." % (MAX_RIGS, n),
                                 AMBER)
-            mine = next((rig for rig in rigs if rig["n"] == n), None)
+            mine = next((rig for rig in rigs if rig["n"] == n
+                         and self._same_rhino(rig, rhino)), None)
             if mine is not None:
                 away = metres_to(mine)
                 if away is not None and away < RIG_SAME_M:
-                    return self.say("Rig %d is already down here." % n, AMBER)
+                    return self.say("Rig %s is already down here."
+                                    % self.rig_label(mine), AMBER)
                 moved_from = away
-                self.rigs_at["rigs"] = [r for r in self.rigs_at["rigs"]
-                                        if r["n"] != n]
+                self.rigs_at["rigs"] = [
+                    r for r in self.rigs_at["rigs"]
+                    if not (r["n"] == n and self._same_rhino(r, rhino))]
         else:
             for rig in rigs:
                 away = metres_to(rig)
                 if away is not None and away < RIG_SAME_M:
-                    return self.say("Rig %d is already marked here." % rig["n"],
-                                    AMBER)
-            taken = {rig["n"] for rig in rigs}
+                    return self.say("Rig %s is already marked here."
+                                    % self.rig_label(rig), AMBER)
+            taken = {rig["n"] for rig in rigs if self._same_rhino(rig, rhino)}
             free = [k for k in range(1, MAX_RIGS + 1) if k not in taken]
             if not free:
-                return self.say("All %d rigs are marked. %s when you have "
-                                "collected them." % (MAX_RIGS,
-                                                     self.key("allup", "RIGS UP")),
+                return self.say("All %d rigs of this Rhino are marked. %s when "
+                                "you have collected them." % (
+                                    MAX_RIGS, self.key("allup", "RIGS UP")),
                                 AMBER)
             n = free[0]
         what = self.rig_commodity(state, system, body)
         rig = {"n": n, "lat": state.lat, "lon": state.lon, "at": time.time(),
-               "commodity": what}
+               "commodity": what, "srv": rhino}
+        self.rigs_at.setdefault("rhinos", [])
+        if rhino not in self.rigs_at["rhinos"]:
+            self.rigs_at["rhinos"].append(rhino)
         self.rigs_at["rigs"].append(rig)
-        self.rigs_at["rigs"].sort(key=lambda r: r["n"])
+        order = self._rig_rhinos()
+        self.rigs_at["rigs"].sort(key=lambda r: (order.index(r.get("srv"))
+                                                 if r.get("srv") in order else 0,
+                                                 r["n"]))
+        label = self.rig_label(rig)
         self._rigs_warned = False
         try:
             # For the guide: rigs have gone down at this signal, which stays
@@ -5015,45 +5303,57 @@ class EDSMT(ctk.CTk):
         self.refresh_rigs_note()
         self.redraw()
         limit = self.rig_limit()
-        down = len(self.rigs_at["rigs"])
-        self.flash("RIG %d %s%s" % (n, "MOVED" if moved_from is not None else "DOWN",
+        # Counted per Rhino: "3 of 6" is this Rhino's, whatever the other
+        # one has down.
+        down = len([r for r in self.rigs_at["rigs"]
+                    if self._same_rhino(r, rhino)])
+        self.flash("RIG %s %s%s" % (label,
+                                    "MOVED" if moved_from is not None else "DOWN",
                                     ("  " + what.upper()) if what else ""),
                    "%d of %d  -  %s" % (down, MAX_RIGS,
                                         "warning past %s" % _metres(limit)
                                         if limit else "distance warning off"))
         if moved_from is not None:
-            return self.say("Rig %d moved here%s - %s from where it was marked."
+            return self.say("Rig %s moved here%s - %s from where it was marked."
                             " %s picks a rig up." % (
-                                n, (" on " + what) if what else "",
+                                label, (" on " + what) if what else "",
                                 _metres(moved_from), self.key("rig%dup" % n,
                                                               "RIGS UP")), GREEN)
         pin = self.plan_pin_at(state.lat, state.lon)
         clash = self.wing_clash(state.lat, state.lon)
         if clash:
-            self.flash("RIG %d DOWN - CLOSE TO %s" % (n, clash[0].upper()),
+            self.flash("RIG %s DOWN - CLOSE TO %s" % (label, clash[0].upper()),
                        "%s from their rig %d" % (_metres(clash[2]), clash[1]),
                        AMBER)
-        return self.say("Rig %d down%s%s (%d of %d). %s" % (
-            n, (" on " + what) if what else "",
+        return self.say("Rig %s down%s%s (%d of %d). %s" % (
+            label, (" on " + what) if what else "",
             (" at pin P%d" % pin) if pin else "", down, MAX_RIGS,
             "You will be warned past %s from any rig." % _metres(limit) if limit
             else "The distance warning is off in Settings."), GREEN)
 
     def rig_up(self, n):
         """One rig collected: stop watching it. The last one up is every
-        rig up, with everything that goes with that."""
+        rig up, with everything that goes with that. With two Rhinos' rigs
+        down it is rig n of the Rhino you are in."""
         try:
             n = int(n)
         except (TypeError, ValueError):
             return self.say("No such rig.", AMBER)
         rigs = self._rigs_here()
-        if not any(rig["n"] == n for rig in rigs):
+        rhino = self._rhino_now()
+        mine = [rig for rig in rigs
+                if rig["n"] == n and self._same_rhino(rig, rhino)]
+        if not mine:
             return self.say("Rig %d is not marked down%s." % (
-                n, " - no rigs are" if not rigs else ""), AMBER)
-        self.rigs_at["rigs"] = [r for r in self.rigs_at["rigs"] if r["n"] != n]
+                n, " - no rigs are" if not rigs else
+                (" from this Rhino" if any(r["n"] == n for r in rigs) else "")),
+                AMBER)
+        label = self.rig_label(mine[0])
+        self.rigs_at["rigs"] = [r for r in self.rigs_at["rigs"]
+                                if r is not mine[0]]
         left = len(self.rigs_at["rigs"])
         if not left:
-            return self.rigs_up(picked=n)
+            return self.rigs_up(picked=label)
         # The warning was about whichever rig was farthest; that may have
         # been this one. The next poll works it out again from the rest.
         self._rigs_warned = False
@@ -5061,9 +5361,10 @@ class EDSMT(ctk.CTk):
         self.clear_rig_alarm()
         self.refresh_rigs_note()
         self.redraw()
-        self.flash("RIG %d UP" % n, "%d still down" % left)
-        return self.say("Rig %d up. %d still down: %s." % (
-            n, left, ", ".join(str(r["n"]) for r in self.rigs_at["rigs"])), GREEN)
+        self.flash("RIG %s UP" % label, "%d still down" % left)
+        return self.say("Rig %s up. %d still down: %s." % (
+            label, left, ", ".join(self.rig_label(r)
+                                   for r in self.rigs_at["rigs"])), GREEN)
 
     def rig_event(self, what, n=None):
         """A rig going down or the last one coming up, handed to the books:
@@ -5073,6 +5374,7 @@ class EDSMT(ctk.CTk):
             system, body = self.here()
             line = self.earnings.observe({
                 "event": what, "when": SV.utc_now(), "rig": n,
+                "srv_id": self._rhino_now(),
                 "system": system, "body": body,
                 "cmdr": getattr(attr(self, "watcher"), "cmdr", "") or ""})
             if line:
@@ -5263,8 +5565,12 @@ class EDSMT(ctk.CTk):
             beat["lat"], beat["lon"] = float(state.lat), float(state.lon)
             if state.heading is not None:
                 beat["heading"] = float(state.heading) % 360.0
-        beat["rigs"] = [{"n": int(rig["n"]), "lat": float(rig["lat"]),
-                         "lon": float(rig["lon"])}
+        # Two Rhinos' rigs go as 1-6 and 7-12: the server takes 1 to 12.
+        order = [srv for srv in self._rig_rhinos() if srv is not None]
+        beat["rigs"] = [{"n": int(rig["n"]) + 6 * (
+                             order.index(rig.get("srv")) % 2
+                             if rig.get("srv") in order else 0),
+                         "lat": float(rig["lat"]), "lon": float(rig["lon"])}
                         for rig in self._rigs_here()][:12]
         return beat
 
@@ -5487,6 +5793,36 @@ class EDSMT(ctk.CTk):
         if not self._rigs_here() and picked is None:
             self.rigs_at = None
             return self.say("No rigs are marked down.", AMBER)
+        # Two Rhinos' rigs down: the first press is the Rhino you are in,
+        # a second press inside RIGS_ALL_CONFIRM_S is everything.
+        rigs = self._rigs_here()
+        rhino = self._rhino_now()
+        owners = {r.get("srv") for r in rigs}
+        if picked is None and rhino is not None and len(owners) > 1:
+            now = time.time()
+            again = now - float(attr(self, "_rigs_all_at", 0) or 0) \
+                <= RIGS_ALL_CONFIRM_S
+            mine = [r for r in rigs if r.get("srv") == rhino]
+            if mine and not again:
+                self._rigs_all_at = now
+                letter = self.rig_label(mine[0])[:1]
+                self.rigs_at["rigs"] = [r for r in rigs
+                                        if r.get("srv") != rhino]
+                self._rigs_warned = False
+                self._rigs_final = False
+                self.refresh_rigs_note()
+                self.redraw()
+                rest = len(self.rigs_at["rigs"])
+                self.flash("RHINO %s: %d RIG%s UP" % (letter, len(mine),
+                                                       "" if len(mine) == 1 else "S"),
+                           "%d still down from the other Rhino" % rest)
+                return self.say("Rhino %s's %d rig(s) up. %d still down from "
+                                "the other Rhino - press %s again within %d s "
+                                "to clear those too." % (
+                                    letter, len(mine), rest,
+                                    self.key("allup", "RIGS UP"),
+                                    RIGS_ALL_CONFIRM_S), GREEN)
+            self._rigs_all_at = 0
         count = len(self.rigs_at["rigs"]) if self.rigs_at else 0
         if picked is not None:
             count = 1
@@ -5497,8 +5833,8 @@ class EDSMT(ctk.CTk):
         self.refresh_rigs_note()
         self.redraw()
         if picked is not None:
-            self.flash("RIG %d UP" % picked, "all rigs up - warning stood down")
-            return self.say("Rig %d up - that was the last. Distance warning "
+            self.flash("RIG %s UP" % picked, "all rigs up - warning stood down")
+            return self.say("Rig %s up - that was the last. Distance warning "
                             "stood down." % picked, GREEN)
         self.flash("%d RIG%s UP" % (count, "" if count == 1 else "S"),
                    "distance warning stood down")
@@ -5525,8 +5861,13 @@ class EDSMT(ctk.CTk):
                 self.clear_rig_alarm()
                 self.refresh_rigs_note()
                 return None
+            self.rigs_after_relog(state, rigs)
             if not (state is not None and state.has_position and state.radius_m):
                 return None
+            # The distance that counts is from the Rhino that dropped the rig:
+            # a second Rhino's rigs go on working while it is parked by
+            # them, so only the rigs of the Rhino being driven are watched.
+            rhino = self._rhino_now()
             marks = []
             for rig in rigs:
                 metres = SV.surface_range_m(state.lat, state.lon, rig["lat"],
@@ -5534,6 +5875,9 @@ class EDSMT(ctk.CTk):
                 east, north = SV.local_offset(state.lat, state.lon, rig["lat"],
                                               rig["lon"], state.radius_m)
                 marks.append({"n": rig["n"], "range_m": metres,
+                              "label": self.rig_label(rig),
+                              "watched": self._same_rhino(rig, rhino),
+                              "rig": rig,
                               "commodity": rig.get("commodity") or "",
                               "east": east, "north": north,
                               "bearing": SV.bearing_deg(state.lat, state.lon,
@@ -5542,15 +5886,18 @@ class EDSMT(ctk.CTk):
             # coming back, so it stops being watched - and a warning about a
             # rig that no longer exists is noise that hides the next real one.
             # Only from the Rhino: from the ship or on foot the distance that
-            # counts is the Rhino's, and that is not where Status.json is.
-            if getattr(state, "in_srv", False):
-                lost = [m for m in marks if m["range_m"] >= RIG_LOST_M]
+            # counts is the Rhino's, and that is not where Status.json is -
+            # and the Nomad sets the same In SRV flag, so it must be a Rhino.
+            if getattr(state, "in_rhino", getattr(state, "in_srv", False)):
+                lost = [m for m in marks
+                        if m["watched"] and m["range_m"] >= RIG_LOST_M]
                 if lost:
-                    gone = {m["n"] for m in lost}
-                    self.rigs_at["rigs"] = [r for r in self.rigs_at["rigs"]
-                                            if r["n"] not in gone]
-                    marks = [m for m in marks if m["n"] not in gone]
-                    names = ", ".join(str(n) for n in sorted(gone))
+                    gone = [m["rig"] for m in lost]
+                    self.rigs_at["rigs"] = [
+                        r for r in self.rigs_at["rigs"]
+                        if not any(r is g for g in gone)]
+                    marks = [m for m in marks if m not in lost]
+                    names = ", ".join(m["label"] for m in lost)
                     self.say("RIG %s LOST - more than %s from the Rhino. "
                              "Warnings cleared%s." % (
                                  names, _metres(RIG_LOST_M),
@@ -5565,13 +5912,24 @@ class EDSMT(ctk.CTk):
                         self.rigs_at = None
                         self._rigs_warned = False
                         return None
-            farthest = max(marks, key=lambda m: m["range_m"])
+            for mark in marks:
+                mark.pop("rig", None)
+            watched = [m for m in marks if m["watched"]]
+            if not watched:
+                # Only the other Rhino's rigs are down: drawn, never warned.
+                self._rigs_final = False
+                self.clear_rig_alarm()
+                return {"rigs": marks, "count": len(marks), "n": None,
+                        "label": "", "range_m": 0.0, "bearing": 0.0,
+                        "limit_m": self.rig_limit(), "far": False,
+                        "final": False, "offset": 0.0}
+            farthest = max(watched, key=lambda m: m["range_m"])
             limit = self.rig_limit()
             far = bool(limit) and farthest["range_m"] > limit
             if far and not attr(self, "_rigs_warned", False):
                 self._rigs_warned = True
-                self.say("TOO FAR FROM RIG %d - %s back to it, bearing %03d."
-                         % (farthest["n"], _metres(farthest["range_m"]),
+                self.say("TOO FAR FROM RIG %s - %s back to it, bearing %03d."
+                         % (farthest["label"], _metres(farthest["range_m"]),
                             round(farthest["bearing"]) % 360), RED)
                 if self.settings.get("rig_warn_sound", True):
                     self.sound_alarm()
@@ -5586,9 +5944,9 @@ class EDSMT(ctk.CTk):
             if final:
                 if not attr(self, "_rigs_final", False):
                     self._rigs_final = True
-                    self.say("LAST WARNING - RIG %d IS %s AWAY. It is destroyed "
+                    self.say("LAST WARNING - RIG %s IS %s AWAY. It is destroyed "
                              "at %s. Turn back: bearing %03d." % (
-                                 farthest["n"], _metres(farthest["range_m"]),
+                                 farthest["label"], _metres(farthest["range_m"]),
                                  _metres(RIG_LOST_M),
                                  round(farthest["bearing"]) % 360), RED)
                     if self.settings.get("rig_warn_sound", True):
@@ -5599,6 +5957,7 @@ class EDSMT(ctk.CTk):
                     self._rigs_final = False
                 self.clear_rig_alarm()
             return {"rigs": marks, "count": len(marks), "n": farthest["n"],
+                    "label": farthest["label"],
                     "range_m": farthest["range_m"],
                     "bearing": farthest["bearing"], "limit_m": limit,
                     "far": far, "final": final,
@@ -5606,6 +5965,28 @@ class EDSMT(ctk.CTk):
                                                   farthest["bearing"])}
         except Exception:
             return None
+
+    def rigs_after_relog(self, state, rigs):
+        """Rigs marked before the game was logged into again may not have
+        survived it - commanders report rigs gone after a disconnect. There
+        is no journal event for a rig, so EDSMT cannot know: it says so once
+        per game session and leaves the choice, one key away. Never clears
+        anything by itself. Returns True when it spoke."""
+        started = getattr(state, "game_started", None)
+        if not started or not rigs:
+            return False
+        older = [r for r in rigs if float(r.get("at") or 0) < float(started) - 5]
+        if not older or attr(self, "_relog_asked", None) == started:
+            return False
+        self._relog_asked = started
+        names = ", ".join(self.rig_label(r) for r in older)
+        self.flash("RIGS FROM BEFORE THE RELOG", "%s - still there? %s clears"
+                   % (names, self.key("allup", "RIGS UP")), AMBER)
+        self.say("Rig(s) %s were marked before you logged back in. Rigs have "
+                 "been reported lost in a disconnect - if they are gone, %s "
+                 "clears them; if they are still there, carry on." % (
+                     names, self.key("allup", "RIGS UP")), AMBER)
+        return True
 
     def show_rig_alarm(self, farthest, state):
         """The big warning triangle, middle of the screen, over the game."""
@@ -5616,7 +5997,7 @@ class EDSMT(ctk.CTk):
         offset = SV.relative_bearing(getattr(state, "heading", 0.0) or 0.0,
                                      farthest["bearing"])
         try:
-            return shower("RIG %d  %s" % (farthest["n"],
+            return shower("RIG %s  %s" % (farthest.get("label") or farthest["n"],
                                           _metres(farthest["range_m"])),
                           "LOST AT %s - TURN BACK %s %03d" % (
                               _metres(RIG_LOST_M), OV.turn_arrow(offset),
@@ -5640,10 +6021,12 @@ class EDSMT(ctk.CTk):
         try:
             rigs = self._rigs_here()
             if rigs:
+                rhinos = max(1, len({r.get("srv") for r in rigs}))
                 note.configure(text="%d of %d rigs down on %s: %s." % (
-                    len(rigs), MAX_RIGS, self.rigs_at["body"],
-                    ", ".join(("%d %s" % (r["n"], r.get("commodity") or "")).strip()
-                              for r in sorted(rigs, key=lambda r: r["n"]))),
+                    len(rigs), MAX_RIGS * rhinos, self.rigs_at["body"],
+                    ", ".join(("%s %s" % (self.rig_label(r),
+                                          r.get("commodity") or "")).strip()
+                              for r in rigs)),
                     text_color=GREEN)
             else:
                 note.configure(text=self.rigs_hint(), text_color=DIM)
@@ -5696,7 +6079,13 @@ class EDSMT(ctk.CTk):
             return None
         cmap = self._survey_map()
         far = cmap.distance_from(state.lat, state.lon) if cmap else None
-        if (cmap is None or cmap.system != system or cmap.body != body
+        # An empty map - one picked up in the ship, out of reach of the
+        # survey - is never kept on arrival: it is asked for again, so the
+        # map with the centre and border on it is found. Kept, it started
+        # painting a new map on top of the old area, and a survey set
+        # before a trip to the ship was gone when the Rhino came back down.
+        if (cmap is None or cmap.anchor is None
+                or cmap.system != system or cmap.body != body
                 or (far is not None and far > CV.SAME_MAP_M)):
             if cmap is not None and cmap.points:
                 book.save(cmap)
@@ -6795,6 +7184,16 @@ class EDSMT(ctk.CTk):
                 except Exception:
                     pass
                 continue
+            if tag == SYSTEM_PRICE_TAG:
+                # Only the Earnings window asks, and a window closed while
+                # its answer was in flight is no loss.
+                ledger = attr(self, "ledger")
+                try:
+                    if ledger is not None and ledger.winfo_exists():
+                        ledger.system_results(ok, message)
+                except Exception:
+                    self.ledger = None
+                continue
             if tag in FIND_TAGS:
                 finder = attr(self, "finder")
                 shown = False
@@ -6924,8 +7323,9 @@ class EDSMT(ctk.CTk):
             return self.show_update_button("UPDATE AVAILABLE")
         self.show_update_button("INSTALL UPDATE")
         self.say("EDSMT %s is downloaded and checked. Press INSTALL UPDATE when "
-                 "you are ready - EDSMT closes, updates and opens again by "
-                 "itself. Your finds and settings are kept."
+                 "you are ready - EDSMT backs up your finds and settings to "
+                 "Documents > EDSMT backups first, then closes, updates and "
+                 "opens again by itself."
                  % self.update_ready.get("version", ""), GREEN)
 
     def follow_update(self):
@@ -6956,9 +7356,12 @@ class EDSMT(ctk.CTk):
             self.say("The downloaded update is missing or changed since it was "
                      "checked, so it was not run. Fetching it again.", RED)
             return self.fetch_update()
+        # Everything on disk first, so the backup holds this evening too.
+        self._save_on_exit()
+        if not self.backup_before_update(ready.get("version", "")):
+            return False
         kind = build_kind()
         try:
-            self._save_on_exit()
             if kind == "installed":
                 command = [path, "/SILENT", "/SP-", "/NORESTART",
                            "/CLOSEAPPLICATIONS"]
@@ -6983,6 +7386,42 @@ class EDSMT(ctk.CTk):
             return False
         self.on_close()
         return True
+
+    def backup_before_update(self, version="", folder=None, now=None):
+        """Back up the finds, sessions and settings before an update runs.
+
+        True when it is safe to go on: the backup is written, or there was
+        nothing to back up, or the commander pressed INSTALL UPDATE a second
+        time after being told the backup could not be made.
+        """
+        now = time.time() if now is None else now
+        failed_at = float(attr(self, "_backup_failed_at", 0) or 0)
+        if failed_at and now - failed_at <= UPDATE_NO_BACKUP_S:
+            self._backup_failed_at = 0
+            self.say("Installing without a backup, as asked.", AMBER)
+            return True
+        store = attr(self, "store", None)
+        if store is None:
+            return True
+        folder = folder or backups_dir()
+        try:
+            path, count = store.backup_to(folder)
+            if path:
+                stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+                named = os.path.join(folder, "%s%s-%s.zip" % (
+                    AUTO_BACKUP_PREFIX, str(version or "next").replace(" ", ""), stamp))
+                os.replace(path, named)
+                tidy_auto_backups(folder)
+                self.say("Backed up %d file(s) to %s before updating."
+                         % (count, named), GREEN)
+            return True
+        except Exception as exc:
+            self._backup_failed_at = now
+            self.say("Could not back up before updating (%s), so the update "
+                     "was not started. Press INSTALL UPDATE again within %d s "
+                     "to install without a backup." % (exc, UPDATE_NO_BACKUP_S),
+                     RED)
+            return False
 
     @staticmethod
     def _swap_portable(new_exe):
@@ -7040,32 +7479,6 @@ class EDSMT(ctk.CTk):
     def open_settings(self):
         SettingsWindow(self)
 
-    def find_unlocked(self):
-        """Whether this commander has put a deposit of their own on the
-        shared map - which is what opens Find.
-
-        The shared map is only as good as what goes into it, so reading it
-        starts with adding to it. Remembered in settings once the server
-        takes one. A commander who was already sharing before this rule came
-        in - finds of their own, marked with sharing on - is not locked out
-        of what they helped build: one complete find of their own counts.
-        """
-        settings = attr(self, "settings", None) or {}
-        if settings.get("find_unlocked"):
-            return True
-        if not (settings.get("community_enabled")
-                and settings.get("community_auto_share", True)):
-            return False
-        try:
-            for row in self.store.deposits:
-                if row.get("status") == SV.STATUS_REPORTED and \
-                        row.get("commodity") and row.get("lat") and \
-                        row.get("amount") and row.get("density"):
-                    return True
-        except Exception:
-            pass
-        return False
-
     def note_shared(self, message):
         """A share the server answered: the first one opens Find."""
         try:
@@ -7078,19 +7491,12 @@ class EDSMT(ctk.CTk):
             return True
         self.settings["find_unlocked"] = True
         save_settings(self.settings)
-        self.say("Your first find is on the shared map - Find is open to you "
-                 "now.", GREEN)
+        self.say("Your first find is on the community map - thank you.", GREEN)
         return True
 
     def open_find(self):
-        if not self.find_unlocked():
-            sharing = self.settings.get("community_enabled")
-            self.say("Find opens once you have shared a deposit of your own. "
-                     "%s" % ("Mark one - all four boxes filled in - and it "
-                             "goes up by itself." if sharing else
-                             "Switch sharing on in Settings, then mark one "
-                             "with all four boxes filled in."), AMBER)
-            return None
+        # Open to everybody: every commander's finds go on the map, so every
+        # commander reads it. (It used to open only after a find of your own.)
         self.finder = FindWindow(self)
         return self.finder
 
@@ -7145,7 +7551,7 @@ class EDSMT(ctk.CTk):
         self._last_reported = None
         self.hotkeys.start(self.wanted_hotkeys(data))
         self.overlay.settings = data
-        if data.get("overlay_enabled"):
+        if self.overlay_wanted_now():
             self.overlay.show()
             self.overlay.refresh_settings(data)
         else:
@@ -7289,6 +7695,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self._choice(body, "overlay_theme", "Overlay theme", themes,
                      "The boxes over the game. Changes as soon as you Save.")
         self._switch(body, "overlay_enabled", "Show the overlay while I play")
+        self._switch(body, "overlay_rhino_only",
+                     "Only while I am driving a Rhino")
         self._switch(body, "overlay_show_guide",
                      "Show the step-by-step guide over the game")
         self._switch(body, "rig_sound_profane",
@@ -7296,23 +7704,18 @@ class SettingsWindow(ctk.CTkToplevel):
         self._entry(body, "high_g_warn",
                     "Big warning on bodies from this gravity (g)", "2.0")
 
-        self._section(body, "Sharing your finds",
-                      "Leave EDSMT running while you play. What you map is "
-                      "shared, and everyone else's turns up under Find. "
-                      "Nothing is sent until you switch this on.")
-        self._switch(body, "community_enabled", "Share my finds and search everyone else's")
-        self._switch(body, "community_auto_share", "Upload each deposit as I mark it")
+        self._section(body, "The community map",
+                      "Every deposit anybody marks goes on the community map, "
+                      "and everybody's turns up under Find - so leave EDSMT "
+                      "running while you play. What goes up: system, body, "
+                      "commodity, position, how rich, and the market prices "
+                      "you open. Never your notes, sessions or settings.")
         self._switch(body, "community_share_cmdr_name", "Credit finds to my CMDR name")
         self._switch(body, "show_shared_finds",
                      "Show other commanders' finds on the map and overlay")
         self._switch(body, "verify_my_finds",
                      "Verify my own finds as I share them (staff token only)")
-        self._switch(body, "share_market_prices", "Share prices from stations I dock at")
-        self._entry(body, "community_url", "Community API URL",
-                    "https://api.radioraxxla.com")
-        ctk.CTkLabel(body, text="Already set. Leave it as it is.",
-                     font=F_SMALL, text_color=DIM,
-                     anchor="w").pack(fill="x", padx=10, pady=(0, 2))
+        # No address box. There is one community map, api.radioraxxla.com.
         self._entry(body, "community_token", "Token, if you were given one",
                     "", secret=True)
 
@@ -7416,6 +7819,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self._binding(body, name, label, DEFAULT_SETTINGS[name])
         self._binding(body, "hotkey_centre", "Move the centre here (no new log)", "")
         self._binding(body, "hotkey_lock", "Lock / unlock the overlay", "")
+        self._binding(body, "hotkey_overlay", "Overlay on / off", OVERLAY_KEY)
         self.hotkey_note = ctk.CTkLabel(
             body, text="", font=F_SMALL, text_color=AMBER,
             justify="left", anchor="w")
@@ -7497,8 +7901,7 @@ class SettingsWindow(ctk.CTkToplevel):
                       "where you want, then lock it again so clicks reach the "
                       "game.")
         # Four boxes, four switches. The old "which overlay" question only
-        # ever had one answer at a time, which is why "I want the option for
-        # BOTH" had to be asked for three times.
+        # ever had one answer at a time, and testers wanted more than one.
         self._switch(body, "overlay_show_strip",
                      "Box: COMPASS - the tape, which way to turn")
         self._switch(body, "overlay_show_radar",
@@ -7551,6 +7954,24 @@ class SettingsWindow(ctk.CTkToplevel):
         # A box dragged onto a monitor that has since been unplugged, or
         # shoved off the bottom of the screen, is one button to undo - not
         # a settings.json to hand-edit.
+        self._choice(body, "overlay_swept", "Swept ground on the scope",
+                     list(OV.SWEPT_LOOKS),
+                     "Clear shows the ground you have already scanned plainly; "
+                     "Faint is a light mesh that hides less of the game; Solid "
+                     "is the easiest to see on a big screen.")
+        # A whole layout in one pick - "disable all other windows and have
+        # the map triple the size" on a 3440x1440 screen.
+        self._choice(body, "overlay_preset", "Layout",
+                     list(OV.LAYOUT_PRESETS),
+                     "Map focus: the scope three times the size, every other "
+                     "box off. Minimal: compass and status. Streamer: clear of "
+                     "a webcam and chat. Press Apply layout - then drag any "
+                     "box from there.")
+        preset_row = ctk.CTkFrame(body, fg_color="transparent")
+        preset_row.pack(fill="x", padx=14, pady=(2, 6))
+        ctk.CTkButton(preset_row, text="Apply layout", width=180,
+                      height=28, font=F_STRONG, **BTN_SECONDARY,
+                      command=self.apply_preset).pack(side="left")
         reset_row = ctk.CTkFrame(body, fg_color="transparent")
         reset_row.pack(fill="x", padx=14, pady=(2, 6))
         ctk.CTkButton(reset_row, text="Reset box positions", width=180,
@@ -7921,9 +8342,6 @@ class SettingsWindow(ctk.CTkToplevel):
         for key, entry in self.fields.items():
             data[key] = entry.get().strip()
 
-        url = data.get("community_url", "")
-        if url and not url.startswith(("http://", "https://")):
-            return self.say("The community URL needs to start with https://", RED)
         try:
             half = float(data.get("freshness_half_life_days") or 21)
             if half <= 0:
@@ -8044,6 +8462,26 @@ class SettingsWindow(ctk.CTkToplevel):
         """Settings' handle on the app's layout reset."""
         self.app.reset_overlay_layout()
         self.say("Overlay boxes are back where they started.", GREEN)
+
+    def apply_preset(self):
+        """Lay the overlay out as the preset picked in the Layout box, and
+        set the box switches here to match, so Save does not undo it."""
+        name = "standard"
+        try:
+            box, options = self.choices["overlay_preset"]
+            shown = str(box.get() or "").strip().lower()
+            name = next((value for label, value in options
+                         if label.lower() == shown or value == shown), name)
+        except Exception:
+            pass
+        on = self.app.apply_overlay_preset(name)
+        for key in OV.PANEL_ORDER:
+            var = self.toggles.get("overlay_show_%s" % key)
+            if var is not None:
+                var.set(key in on)
+        label = dict((v, l) for l, v in OV.LAYOUT_PRESETS).get(name, name)
+        self.say("%s layout applied. Unlock the overlay to drag any box from "
+                 "there." % label, GREEN)
 
     def backup_now(self):
         try:
@@ -8178,23 +8616,20 @@ class SettingsWindow(ctk.CTkToplevel):
 # ---------------------------------------------------------------------------
 
 class WelcomeWindow(ctk.CTkToplevel):
-    """The share question, asked once, on first run.
+    """What happens to a find, said once, on first run.
 
     Every commander running EDSMT is a surveyor. Surface deposits are not
     ring hotspots - nobody has mapped them, there is no third-party database
     to look them up in, and one person mapping alone will never cover a
-    galaxy. The tool is only worth more than a notepad if the finds pool.
-
-    So the question gets asked plainly rather than left as a switch in
-    Settings that nobody finds. It is still a question: the answer sticks
-    either way, and No changes nothing about how the tool works locally.
+    galaxy. So every find goes on the community map, and this says so
+    plainly before the first one does. The one choice left is the CMDR name.
     """
 
     def __init__(self, app):
         super().__init__(app)
         self.app = app
-        self.title("EDSMT - Share your finds?")
-        self.geometry("560x440")
+        self.title("EDSMT - The community map")
+        self.geometry("560x460")
         self.configure(fg_color=VOID)
         self.transient(app)
         self.resizable(False, False)
@@ -8203,32 +8638,32 @@ class WelcomeWindow(ctk.CTkToplevel):
         body.pack(fill="both", expand=True, padx=12, pady=12)
         bracket(body, colour=ORANGE)
 
-        ctk.CTkLabel(body, text="Map together?", font=F_TITLE,
+        ctk.CTkLabel(body, text="One map, everybody's", font=F_TITLE,
                      text_color=ORANGE, anchor="w").pack(fill="x", padx=16, pady=(16, 2))
         ctk.CTkLabel(body, anchor="w", justify="left", text_color=TEXT,
                      font=F_READOUT, wraplength=490,
-                     text="Every commander who shares makes the map better "
-                          "for everyone else.\n\nWith sharing on, what you map "
-                          "goes to the community map, and Find searches "
-                          "everyone else's. "
-                          "One commander cannot cover a galaxy; a few thousand "
+                     text="Every deposit you mark goes on the community map, "
+                          "and every deposit anybody else marks comes back to "
+                          "you under Find and on the map. One commander cannot "
+                          "cover a galaxy; a few thousand "
                           "can.").pack(fill="x", padx=16, pady=(6, 10))
 
         hud_header(body, "What gets sent", padx=16, pady=(6, 4))
         ctk.CTkLabel(body, anchor="w", justify="left", text_color=DIM,
                      font=F_BODY, wraplength=490,
                      text="System, body, commodity, position and how rich it "
-                          "was - and your CMDR name, so the find is credited "
-                          "to you. That last part is a switch in Settings.\n"
-                          "Not your notes, not your settings, not anything "
-                          "else on this machine.").pack(fill="x", padx=16, pady=(0, 14))
+                          "was, and the market prices you open.\n"
+                          "Not your notes, not your sessions, not your "
+                          "settings, not anything else on this "
+                          "machine.").pack(fill="x", padx=16, pady=(0, 10))
 
+        hud_header(body, "Your CMDR name on your finds?", padx=16, pady=(6, 4))
         row = ctk.CTkFrame(body, fg_color="transparent")
         row.pack(fill="x", padx=16, pady=(4, 12))
-        ctk.CTkButton(row, text="Share my finds", width=190, height=40,
+        ctk.CTkButton(row, text="Credit me", width=190, height=40,
                       font=F_SECTION, **BTN_PRIMARY,
                       command=lambda: self.answer(True)).pack(side="left")
-        ctk.CTkButton(row, text="Not now", width=130, height=40,
+        ctk.CTkButton(row, text="Stay anonymous", width=150, height=40,
                       font=F_STRONG, **BTN_SECONDARY,
                       command=lambda: self.answer(False)).pack(side="left", padx=10)
 
@@ -8243,7 +8678,7 @@ class WelcomeWindow(ctk.CTkToplevel):
 
     def answer(self, wanted):
         try:
-            self.app.set_sharing(wanted)
+            self.app.set_name_credit(wanted)
         finally:
             self.destroy()
 
@@ -8551,22 +8986,41 @@ class Suggest:
 
     `source` is a list, or a function taking what has been typed and giving
     back what to show. `on_pick` runs after a choice is made.
+
+    `multi` makes it a list you tick rather than pick from (#188): a click
+    adds a commodity or takes it off again and the list STAYS OPEN for the
+    next one, the box reads "Monazite, Bastnasite", and `none` - "Any" -
+    clears the lot. Typing filters on whatever follows the last comma, and
+    Enter ticks the highlighted one. The box's own arrow list ticks too.
     """
 
-    def __init__(self, box, source, on_pick=None, filter_typing=True):
+    def __init__(self, box, source, on_pick=None, filter_typing=True,
+                 multi=False, none="Any"):
         self.box = box
         self.source = source
         self.on_pick = on_pick
         self.filter_typing = filter_typing
+        self.multi = bool(multi)
+        self.none = none
         self.popup = None
         self.listbox = None
         self._hide_job = None
+        # What each row of the list is, so a row drawn as "[x] Ruby" is
+        # still picked as "Ruby".
+        self._shown = []
+        # The ticked names as they stood after the last change - what the
+        # box's own arrow list toggles against, since the toolkit has
+        # already overwritten the box by the time it says what was picked.
+        self._ticked = []
         # Whether the commander has typed or arrowed in this box since
         # arriving in it. Until they have, the list shows everything and
         # Tab changes nothing - tabbing THROUGH a box must never fill it.
         self._engaged = False
         self._hushed = False
-        self.entry = getattr(box, "_entry", None) or box
+        # The toolkit's box keeps its real text field as _entry. Anything
+        # without a working one - a plain entry - is its own text field.
+        entry = getattr(box, "_entry", None)
+        self.entry = entry if callable(getattr(entry, "bind", None)) else box
         # Kept on the box, so whatever owns the box can reach its list.
         try:
             box.suggest = self
@@ -8583,11 +9037,42 @@ class Suggest:
                                   ("<Escape>", self._escape),
                                   ("<Button-1>", self._clicked)):
             self.entry.bind(sequence, handler, add="+")
+        if self.multi:
+            self._ticked = self.picked()
+            # The toolkit's arrow list replaces the box with what was picked
+            # and then calls the box's command. Put in front of that
+            # command, the pick becomes a tick added to (or taken off) what
+            # was already there - and whatever the command did before still
+            # runs, with the whole list.
+            try:
+                before = box.cget("command")
+            except Exception:
+                before = None
+
+            def ticked_from_arrow(value, before=before):
+                self._ticked = toggle_pick(self._ticked, value, self.none)
+                self._write(self._ticked)
+                if before is not None:
+                    try:
+                        before(self.box.get())
+                    except Exception:
+                        pass
+                elif self.on_pick is not None:
+                    try:
+                        self.on_pick(self.box.get())
+                    except Exception:
+                        pass
+            try:
+                box.configure(command=ticked_from_arrow)
+            except Exception:
+                pass
 
     # -- what to show ------------------------------------------------------
 
     def choices(self):
         typed = self.text() if (self._engaged and self.filter_typing) else ""
+        if self.multi:
+            typed = self.fragment() if typed else ""
         try:
             if callable(self.source):
                 names = list(self.source(typed))
@@ -8597,6 +9082,11 @@ class Suggest:
             names = []
         if typed and not callable(self.source):
             names = SV.matches(names, typed)
+        if self.multi and typed and not SV.fold(self.none).startswith(SV.fold(typed)):
+            # A word being typed that matches nothing must leave nothing to
+            # take - with "Any" still in the list, Enter on a typo cleared
+            # every tick in the box.
+            names = [n for n in names if str(n).strip() != self.none]
         # A blank line in a list of choices is a way of saying "none"; it
         # stays selectable in the box but is noise in a suggestion list.
         return [n for n in names if str(n).strip()]
@@ -8606,6 +9096,49 @@ class Suggest:
             return self.box.get().strip()
         except Exception:
             return ""
+
+    # -- ticking several (#188) ----------------------------------------------
+
+    def known(self):
+        """Every name the list can offer, unfiltered."""
+        try:
+            names = list(self.source("")) if callable(self.source) \
+                else list(self.source)
+        except Exception:
+            names = []
+        return [str(n).strip() for n in names
+                if str(n).strip() and str(n).strip() != self.none]
+
+    def fragment(self):
+        """What is being typed now: whatever follows the last comma."""
+        text = self.text()
+        if text == self.none:
+            return ""
+        return text.rsplit(",", 1)[-1].strip()
+
+    def picked(self):
+        """The names ticked in the box, in the order they were ticked."""
+        if not self.multi:
+            text = self.text()
+            return [] if text in ("", self.none) else [text]
+        return parse_picks(self.text(), self.known(), self.none)
+
+    def _write(self, names):
+        try:
+            self.box.set(pick_text(names, self.none))
+        except Exception:
+            pass
+
+    def tidy(self):
+        """Put the box back into its own words: "Ruby, Sapphire", or Any.
+
+        A half-typed name that matches nothing is not kept - it would go
+        to the server as a commodity nobody has heard of and empty the
+        table without saying why."""
+        if not self.multi:
+            return
+        self._ticked = self.picked()
+        self._write(self._ticked)
 
     # -- the popup ---------------------------------------------------------
 
@@ -8624,12 +9157,21 @@ class Suggest:
             rows = min(len(names), SUGGEST_ROWS)
             self.listbox.configure(height=rows)
             self.listbox.delete(0, "end")
-            for name in names:
-                self.listbox.insert("end", " " + str(name))
-            typed = self.text()
+            self._shown = [str(name).strip() for name in names]
+            ticked = [SV.fold(n) for n in self.picked()] if self.multi else []
+            for name in self._shown:
+                if not self.multi:
+                    self.listbox.insert("end", " " + name)
+                elif name == self.none:
+                    self.listbox.insert("end", " %s - clear" % name)
+                else:
+                    self.listbox.insert("end", " [%s] %s" % (
+                        "x" if SV.fold(name) in ticked else " ", name))
+            typed = self.fragment() if self.multi else self.text()
             chosen = 0
-            for index, name in enumerate(names):
-                if str(name) == typed:
+            for index, name in enumerate(self._shown):
+                if name == typed or (self.multi and typed
+                                     and SV.fold(name).startswith(SV.fold(typed))):
                     chosen = index
                     break
             self.listbox.selection_clear(0, "end")
@@ -8692,6 +9234,34 @@ class Suggest:
                 pass
 
     def pick(self, name):
+        if self.multi:
+            name = str(name).strip()
+            if self._engaged and self.fragment():
+                # Typed, then taken: "Ruby, sapph" and Enter on Sapphire
+                # ADDS Sapphire to the Ruby. The half-typed word is the
+                # thing being chosen, so it must not count as already
+                # ticked - or Enter would take it straight off again.
+                text = self.text()
+                head = text.rsplit(",", 1)[0] if "," in text else ""
+                ticked = parse_picks(head, self.known(), self.none)
+                if name == self.none:
+                    ticked = []
+                elif SV.fold(name) not in [SV.fold(n) for n in ticked]:
+                    ticked.append(name)
+            else:
+                # Clicked: tick it, or untick it if it was ticked.
+                ticked = toggle_pick(self.picked(), name, self.none)
+            self._ticked = ticked
+            self._write(self._ticked)
+            self._engaged = False
+            if self.visible():
+                self.show()
+            if self.on_pick is not None:
+                try:
+                    self.on_pick(self.text())
+                except Exception:
+                    pass
+            return
         try:
             self.box.set(str(name).strip())
         except Exception:
@@ -8703,13 +9273,23 @@ class Suggest:
             except Exception:
                 pass
 
+    def _name_at(self, index):
+        """The name on row `index` of the list, without its tick box."""
+        try:
+            return self._shown[int(index)]
+        except (IndexError, TypeError, ValueError):
+            try:
+                return self.listbox.get(index).strip()
+            except Exception:
+                return None
+
     def highlighted(self):
         if not self.visible():
             return None
         try:
             chosen = self.listbox.curselection()
             if chosen:
-                return self.listbox.get(chosen[0]).strip()
+                return self._name_at(chosen[0])
         except Exception:
             pass
         return None
@@ -8739,9 +9319,21 @@ class Suggest:
         # Late, so a click on the list lands before the list goes away.
         self._cancel_hide()
         try:
-            self._hide_job = self.box.after(180, self.hide)
+            self._hide_job = self.box.after(180, self._left)
         except Exception:
-            self.hide()
+            self._left()
+
+    def _left(self):
+        """The keyboard has gone elsewhere: shut the list, tidy the box."""
+        self._hide_job = None
+        self.hide()
+        if self.multi:
+            try:
+                focus = self.box.focus_get()
+            except Exception:
+                focus = None
+            if focus is not self.entry:
+                self.tidy()
 
     def _cancel_hide(self):
         if self._hide_job is not None:
@@ -8758,6 +9350,8 @@ class Suggest:
                    "Control_R", "Alt_L", "Alt_R"):
             return
         self._engaged = True
+        if self.multi:
+            self._ticked = self.picked()
         self.show()
 
     def _move(self, step):
@@ -8795,6 +9389,17 @@ class Suggest:
     def _tab(self, _event=None):
         # Take the highlighted one, then let Tab carry on to the next box.
         name = self.highlighted()
+        if self.multi:
+            # Ticked only if something was being typed for it - tabbing
+            # through must never tick or untick anything - and only ever
+            # added, never taken off, by the key that means "move on".
+            if self._engaged and name is not None and self.fragment() \
+                    and name != self.none \
+                    and SV.fold(name) not in [SV.fold(n) for n in self.picked()]:
+                self.pick(name)
+            self.hide()
+            self.tidy()
+            return None
         if self._engaged and name is not None and name != self.text():
             self.pick(name)
         self.hide()
@@ -8817,8 +9422,22 @@ class Suggest:
         """
         try:
             index = self.listbox.nearest(event.y)
-            name = self.listbox.get(index)
+            name = self._name_at(index)
         except Exception:
+            return
+        if name is None:
+            return
+        if self.multi:
+            # Ticked, and the list stays where it is for the next one. The
+            # keyboard goes back to the box WITHOUT the hush, so the focus
+            # coming back re-opens it rather than shutting it.
+            self.pick(name)
+            self._cancel_hide()
+            try:
+                self.entry.focus_set()
+            except Exception:
+                pass
+            self.box.after(1, self.show)
             return
         self.pick(name)
         self._hushed = True
@@ -8843,6 +9462,62 @@ class Suggest:
             self.listbox.selection_set(index)
         except Exception:
             pass
+
+
+def parse_picks(text, known, none="Any"):
+    """The names ticked in a multi-pick box, from what the box says.
+
+    "Ruby, sapphire ,  Any" -> ["Ruby", "Sapphire"]. Each part is matched
+    loosely to a known name - the spelling in the list wins - and a part
+    that is the start of exactly one known name is taken as that name, so
+    "Mona" is Monazite. A part that matches nothing, or several, is left
+    out. "Any" on its own, or nothing, is no names at all.
+    """
+    known = [str(k).strip() for k in known if str(k).strip()]
+    by_fold = {SV.fold(k): k for k in known}
+    names = []
+    for part in str(text or "").split(","):
+        part = part.strip()
+        if not part or part == none:
+            continue
+        name = by_fold.get(SV.fold(part))
+        if name is None:
+            starts = [k for k in known if SV.fold(k).startswith(SV.fold(part))]
+            name = starts[0] if len(starts) == 1 else None
+        if name is not None and name not in names:
+            names.append(name)
+    return names
+
+
+def pick_text(names, none="Any"):
+    """What a multi-pick box says for these names."""
+    return ", ".join(names) if names else none
+
+
+def toggle_pick(names, name, none="Any"):
+    """Tick `name`, or untick it if it was ticked. `none` clears them all."""
+    name = str(name or "").strip()
+    if not name or name == none:
+        return []
+    folded = SV.fold(name)
+    if any(SV.fold(n) == folded for n in names):
+        return [n for n in names if SV.fold(n) != folded]
+    return list(names) + [name]
+
+
+def picks_of(box, none="Any"):
+    """The names chosen in a commodity box, one or several, as a list.
+
+    A box with a multi-pick list says so; any other box is one name or
+    none, so a caller asks every box the same way."""
+    suggest = getattr(box, "suggest", None)
+    if suggest is not None and getattr(suggest, "multi", False):
+        return suggest.picked()
+    try:
+        text = box.get().strip()
+    except Exception:
+        return []
+    return [] if text in ("", none) else [text]
 
 
 def keep_keyboard(box):
@@ -9141,6 +9816,9 @@ class FindWindow(ctk.CTkToplevel):
         # The row a verification was sent for, so its answer can be put back
         # on it rather than only in the status line.
         self._verifying = None
+        # The commodities the last search asked for, and the answers still
+        # to come when Best sell prices was asked about several (#188).
+        self._asked, self._sell_batch = [], None
 
         top = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0)
         top.pack(fill="x", padx=12, pady=(12, 6))
@@ -9166,7 +9844,9 @@ class FindWindow(ctk.CTkToplevel):
         row.pack(fill="x", padx=12, pady=(0, 10))
         ctk.CTkLabel(row, text="Commodity", font=F_BODY,
                      text_color=DIM).pack(side="left")
-        self.commodity = ctk.CTkComboBox(row, width=180, font=F_BODY, **BOX,
+        # Several at once (#188): tick Monazite AND Bastnasite and every
+        # search asks for either. Wider than one name needs, for two.
+        self.commodity = ctk.CTkComboBox(row, width=240, font=F_BODY, **BOX,
                                          values=["Any"] + list(SV.KNOWN_COMMODITIES))
         self.commodity.set("Any")
         self.commodity.pack(side="left", padx=(6, 14))
@@ -9234,9 +9914,7 @@ class FindWindow(ctk.CTkToplevel):
         self.query.bind("<KeyRelease>", lambda _e: self._paint())
         # Every filter opens its list on click or Tab, the commodity one
         # follows what is typed, and Tab walks them left to right.
-        Suggest(self.commodity,
-                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES),
-                                                   typed))
+        Suggest(self.commodity, self._commodity_choices, multi=True)
         for box in (self.min_rigs, self.min_types, self.max_age, self.within):
             try:
                 Suggest(box, list(box.cget("values")))
@@ -9317,7 +9995,7 @@ class FindWindow(ctk.CTkToplevel):
             self.say("Searching everyone else's finds. Your own are staying "
                      "on this machine - Settings turns that round.", AMBER)
         else:
-            self.say("No community URL set. Settings has it.", AMBER)
+            self.say("Not connected to the community map - check Settings > Community.", AMBER)
 
     def _ready(self):
         """Searching is not sharing, and never asked for permission.
@@ -9328,12 +10006,24 @@ class FindWindow(ctk.CTkToplevel):
         """
         if self.app.community.can_read:
             return True
-        self.say("No community URL set. Settings has it.", AMBER)
+        self.say("Not connected to the community map - check Settings > Community.", AMBER)
         return False
 
+    def _commodity_choices(self, typed=""):
+        """The commodity list, server's additions included, filtered."""
+        try:
+            names = [n for n in self.commodity.cget("values") if n != "Any"]
+        except Exception:
+            names = list(SV.KNOWN_COMMODITIES)
+        return ["Any"] + (SV.matches(names, typed) if typed else names)
+
+    def _commodities(self):
+        """The commodities ticked, as a list. None ticked is any."""
+        return picks_of(self.commodity)
+
     def _commodity(self):
-        value = self.commodity.get().strip()
-        return "" if value in ("", "Any") else value
+        """The same, as the server takes it: "Monazite,Bastnasite", or ""."""
+        return ",".join(self._commodities())
 
     def _text(self):
         """Whatever is typed in the system/body box, or nothing."""
@@ -9447,6 +10137,9 @@ class FindWindow(ctk.CTkToplevel):
         """
         if not self._ready():
             return
+        self._asked = self._commodities()
+        if not what.startswith("Looking up prices"):
+            self._sell_batch = None
         try:
             sent = call()
         except Exception as exc:
@@ -9454,8 +10147,8 @@ class FindWindow(ctk.CTkToplevel):
             # error handler, so the button silently does nothing at all.
             return self.say("Could not search: %s" % exc, RED)
         if not sent:
-            return self.say("That request was not sent - no community URL is "
-                            "set. Settings has it.", RED)
+            return self.say("That request was not sent - not connected to the "
+                            "community map. Check Settings > Community.", RED)
         self.say("%s..." % what)
         self._awaiting = what
         try:
@@ -9541,6 +10234,10 @@ class FindWindow(ctk.CTkToplevel):
                                "system", "") or "")
         elif near:
             here = None
+        names = self._commodities()
+        if len(names) > 1:
+            return self._sell_several(names, near, here, radius)
+        self._sell_batch = None
         commodity = self._commodity()
         # With a commodity named, /v1/sell answers with the upstream index
         # as well as our own users, and says which each row came from. It
@@ -9551,6 +10248,73 @@ class FindWindow(ctk.CTkToplevel):
         self._fire("Looking up prices" + self._scope(),
                    lambda: call(commodity=commodity, near_system=near,
                                 near=here, within_ly=radius))
+
+    def _sell_several(self, names, near, here, radius):
+        """Best sell prices for several commodities, as one table.
+
+        The market index is asked about one commodity at a time and the
+        server paces its calls to it, so these go a little apart - the same
+        spacing the Earnings window uses for a hold - and each answer is
+        added to the table as it lands rather than all held back for the
+        slowest.
+        """
+        sell = self.app.community.sell
+        self._sell_batch = {"want": len(names), "got": 0, "rows": [],
+                            "names": list(names)}
+        first = names[0]
+        self._fire("Looking up prices for %d commodities%s" % (
+                       len(names), self._scope()),
+                   lambda: sell(commodity=first, near_system=near,
+                                near=here, within_ly=radius))
+        if attr(self, "_awaiting") is None:
+            # Not sent. _fire has already said why.
+            self._sell_batch = None
+            return
+        for index, name in enumerate(names[1:], start=1):
+            self.after(index * QUOTE_GAP_MS,
+                       lambda n=name: sell(commodity=n, near_system=near,
+                                           near=here, within_ly=radius))
+
+    def _batch_reply(self, rows, ok=True):
+        """One answer of several. Returns everything so far, or None if
+        there is no batch running."""
+        batch = attr(self, "_sell_batch")
+        if not batch:
+            return None
+        batch["got"] += 1
+        if ok:
+            batch["rows"].extend(rows)
+        else:
+            batch["failed"] = batch.get("failed", 0) + 1
+        return batch["rows"]
+
+    def _batch_note(self):
+        """Say how far through several commodities the answers are."""
+        batch = attr(self, "_sell_batch")
+        if not batch:
+            return
+        if batch["got"] < batch["want"]:
+            self.say("Prices for %d of %d commodities so far - the rest are "
+                     "on their way." % (batch["got"], batch["want"]), AMBER)
+        elif batch.get("failed"):
+            self.say("%d of %d commodities could not be priced - the server "
+                     "did not answer for them." % (batch["failed"],
+                                                    batch["want"]), AMBER)
+
+    def _older_server(self, data):
+        """Several commodities asked for, and a server that cannot hear it.
+
+        A server from before 1.10033 reads "Monazite,Bastnasite" as one
+        commodity nobody has heard of and answers with nothing at all - which
+        looks exactly like nobody having found either. A newer one says what
+        it filtered on, so its silence on that is the tell."""
+        asked = attr(self, "_asked") or []
+        if len(asked) > 1 and isinstance(data, dict) \
+                and "commodities" not in data:
+            self.say("The community map has not been updated to search several "
+                     "commodities at once yet - tick one for now.", AMBER)
+            return True
+        return False
 
     def say(self, text, colour=None):
         colour = colour or DIM
@@ -9569,6 +10333,10 @@ class FindWindow(ctk.CTkToplevel):
             # a red line over a dropdown that is working.
             if tag == "commodities":
                 return
+            # One commodity of several not answering is not the others'
+            # problem: what has come back stays on screen.
+            if tag == "sell" and self._batch_reply([], ok=False) is not None:
+                return self._batch_note()
             self._forget()
             return self.say("The server said: %s" % payload, RED)
         try:
@@ -9581,6 +10349,9 @@ class FindWindow(ctk.CTkToplevel):
 
         if tag == "commodities":
             return self._offer(data.get("commodities") or [])
+        if tag in ("sites", "intact", "search", "market") \
+                and self._older_server(data):
+            return self._forget()
         if tag == "sites":
             self._render(data.get("sites") or [],
                          ["System", "Body", "Signal", "Rigs", "Types",
@@ -9594,11 +10365,18 @@ class FindWindow(ctk.CTkToplevel):
                          kind="intact")
         elif tag == "sell":
             rows = (data.get("market") or []) + (data.get("community") or [])
+            so_far = self._batch_reply(rows)
+            if so_far is not None:
+                rows = list(so_far)
             if rows:
                 self._render(self._nearest_best(rows),
                              ["Commodity", "Station", "System", "Distance",
                               "Sell", "Demand", "Seen", "Source"],
                              self._sell_row, "No prices matched.", kind="sell")
+                self._batch_note()
+            elif so_far is not None and \
+                    self._sell_batch["got"] < self._sell_batch["want"]:
+                self._batch_note()
             else:
                 return self._published_prices()
         elif tag == "search":
@@ -9925,11 +10703,14 @@ class FindWindow(ctk.CTkToplevel):
         if not wanted:
             return
         try:
-            chosen = self.commodity.get()
+            chosen = self._commodities()
             values = ["Any"] + sorted(set(list(SV.KNOWN_COMMODITIES) + wanted),
                                       key=SV.fold)
             self.commodity.configure(values=values)
-            self.commodity.set(chosen if chosen in values else "Any")
+            # Whatever was ticked stays ticked - several names are not one
+            # of the values, and must not be mistaken for a stale one.
+            kept = [n for n in chosen if n in values]
+            self.commodity.set(pick_text(kept))
         except Exception:
             pass
 
@@ -9986,8 +10767,8 @@ class FindWindow(ctk.CTkToplevel):
                 on.append("Hide worked-out")
             if self._flag(self.only_verified):
                 on.append("Verified only")
-        if self._commodity():
-            on.append("Commodity %s" % self._commodity())
+        if self._commodities():
+            on.append("Commodity %s" % pick_text(self._commodities()))
         if self.within.get() != NO_DISTANCE_LIMIT:
             on.append("Within %s" % self.within.get())
         return on
@@ -10008,7 +10789,9 @@ class FindWindow(ctk.CTkToplevel):
             widen.append("drop Types in patch to 0")
         if self._age():
             widen.append('set Seen within to "Any time"')
-        if self._commodity():
+        if len(self._commodities()) == 1:
+            widen.append('tick another commodity, or set Commodity to "Any"')
+        elif self._commodities():
             widen.append('set Commodity to "Any"')
         if self._text():
             # It goes out as `system`, and the server prefix-matches the
@@ -10098,10 +10881,10 @@ class FindWindow(ctk.CTkToplevel):
         market paid on one day and is currently pinned to the CG rate for
         three commodities. Showing only one of them would mislead.
         """
-        wanted = self._commodity()
+        wanted = [SV.fold(n) for n in self._commodities()]
         names = SV.KNOWN_COMMODITIES
         if wanted:
-            names = [n for n in names if SV.fold(n) == SV.fold(wanted)] or names
+            names = [n for n in names if SV.fold(n) in wanted] or names
         rows = [{"commodity": n,
                  "category": SV.category(n),
                  "avg": SV.published_price(n),
@@ -10283,6 +11066,46 @@ class EarningsWindow(ctk.CTkToplevel):
         self.quote_table = tk.Frame(top, bg=PANEL, bd=0)
         self.quote_table.pack(fill="x", anchor="w", padx=12, pady=(0, 6))
 
+        # Prices in any system you name (#187): the last known sell price of
+        # each commodity at every market there - what commanders read off
+        # their own markets and what the market index last saw, whichever
+        # is newer, and whose it was. Blank is the system you are in.
+        #
+        # Right-hand things first, the expanding box last: pack order is
+        # claim order, and the box packed before them would push the button
+        # off the edge of a narrow window.
+        look = ctk.CTkFrame(top, fg_color="transparent")
+        look.pack(fill="x", padx=12, pady=(2, 6))
+        ctk.CTkLabel(look, text="Prices in a system", font=F_STRONG,
+                     text_color=ORANGE, anchor="w").pack(side="left")
+        ctk.CTkButton(look, text="Search system", width=130, height=30,
+                      font=F_STRONG, **BTN_SECONDARY,
+                      command=self.search_system).pack(side="right")
+        self.system_best = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(look, width=150, text="Best market only",
+                        variable=self.system_best, onvalue=True,
+                        offvalue=False, font=F_BODY, checkbox_width=18,
+                        checkbox_height=18, border_width=2, fg_color=ORANGE,
+                        hover_color=AMBER, text_color=DIM,
+                        command=self._paint).pack(side="right", padx=(10, 8))
+        self.system_pick = ctk.CTkComboBox(
+            look, width=240, font=F_BODY, **BOX,
+            values=["Any"] + list(SV.KNOWN_COMMODITIES))
+        self.system_pick.set("Any")
+        self.system_pick.pack(side="right", padx=(6, 0))
+        ctk.CTkLabel(look, text="for", font=F_BODY,
+                     text_color=DIM).pack(side="right")
+        self.system_box = ctk.CTkEntry(
+            look, height=30, font=F_BODY, **ENTRY,
+            placeholder_text="system name - blank is the one you are in")
+        self.system_box.pack(side="left", fill="x", expand=True, padx=(10, 8))
+        self.system_box.bind("<Return>", lambda _e: self.search_system(),
+                             add="+")
+        Suggest(self.system_pick,
+                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES),
+                                                   typed), multi=True)
+        chain_tab([self.system_box, self.system_pick])
+
         buttons = ctk.CTkFrame(top, fg_color="transparent")
         buttons.pack(fill="x", padx=12, pady=(0, 10))
         # Right-hand one first. Pack order is claim order, and the button
@@ -10321,6 +11144,23 @@ class EarningsWindow(ctk.CTkToplevel):
                       font=F_STRONG, **BTN_SECONDARY,
                       command=self.end_session).pack(side="left", padx=6)
 
+        # The table below shows one of two things: the sessions, or the
+        # prices from the last system search. Two plain buttons, the one
+        # showing lit.
+        views = ctk.CTkFrame(self, fg_color="transparent")
+        views.pack(fill="x", padx=12, pady=(0, 2))
+        self._view = "sessions"
+        self._system_answer, self._system_asked = None, {}
+        self._price_sort = (None, False)
+        self.view_buttons = {}
+        for name, text in (("sessions", "Rhino sessions"),
+                           ("prices", "System prices")):
+            button = ctk.CTkButton(views, text=text, width=140, height=28,
+                                   font=F_STRONG, **BTN_SECONDARY,
+                                   command=lambda n=name: self.show_view(n))
+            button.pack(side="left", padx=(0, 6))
+            self.view_buttons[name] = button
+
         self.status = ctk.CTkLabel(self, text="", font=F_READOUT,
                                    text_color=DIM, anchor="w")
         self.status.pack(fill="x", padx=14, pady=(0, 4))
@@ -10330,6 +11170,7 @@ class EarningsWindow(ctk.CTkToplevel):
         for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
                          "<Button-4>", "<Button-5>"):
             self.bind(sequence, self.scroller.wheel, add="+")
+        self._light_view()
         self.refresh()
         self.show_quotes()
         # Asked for straight away when there is something aboard - the
@@ -10338,6 +11179,184 @@ class EarningsWindow(ctk.CTkToplevel):
         # error, and the button is there to ask again.
         if self.app.mined_aboard():
             self.check_prices(quiet=True)
+
+    # -- prices in a system (#187) -----------------------------------------
+
+    def show_view(self, name):
+        """Show the sessions, or the last system search's prices."""
+        self._view = "prices" if name == "prices" else "sessions"
+        self._light_view()
+        self._paint()
+        scroller = attr(self, "scroller")
+        if scroller is not None:
+            scroller.top()
+
+    def _light_view(self):
+        for name, button in (attr(self, "view_buttons") or {}).items():
+            try:
+                button.configure(**(BTN_PRIMARY if name == self._view
+                                    else BTN_SECONDARY))
+            except Exception:
+                pass
+
+    def _system_wanted(self):
+        """The system typed, or the one the game has us in."""
+        try:
+            typed = self.system_box.get().strip()
+        except Exception:
+            typed = ""
+        if typed:
+            return typed
+        return str(getattr(attr(self.app, "watcher"), "system", "") or "").strip()
+
+    def search_system(self):
+        """Ask for the last known prices at every market in one system."""
+        system = self._system_wanted()
+        if not system:
+            return self.say("Type a system name - the game has not said "
+                            "which system you are in yet.", AMBER)
+        community = attr(self.app, "community")
+        if community is None or not community.can_read:
+            return self.say("Not connected to the community map - check "
+                            "Settings > Community.", AMBER)
+        suggest = getattr(self.system_pick, "suggest", None)
+        if suggest is not None:
+            suggest.tidy()
+        picked = picks_of(self.system_pick)
+        try:
+            sent = community.system_prices(system, picked, tag=SYSTEM_PRICE_TAG)
+        except Exception as exc:
+            return self.say("Could not ask: %s" % exc, RED)
+        if not sent:
+            return self.say("That request was not sent - not connected to "
+                            "the community map.", RED)
+        self._system_asked = {"system": system, "picked": list(picked),
+                              "at": time.time()}
+        self.say("Asking for the last known prices in %s..." % system)
+        return True
+
+    def system_results(self, ok, message):
+        """The answer to search_system. Must not raise."""
+        asked = attr(self, "_system_asked") or {}
+        system = asked.get("system") or "that system"
+        if not ok:
+            return self.say("Could not get prices for %s: %s" % (system, message),
+                            RED)
+        try:
+            data = json.loads(message)
+            if not isinstance(data, dict):
+                raise ValueError
+        except (TypeError, ValueError):
+            return self.say("The server sent something unreadable.", RED)
+        self._system_answer = {
+            "system": str(data.get("system") or system),
+            "rows": [row for row in data.get("prices") or []
+                     if isinstance(row, dict)],
+            "status": str(data.get("upstream_status") or ""),
+            "picked": list(asked.get("picked") or [])}
+        self._price_sort = (None, False)
+        self.show_view("prices")
+
+    def _price_cells(self, row):
+        """One price row as (text, colour, sort key) cells."""
+        words, days = last_seen({"last_seen": row.get("seen")})
+        try:
+            sell = int(row.get("sell") or 0)
+        except (TypeError, ValueError):
+            sell = 0
+        try:
+            demand = int(row.get("demand") or 0)
+        except (TypeError, ValueError):
+            demand = 0
+        return [
+            (str(row.get("commodity") or ""), TEXT),
+            (credits_text(sell), GREEN, sell),
+            (str(row.get("station") or "-"), TEXT),
+            (station_kind(row.get("station_type")), DIM),
+            (pad_size(row.get("pad")), DIM),
+            ("{:,}".format(demand), TEXT, demand),
+            (words, GREEN if days is not None and days < 7 else
+             DIM if days is None or days < 30 else FAINT,
+             days if days is not None else 1e9),
+            (str(row.get("source") or "-"), DIM),
+            (str(row.get("markets") or ""), DIM, row.get("markets") or 0),
+        ]
+
+    def _price_rows(self):
+        answer = attr(self, "_system_answer") or {}
+        rows = system_price_rows(answer.get("rows") or [],
+                                 best_only=bool(self.system_best.get()))
+        column, backwards = attr(self, "_price_sort") or (None, False)
+        if column is None:
+            return rows
+        return sorted(rows, key=lambda r: self._cell(
+            self._price_cells(r)[column])[2], reverse=backwards)
+
+    def sort_prices(self, column):
+        column_now, backwards = attr(self, "_price_sort") or (None, False)
+        self._price_sort = (column, (not backwards) if column == column_now
+                            else False)
+        self._paint()
+
+    def _paint_prices(self):
+        """Draw the last system search. Must not raise."""
+        table = attr(self, "table")
+        if table is None:
+            return
+        try:
+            for widget in table.winfo_children():
+                widget.destroy()
+            self._summarise()
+            answer = attr(self, "_system_answer")
+            if not answer:
+                ctk.CTkLabel(table, text=SYSTEM_PRICE_ADVICE, font=F_BODY,
+                             text_color=DIM, justify="left",
+                             wraplength=820).grid(row=0, column=0, padx=14,
+                                                  pady=18, sticky="w")
+                return self.say("No system searched yet.", AMBER)
+            rows = self._price_rows()
+            if not rows:
+                ctk.CTkLabel(table, text=system_price_empty(answer),
+                             font=F_BODY, text_color=DIM, justify="left",
+                             wraplength=820).grid(row=0, column=0, padx=14,
+                                                  pady=18, sticky="w")
+                return self.say(system_price_status(answer, rows), AMBER)
+            column_now, backwards = attr(self, "_price_sort") or (None, False)
+            for column, name in enumerate(PRICE_HEADERS):
+                text = name
+                if column == column_now:
+                    text = "%s %s" % (name, "v" if backwards else "^")
+                ctk.CTkButton(table, text=text, font=F_SMALL_B,
+                              **BTN_HEADING, anchor="w", height=24, width=0,
+                              command=lambda c=column: self.sort_prices(c)).grid(
+                                  row=0, column=DATA_COLUMN_0 + column,
+                                  padx=4, pady=4, sticky="w")
+            for index, row in enumerate(rows, start=1):
+                for column, cell in enumerate(self._price_cells(row)):
+                    text, colour, _key = self._cell(cell)
+                    tk.Label(table, text=text, font=F_SMALL, fg=colour or TEXT,
+                             bg=PANEL, justify="left", anchor="w",
+                             wraplength=CELL_WRAP, bd=0).grid(
+                                 row=index, column=DATA_COLUMN_0 + column,
+                                 padx=8, pady=2, sticky="w")
+            colour = GREEN if answer.get("status") in ("live", "cached", "off",
+                                                       "not configured") else AMBER
+            self.say(system_price_status(answer, rows), colour)
+        except Exception as exc:
+            self.say("Could not draw the prices: %s" % exc, RED)
+
+    def prices_text(self):
+        """The prices on screen as plain lines. Empty when there are none."""
+        answer = attr(self, "_system_answer") or {}
+        rows = self._price_rows() if answer else []
+        if not rows:
+            return ""
+        lines = ["%s - last known prices" % answer.get("system", ""),
+                 " | ".join(PRICE_HEADERS)]
+        for row in rows:
+            lines.append(" | ".join(self._cell(c)[0]
+                                    for c in self._price_cells(row)))
+        return "\n".join(lines)
 
     # -- sessions -----------------------------------------------------------
 
@@ -10535,6 +11554,8 @@ class EarningsWindow(ctk.CTkToplevel):
         table = attr(self, "table")
         if table is None:
             return
+        if attr(self, "_view") == "prices":
+            return self._paint_prices()
         try:
             for widget in table.winfo_children():
                 widget.destroy()
@@ -10724,6 +11745,20 @@ class EarningsWindow(ctk.CTkToplevel):
             return "%dt: %s" % (total, SV.pack_counts(counts)
                                 .replace(":", " ").replace(";", ", ")), total
         mined, mined_t = listed("mined")
+        # More than one Rhino in the session: what each one did, under the
+        # total - "Rhino A: 57t, 6 rigs, 22m". The game gives each Rhino its
+        # own ID, so the split is the journal's, not a guess.
+        split = SV.rhino_split(row)
+        if len(split) > 1:
+            for part in split:
+                worked = max(0, SV._epoch(part["last"]) - SV._epoch(part["first"]))
+                bits = ["%dt" % part["tonnes"]]
+                if part["rigs"]:
+                    bits.append("%d rig%s" % (part["rigs"],
+                                              "" if part["rigs"] == 1 else "s"))
+                if worked:
+                    bits.append(duration_text(worked / 3600.0))
+                mined += "\nRhino %s: %s" % (part["label"], ", ".join(bits))
         moved, moved_t = listed("transferred")
         sold, sold_t = listed("sold")
         body = str(row.get("body") or "")
@@ -10807,13 +11842,17 @@ class EarningsWindow(ctk.CTkToplevel):
         self.say("Copied %s - %s" % (what, text), GREEN)
 
     def copy_all(self):
-        """The whole ledger as a block, ready to paste into Discord."""
+        """The whole ledger as a block, ready to paste into Discord - or the
+        system's prices, when those are what is showing."""
         try:
-            block = self.as_text()
+            block = self.prices_text() if attr(self, "_view") == "prices" \
+                else self.as_text()
         except Exception as exc:
             return self.say("Could not build that: %s" % exc, RED)
         if not block:
-            return self.say("Nothing to copy yet - no runs recorded.", AMBER)
+            return self.say("Nothing to copy yet - %s." % (
+                "search a system first" if attr(self, "_view") == "prices"
+                else "no runs recorded"), AMBER)
         try:
             put_on_clipboard(self, block)
         except Exception as exc:
@@ -10855,11 +11894,19 @@ LAND_FOOTNOTE = (
 
 
 def land_carrying(rows, commodity):
-    """The Where to land rows for bodies that carry `commodity`, or all."""
-    wanted = SV.fold(SV.canonical(commodity)) if commodity else ""
+    """The Where to land rows for bodies that carry `commodity`, or all.
+
+    `commodity` is one name or several - a list, or "Ruby, Sapphire" - and
+    a body carrying any one of them is kept (#188)."""
+    if isinstance(commodity, str):
+        commodity = [part for part in commodity.split(",") if part.strip()]
+    wanted = {SV.fold(SV.canonical(name.strip())) for name in commodity or ()
+              if str(name).strip() and str(name).strip().lower() != "any"}
+    wanted.discard("")
     if not wanted:
         return list(rows)
-    return [row for row in rows if wanted in (row.get("carries") or [])]
+    return [row for row in rows
+            if wanted & set(row.get("carries") or [])]
 
 
 class LandWindow(ctk.CTkToplevel):
@@ -10914,11 +11961,16 @@ class LandWindow(ctk.CTkToplevel):
         ctk.CTkLabel(buttons, text="Carrying", font=F_BODY,
                      text_color=DIM).pack(side="left", padx=(14, 6))
         self.carrying = ctk.CTkComboBox(
-            buttons, width=190, height=32, font=F_BODY, **BOX,
+            buttons, width=240, height=32, font=F_BODY, **BOX,
             values=["Any"] + list(SV.KNOWN_COMMODITIES),
             command=lambda _value: self._paint())
         self.carrying.set("Any")
         self.carrying.pack(side="left")
+        # Tick several and a body carrying any of them stays (#188).
+        Suggest(self.carrying,
+                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES),
+                                                   typed),
+                on_pick=lambda _value: self._paint(), multi=True)
 
         # Bottom first, so a short window squeezes the table and never
         # pushes the footnote off the edge.
@@ -11041,17 +12093,15 @@ class LandWindow(ctk.CTkToplevel):
             self.say("")
 
     def _carrying(self):
+        """The commodities ticked in Carrying, as a list. None is any."""
         box = attr(self, "carrying", None)
-        try:
-            chosen = box.get().strip() if box is not None else ""
-        except Exception:
-            chosen = ""
-        return "" if chosen.lower() in ("", "any") else chosen
+        return picks_of(box) if box is not None else []
 
     def _advice(self, system):
         if system and self._carrying():
             return ("No body scanned here is known or expected to carry %s.\n\n"
-                    "Set Carrying back to Any to see them all." % self._carrying())
+                    "Set Carrying back to Any to see them all."
+                    % " or ".join(self._carrying()))
         if not system:
             return ("Waiting for the journal to say which system you are in.\n\n"
                     "This list fills itself in: jump in, honk, and every body "
@@ -11412,6 +12462,113 @@ def read_quote(payload, system):
     return commodity, best, here
 
 
+# The system price search's worker tag (#187), routed to the Earnings window.
+SYSTEM_PRICE_TAG = "system-prices"
+
+# Its columns, in reading order: what, what it pays, where, then the detail.
+# Markets is how many in the system buy it - with Best market only ticked,
+# the one row shown is the best of that many.
+PRICE_HEADERS = ("Commodity", "Sell", "Station", "Type", "Pad", "Demand",
+                 "Last known", "Source", "Markets")
+
+SYSTEM_PRICE_ADVICE = (
+    "Type a system into Prices in a system - or leave it blank for the one "
+    "you are in - pick commodities if you only want some, and press Search "
+    "system.\n\nYou get the last known sell price of each commodity at every "
+    "market there: what commanders running EDSMT read off their own markets, "
+    "and what the market index last saw - whichever is newer, and it says "
+    "which.")
+
+
+def station_kind(kind):
+    """"CraterOutpost" -> "Crater outpost"; a settlement is a settlement."""
+    text = str(kind or "").strip()
+    if not text:
+        return "-"
+    if "settlement" in text.lower():
+        return "Settlement"
+    words = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text).split()
+    return " ".join([words[0]] + [w.lower() for w in words[1:]]) if words else "-"
+
+
+def pad_size(pad):
+    """The largest landing pad, as the game says it: S, M or L."""
+    if isinstance(pad, str) and pad.strip().upper() in ("S", "M", "L"):
+        return pad.strip().upper()
+    try:
+        return {1: "S", 2: "M", 3: "L"}.get(int(pad), "-")
+    except (TypeError, ValueError):
+        return "-"
+
+
+def system_price_rows(rows, best_only=True):
+    """A system's price rows, ready to show.
+
+    Grouped by commodity in the order they came, best price first within
+    each, and every row told how many markets in the system buy that
+    commodity. With best_only, one row per commodity - the best of them.
+    """
+    groups, order = {}, []
+    for row in rows or ():
+        if not isinstance(row, dict):
+            continue
+        try:
+            sell = int(row.get("sell") or 0)
+        except (TypeError, ValueError):
+            continue
+        if sell <= 0:
+            continue
+        key = SV.fold(row.get("commodity"))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(dict(row, sell=sell))
+    out = []
+    for key in order:
+        group = sorted(groups[key], key=lambda r: -r["sell"])
+        for row in group:
+            row["markets"] = len(group)
+        out.extend(group[:1] if best_only else group)
+    return out
+
+
+def system_price_status(answer, rows):
+    """The status line under a system search: what came back, from where."""
+    system = answer.get("system") or "that system"
+    status = answer.get("status") or ""
+    commodities = len({SV.fold(r.get("commodity")) for r in rows})
+    markets = len({SV.fold(r.get("station")) for r in answer.get("rows") or []})
+    said = ("%s: %d commodit%s priced at %d market%s."
+            % (system, commodities, "y" if commodities == 1 else "ies",
+               markets, "" if markets == 1 else "s")) if rows else \
+        "%s: no prices known." % system
+    extra = {
+        "unavailable": " The market index did not answer - these are "
+                       "commanders' own reads only. Try again in a minute.",
+        "unknown system": " The market index has never heard of a system "
+                          "called that - check the spelling.",
+        "server not updated": " The community map has not been updated for "
+                              "system searches yet, so these are only "
+                              "commanders' own reads.",
+    }.get(status, "")
+    return said + extra
+
+
+def system_price_empty(answer):
+    """What an empty system search says, in place of an empty table."""
+    picked = answer.get("picked") or []
+    what = (" for " + " or ".join(picked)) if picked else ""
+    if answer.get("status") == "unknown system":
+        return ("No system called %s is known to the market index. Check the "
+                "spelling - it is the system's name, not a station's."
+                % answer.get("system", "that"))
+    return ("No market in %s has a known price%s.\n\nNobody running EDSMT has "
+            "opened a market there, and the market index has no reading "
+            "either. Dock and open the commodity market with EDSMT running "
+            "and the next commander gets yours." % (answer.get("system", "it"),
+                                                    what))
+
+
 def quote_where(row):
     """"Station, System (8.2 Ly)" for a price row, whatever it carries."""
     if not row:
@@ -11483,17 +12640,28 @@ def site_cells(site, here=("", "")):
     ]
 
 
-def sites_matching(sites, text):
-    """The sites whose system, body, signal or commodities hold `text`."""
-    wanted = SV.fold(text)
-    if not wanted:
+def sites_matching(sites, text, commodities=()):
+    """The sites whose system, body, signal or commodities hold `text`.
+
+    Commas in `text` are alternatives - "Ega, Col 285" is either - and
+    `commodities` keeps only the sites carrying any of those ticked (#188).
+    """
+    terms = [SV.fold(part) for part in str(text or "").split(",")]
+    terms = [term for term in terms if term]
+    picked = {SV.fold(name) for name in commodities or () if SV.fold(name)}
+    if not terms and not picked:
         return list(sites)
     out = []
     for site in sites:
         words = [site["system"], site["body"], site["signal"]] + \
             list(site["types"]) + list(site["offers"])
-        if any(wanted in SV.fold(word) for word in words):
-            out.append(site)
+        if terms and not any(term in SV.fold(word)
+                             for term in terms for word in words):
+            continue
+        if picked and not picked & {SV.fold(name) for name in
+                                    list(site["types"]) + list(site["offers"])}:
+            continue
+        out.append(site)
     return out
 
 
@@ -11542,6 +12710,19 @@ class SitesWindow(ctk.CTkToplevel):
                                    **ENTRY)
         self.filter_box.pack(side="left")
         self.filter_box.bind("<KeyRelease>", lambda _e: self._paint(), add="+")
+        # Tick as many as you like; a site carrying any of them stays (#188).
+        ctk.CTkLabel(row, text="Commodity", font=F_BODY,
+                     text_color=DIM).pack(side="left", padx=(14, 6))
+        self.commodity = ctk.CTkComboBox(
+            row, width=240, height=32, font=F_BODY, **BOX,
+            values=["Any"] + list(SV.KNOWN_COMMODITIES),
+            command=lambda _value: self._paint())
+        self.commodity.set("Any")
+        self.commodity.pack(side="left")
+        Suggest(self.commodity,
+                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES),
+                                                   typed),
+                on_pick=lambda _value: self._paint(), multi=True)
 
         self.footnote = ctk.CTkLabel(self, text=SITES_FOOTNOTE, font=F_SMALL,
                                      text_color=DIM, anchor="w",
@@ -11591,7 +12772,8 @@ class SitesWindow(ctk.CTkToplevel):
         if table is None:
             return
         try:
-            shown = sites_matching(self._sites, self.filter_box.get())
+            shown = sites_matching(self._sites, self.filter_box.get(),
+                                   picks_of(self.commodity))
             self._rows = self._sorted(shown)
             for widget in table.winfo_children():
                 widget.destroy()

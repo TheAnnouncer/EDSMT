@@ -13,7 +13,6 @@ CHECKS = [
     ("survey model and plan view", "test_core.py"),
     ("a full session on Ega 1", "test_app.py"),
     ("every backlog row is really built", "test_backlog.py"),
-    ("the community API", "test_server.py"),
     ("the in-game overlay", "test_overlay.py"),
     ("nothing shadows a toolkit method", "test_shadowing.py"),
     ("every window actually builds", "test_wiring.py"),
@@ -32,10 +31,11 @@ CHECKS = [
     ("what the testers hit on 1.10029", "test_field.py"),
     ("what 1.10031 adds", "test_110031.py"),
     ("what 1.10032 adds", "test_110032.py"),
+    ("what 1.10033 adds", "test_110033.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
-# The checks on the documents that describe the live server live beside
-# those documents, in the private folder, and never ship. That folder is
+# The checks on the API and on the documents that describe the live server
+# live beside them, in the private folder, and never ship. That folder is
 # EDSMT-Private, next to this project's folder - or, in the older layout,
 # internal/ inside it. Where either exists - the machine that builds
 # releases - they run with everything else. On GitHub neither does.

@@ -20,8 +20,9 @@ The only dependency is `customtkinter`. There is no plotting library — the
 plan view is drawn on a plain canvas, which is why the app opens in about a
 second and the download is a few MB rather than fifty.
 
-The community API is a separate thing that Radio Raxxla runs. You do not
-need it to work on the app.
+The community map at `api.radioraxxla.com` is run by Radio Raxxla and is not
+part of this repository. You do not need it to work on the app: the tests
+stand in for it.
 
 ---
 
@@ -35,9 +36,8 @@ with synthetic `Status.json` and `Journal.*.log` files.
 
 Green means every suite passed. Read the last few lines rather than the exit
 code alone: a suite whose dependency is missing is **skipped**, not passed,
-and the runner says which. The API suite skips when FastAPI is not installed;
-the customtkinter checks skip when customtkinter is not installed. A skipped
-suite is not evidence of anything.
+and the runner says which. The customtkinter checks skip when customtkinter
+is not installed. A skipped suite is not evidence of anything.
 
 `BUILD.bat` runs the same command and refuses to build if it fails.
 
@@ -47,8 +47,8 @@ suite is not evidence of anything.
 
 ### Never rewrite a file from scratch
 
-A 1,200-line ground-up rewrite was delivered once. It broke. Patch the
-working file surgically and say exactly what you changed.
+A ground-up rewrite replaced a working 1,200-line file once, and broke it.
+Patch the working file surgically and say exactly what you changed.
 
 This is not sentiment about old code. The comments in these files are the
 project's memory: nearly every one of them is a bug that got out, written
@@ -68,8 +68,8 @@ to be replaced with tests that fail on the bug.
 
 ### Test headlessly
 
-There is no display and no Tkinter in CI, and none in the environment most of
-this was written in. GUI code therefore cannot be executed to check it.
+CI has no display and no Tkinter, so GUI code cannot be run there to check
+it.
 
 So: import the module with the toolkit stubbed, and drive the real logic
 underneath. `tests/stubs/` has what you need. Anything that cannot be tested
@@ -94,9 +94,10 @@ during startup, so the app died before drawing a pixel.
 
     python build/bump.py
 
-The version lives in six places across four files. Every release that edited
-five of them shipped a build reporting the wrong number somewhere, so this
-does all six at once and `test_packaging.py` fails if they ever disagree.
+The version lives in seven fields across three files. Every release that
+edited six of them shipped a build reporting the wrong number somewhere, so
+this does all seven at once and `test_packaging.py` fails if they ever
+disagree.
 
 Run it for every change, however small. A build you cannot name is a bug
 report you cannot place.
@@ -135,23 +136,11 @@ throughout, because `goto` stops working in a LF file. The test checks it.
   UPDATE. `tests/test_update.py` holds every one of those. A change that
   weakens any of them - another host, a skipped check, an install without
   the click - will not be merged.
-- **Uploading anything a commander did not agree to share.** Sharing is off
-  until switched on, and the CMDR name is optional even then.
+- **Uploading anything beyond the finds and prices.** Every deposit goes on
+  the community map - that is the point of it - but nothing else on a
+  commander's PC does, and the CMDR name stays optional.
 - **A dependency that pulls in a toolkit.** See `requirements.txt` for why
   the upper bounds are there.
-
----
-
-## Reporting the journal schema
-
-If you have seen the game write a surface-mining event, that is the single
-most useful thing you can send. `journal-mining-events.log` in
-`%LOCALAPPDATA%\RadioRaxxla\EDSMT` collects the first example of each one.
-
-Open an issue with it attached. `docs/SURFACE-MINING-JOURNAL.md` is the
-running specification, and says plainly which parts are observed and which
-are still guesses — anything that turns a guess into an observation is worth
-a release on its own.
 
 ---
 
@@ -166,15 +155,7 @@ EDSMT is GPL-3.0. By contributing you agree your work ships under it.
     RUN.bat     run it from source, no build needed
     BUILD.bat   compile it
 
-Before building, move the version on:
-
-    python build/bump.py
-
-The version lives in six places across four files. Every release that edited
-five of them shipped a build reporting the wrong number somewhere, so this
-does all six at once and the test suite fails if they ever disagree. Run it
-for every change, however small — a build you cannot name is a bug report you
-cannot place.
+Before building, move the version on with `python build/bump.py`.
 
 `BUILD.bat` finds or fetches Inno Setup, runs the test suite and refuses to
 build if anything fails, then compiles twice and leaves the `upload` folder
@@ -192,14 +173,6 @@ put a folder anywhere.
 There is also `.github/workflows/build.yml`: push a tag and GitHub builds all
 three on a real Windows machine and attaches them to a release, so an
 installer exists without anyone having to build one.
-
-    python tests/run_all.py
-
-The tests need no display, no Tkinter and no Elite Dangerous. The widgets are
-stubbed and the real logic is driven with synthetic `Status.json` and
-`Journal.*.log` files.
-
-The runner says out loud when a suite was skipped.
 
 `test_packaging.py` checks the bundle rather than the code: line endings on
 the batch files, characters `cmd` would read as redirection, version drift
@@ -222,26 +195,21 @@ all.** What exists is the in-game structure, the fields on existing events
 that already carry surface-mining data, and a way of capturing new events
 without knowing their names first.
 
-`journal-mining-events.log` collects the first example of every
-surface-mining event the game does write. **One real captured event is worth
-more to that document than anything else anybody can send.** Open an issue
-with it attached, or post it to the forums — either way the schema gets
-written down for every tool that follows, which is a bigger win for the
-community than this app is.
+`journal-mining-events.log`, in `%LOCALAPPDATA%\RadioRaxxla\EDSMT`, collects
+the first example of every surface-mining event the game does write. **One
+real captured event is worth more to that document than anything else anybody
+can send.** Open an issue with it attached, or post it to the forums — either
+way the schema gets written down for every tool that follows, which is a
+bigger win for the community than this app is.
 
 ---
 
-## Contributing, and reporting things
-
-`CONTRIBUTING.md` covers running from source, the test suite, and the five or
-six rules that have each cost this project a release — never rewrite a file
-from scratch, prove a fix by reintroducing the bug, test headlessly, and
-`bind_all` is forbidden.
+## Reporting bugs
 
 Bugs and requests go through the issue templates, which ask for the version
 off the title bar first. That is what the number is there for.
 
-`SECURITY.md` is the other one to read before anything else: a vulnerability
+`SECURITY.md` is the one to read before anything else: a vulnerability
 goes through private reporting rather than a public issue, and it explains
 the unsigned build, the SmartScreen warning and the VirusTotal result in
 full rather than leaving you to find them yourself.
@@ -250,15 +218,18 @@ full rather than leaving you to find them yourself.
 
 ## The source tree
 
-edsmt.py           the window
+    edsmt.py           the window
     survey.py          the model - locations, deposits, geometry
     planview.py        the plan view maths
     overlay.py         the in-game HUD boxes
     journal.py         reading Status.json and Journal.*.log
-    edonline.py        Inara, the community client, ranking
+    edonline.py        Inara, the community map client, ranking
+    rigplan.py         the rig planner
     build/             PyInstaller and Inno Setup configuration
-    tests/             the headless test suite, including one test per
+    tests/             the headless test suite, including one check per
                        numbered requirement
+    site/              the download page on radioraxxla.com
+    sounds/            the rig warnings
     .github/           the Windows build, and the issue templates
     docs/              the surface-mining journal specification
     JOURNAL-NOTES.md   everything learned about the journal
