@@ -63,7 +63,10 @@ def offenders(text):
 
 print("== the words the program shows ==")
 SOURCES = ["edsmt.py", "overlay.py", "journal.py", "survey.py", "edonline.py",
-           "planview.py", os.path.join("server", "main.py")]
+           "planview.py", "rigplan.py"]
+# Anything else to hold to the same spelling, as full paths separated by
+# os.pathsep - how the checks kept beside the API's source use this list.
+SOURCES += [p for p in os.environ.get("EDSMT_SPELL_EXTRA", "").split(os.pathsep) if p]
 for name in SOURCES:
     path = os.path.join(REPO, name)
     found = []

@@ -24,7 +24,7 @@ body:
         build are you on", and a report against a build from three releases
         ago may already be fixed. If the app will not start at all, the
         version is in the Add/Remove Programs entry.
-      placeholder: "1.10016"
+      placeholder: "1.100xx"
     validations:
       required: true
 
@@ -46,9 +46,8 @@ body:
       label: What the status line said
       description: >-
         The line along the bottom of the window, copied exactly. A failure
-        inside a button used to be completely silent; it now names itself
-        there and writes crash.log. That sentence usually identifies the
-        bug on its own.
+        inside a button names itself there and writes crash.log. That
+        sentence usually identifies the bug on its own.
       placeholder: "Journal problem: TypeError - see crash.log"
     validations:
       required: true

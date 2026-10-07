@@ -637,10 +637,9 @@ check("and it can be turned off entirely",
 check("or turned on for the scope too, for a dark cockpit",
       _framed(_panel_canvas(OV.RADAR, overlay_frame="all")) >= 4,
       _framed(_panel_canvas(OV.RADAR, overlay_frame="all")))
-# The sweep and the clock were mine, not asked for, and the commander's
-# testers asked for the sweep to go. A HUD is for reading, and
-# something moving on it that carries no information is something your eye
-# goes to for nothing.
+# The sweep and the clock were never asked for, and testers asked for them
+# to go. A HUD is for reading, and something moving on it that carries no
+# information is something your eye goes to for nothing.
 check("nothing on the scope is animated for the sake of it",
       not any(kw.get("style") == "pieslice"
               for _a, kw in shapes(scope, "create_arc")))
@@ -691,8 +690,8 @@ miles_overlay.draw(RADAR_ROWS + [row(3_000_000, 47, id="f", commodity="Gold",
 miles = miles_overlay.canvas
 check("a find on the far side of the body does not blank the scope",
       said(miles, "Haematite (6R)"), texts(miles))
-# It used to stop at the 50 km cap, which is what the scope in his 1.10028
-# screenshot showed: MAP RADIUS 50 km, the patch a dot, 9,698 km arrows at
+# It used to stop at the 50 km cap, which is what the scope in a 1.10028
+# tester's screenshot showed: MAP RADIUS 50 km, the patch a dot, 9,698 km arrows at
 # the rim. A find that far off is on another signal; it is left off the
 # boxes and counted, and the scope stays sized to the patch.
 check("and it does not drag the scope out at all",
@@ -705,7 +704,7 @@ check("it is counted as elsewhere on the body",
 
 print("== the scope is the signal you are AT, and nothing else ==")
 # Reported as "only focus on the signal source we are at", with a
-# screenshot: MAP RADIUS 50 km. The box still named the signal before, 36 km
+# screenshot reading MAP RADIUS 50 km. The box still named the signal before, 36 km
 # back, and the scope stretched to hold it and the SRV both.
 def radius_of(canvas):
     for text in texts(canvas):
@@ -1072,7 +1071,14 @@ empty = [str(kw.get("text", "")) for name, _a, kw in _drew(OV.TARGETS, []).calls
 check("an empty body says so instead of drawing nothing",
       any("nothing logged" in t for t in empty), empty)
 
-scanvas = _drew(OV.STATUS, RADAR_ROWS)
+def _drew_wide(key, rows, wide=380, **settings):
+    # The status box as it really is: 29% of the screen, 371 px at 1280.
+    over, panel = _panel(key=key, locked=True, **settings)
+    panel.window = _MovableWindow(wide, 200)
+    over.draw(rows, 0.0, body="Ega 3 a", location="2")
+    return panel.canvas
+
+scanvas = _drew_wide(OV.STATUS, RADAR_ROWS)
 slabels = [str(kw.get("text", "")) for name, _a, kw in scanvas.calls
            if name == "create_text"]
 check("the status box names the body", any("Ega 3 a" in t for t in slabels),
@@ -1083,11 +1089,25 @@ check("says what is next", any(t.startswith("NEXT") for t in slabels), slabels)
 check("and tells you which keys log a find",
       any("SITE" in t and "DEP" in t for t in slabels), slabels)
 bound = [str(kw.get("text", "")) for name, _a, kw in
-         _drew(OV.STATUS, RADAR_ROWS, hotkey_location="CTRL+1",
-               hotkey_deposit="CTRL+2").calls if name == "create_text"]
+         _drew_wide(OV.STATUS, RADAR_ROWS, hotkey_location="CTRL+1",
+                    hotkey_deposit="CTRL+2").calls if name == "create_text"]
 check("in the keys this commander actually bound, not the defaults",
       any("ctrl+1 site" in t.lower() and "ctrl+2 dep" in t.lower()
           for t in bound), bound)
+# 1.10033: on a box too narrow for both, the key hint gives way to what is
+# next, rather than the two being written over each other.
+narrow = [str(kw.get("text", "")) for name, _a, kw in
+          _drew(OV.STATUS, RADAR_ROWS).calls if name == "create_text"]
+check("too narrow for both: what is next is kept whole",
+      "NEXT < Haematite 896m" in narrow, narrow)
+_hint = next((t for t in narrow if "SITE" in t and "DEP" in t), "")
+check("and the key hint shortens or goes, never overlapping it",
+      not _hint or OV.text_box("NEXT < Haematite 896m", 10)[0]
+      + OV.text_box(_hint, 9)[0] + 18 <= 300, _hint)
+mid = [str(kw.get("text", "")) for name, _a, kw in
+       _drew_wide(OV.STATUS, RADAR_ROWS, wide=340).calls if name == "create_text"]
+check("with a little less room it keeps the two keys nobody can guess",
+      any(t.endswith("DEP") and "SITE" in t and "RIG" not in t for t in mid), mid)
 
 print("== every box is locked and unlocked together ==")
 class _StyleWindow(_FakeWindow):

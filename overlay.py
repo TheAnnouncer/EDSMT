@@ -473,7 +473,7 @@ PANEL_WHAT = {
 # lines on a 1080p one. Pixels are worked out at the moment the window is
 # built, against the screen it is actually being built on.
 #
-# The default is the layout the author plays with, measured off his own
+# The default is the layout EDSMT is played with, measured off a real
 # screen: the compass across the top of the canopy, the scope and the guide
 # down the left edge, the targets on the right, the status along the bottom
 # under the console - every box clear of the middle of the screen, where the
@@ -492,6 +492,74 @@ DEFAULT_LAYOUT = {
 MIN_PANEL = {STRIP: (260, 74), RADAR: (200, 200),
              TARGETS: (180, 96), STATUS: (220, 48),
              DEPOSIT: (420, 170), GUIDE: (240, 128)}
+
+# Layout presets (1.10033): a whole HUD in one pick, then drag from there.
+# Asked for on a 3440x1440 screen: "disable all other windows and have the
+# map triple the size". A preset is applied once - it writes the layout and
+# which boxes are on, exactly as dragging and the switches would, so every
+# box can still be moved afterwards.
+LAYOUT_PRESETS = (("Standard", "standard"), ("Map focus", "map"),
+                  ("Minimal", "minimal"), ("Streamer", "streamer"))
+
+
+def preset_layout(name, screen_w=1920, screen_h=1080):
+    """(layout, shown) for a preset on a screen this size.
+
+    `layout` is fractions per box, as DEFAULT_LAYOUT; `shown` is the set of
+    boxes switched on. The scope is kept square in PIXELS, so it is a round
+    dish on a 16:9 screen and on an ultrawide alike."""
+    try:
+        aspect = float(screen_h) / float(screen_w)
+    except (TypeError, ValueError, ZeroDivisionError):
+        aspect = 1080.0 / 1920.0
+    layout = {key: dict(spec) for key, spec in DEFAULT_LAYOUT.items()}
+
+    def square(height, x, y):
+        return {"x": x, "y": y, "w": round(min(0.6, height * aspect), 4),
+                "h": height}
+
+    if name == "map":
+        # The scope three times the size, on the left, everything else off.
+        layout[RADAR] = square(0.66, 0.004, 0.17)
+        return layout, {RADAR}
+    if name == "minimal":
+        return layout, {STRIP, STATUS}
+    if name == "streamer":
+        # Clear of where a webcam and chat usually sit: compass along the
+        # top, the scope bottom left, status along the foot, targets right.
+        layout[RADAR] = square(0.36, 0.004, 0.52)
+        layout[STATUS] = {"x": 0.30, "y": 0.92, "w": 0.40, "h": 0.07}
+        return layout, {STRIP, RADAR, STATUS, TARGETS}
+    return layout, {STRIP, RADAR, TARGETS, STATUS, GUIDE}
+
+
+# How the ground already swept shows on the scope. Faint was the only look
+# until 1.10033 - a see-through mesh, so it never hid the game - and on a
+# 3440x1440 screen it was "really hard to see what area I already scanned".
+SWEPT_LOOKS = (("Faint", "faint"), ("Clear", "clear"), ("Solid", "solid"))
+
+
+def swept_style(look, base, bright):
+    """(fill, stipple) for the swept ground: `base` is the theme's swept
+    colour, `bright` its cyan. Clear is half way to cyan through a half
+    mesh; Solid a third of the way, filled."""
+    look = str(look or "clear").strip().lower()
+    if look == "faint":
+        return base, "gray25"
+    if look == "solid":
+        return blend(base, bright, 0.35), ""
+    return blend(base, bright, 0.5), "gray50"
+
+
+def blend(a, b, share):
+    """`share` of the way from colour `a` to colour `b`, as #rrggbb."""
+    try:
+        ra, ga, ba = (int(a[i:i + 2], 16) for i in (1, 3, 5))
+        rb, gb, bb = (int(b[i:i + 2], 16) for i in (1, 3, 5))
+    except (TypeError, ValueError, IndexError):
+        return a
+    mix = lambda x, y: int(round(x + (y - x) * share))
+    return "#%02x%02x%02x" % (mix(ra, rb), mix(ga, gb), mix(ba, bb))
 
 # The resize corner, and the bar you drag to move. Both only exist while the
 # overlay is unlocked; locked, a panel is scenery and clicks go to the game.
@@ -626,9 +694,100 @@ def target_marks(rows, heading, width, span_deg=DEFAULT_SPAN_DEG, limit=6):
 # asking Tk to draw each one first to measure it.
 CHAR_PX = {7: 5.6, 8: 6.2, 9: 7.0, 10: 7.7, 11: 8.4, 13: 10.0, 17: 13.0}
 
+# The text size of the box being drawn (1.0 is as designed). Set for each box
+# as it is drawn and back to 1.0 after. Everything that measures text - how
+# wide a label is, whether it fits, where the next row goes - measures it at
+# the size it will be DRAWN at. Measured at 100% and drawn at 200%, the
+# scope's rows were written over each other (a tester's 200% screenshot,
+# 1.10032): the fonts grew and the layout did not.
+_TEXT_SCALE = 1.0
+
+
+def set_text_scale(factor):
+    """Set the scale text is measured and laid out at; returns it."""
+    global _TEXT_SCALE
+    try:
+        factor = float(factor)
+    except (TypeError, ValueError):
+        factor = 1.0
+    _TEXT_SCALE = max(0.5, min(3.0, factor))
+    return _TEXT_SCALE
+
+
+# How big text really is while a box is drawn on a real canvas: measured in
+# the font Tk will draw with, not read off the table. Consolas is not on
+# every machine and what stands in for it is wider, so a name cut "to fit"
+# by the table still ran under the count beside it at 200%. Set for each box
+# as it is drawn, None otherwise; it answers (width, height) or None.
+_MEASURE = None
+
+
+def set_measure(fn):
+    """Measure text with `fn` from now on, or with the table if None."""
+    global _MEASURE
+    _MEASURE = fn
+    return fn
+
+
+def _real_box(text, size):
+    if _MEASURE is None:
+        return None
+    try:
+        return _MEASURE(str(text), size)
+    except Exception:
+        return None
+
+
+# How much bigger than 96 dpi Tk draws a point on this screen, while a box is
+# drawn. Today Tk starts before the process is made DPI-aware, so this is 1.0
+# even on a 4K screen at 150% Windows scaling, and the overlay's words are
+# drawn small and sharp. Should Windows or a later Tk ever hand Tk the real
+# DPI, every font grows by it - and the rows the words sit on have to grow
+# with them, or a 4K screen at 200% scaling writes each line over the next.
+# Below 120% it is left at 1.0: a test display at 100 dpi is not a 4K screen.
+_DPI = 1.0
+
+
+def set_dpi(factor):
+    """Set how much larger than 96 dpi text is drawn; returns it."""
+    global _DPI
+    try:
+        factor = float(factor)
+    except (TypeError, ValueError):
+        factor = 1.0
+    _DPI = max(1.0, min(4.0, factor)) if factor >= 1.2 else 1.0
+    return _DPI
+
+
+def tk_dpi(widget):
+    """How many 96-dpi points one of Tk's points is on `widget`'s screen."""
+    try:
+        return float(widget.tk.call("tk", "scaling")) / (96.0 / 72.0)
+    except Exception:
+        return 1.0
+
+
+def em(px):
+    """A distance in the layout that belongs to a line of text - a row
+    height, a gap under a heading - at the text size being drawn, on the
+    screen it is drawn on."""
+    return float(px) * _TEXT_SCALE * _DPI
+
+
+def drawn_size(size):
+    """The point size a font at `size` is actually drawn at."""
+    if abs(_TEXT_SCALE - 1.0) < 0.01:
+        return int(size)
+    return max(6, int(round(abs(int(size)) * _TEXT_SCALE)))
+
 
 def text_box(text, size=9):
-    """(width, height) in pixels of one line of Consolas at `size`."""
+    """(width, height) in pixels of one line of Consolas at `size`, at the
+    size it will be drawn."""
+    real = _real_box(text, size)
+    if real:
+        return real
+    size = drawn_size(size)
     per = CHAR_PX.get(int(size), size * 0.78)
     return len(str(text)) * per, size + 5
 
@@ -653,7 +812,12 @@ def free_spot(x, y, text, size, gap, taken, bounds=None, measure=None):
 
 def fit_text(text, width_px, size=9):
     """`text` cut to what fits in `width_px`, with a mark where it was cut."""
-    per = CHAR_PX.get(int(size), size * 0.78)
+    real = _real_box("M" * 10, size)
+    if real and real[0] > 0:
+        per = real[0] / 10.0
+    else:
+        size = drawn_size(size)
+        per = CHAR_PX.get(int(size), size * 0.78)
     room = int(max(0, width_px) // per)
     text = str(text)
     if len(text) <= room:
@@ -687,14 +851,20 @@ def rig_tape_marks(rigs, heading, width, span_deg=DEFAULT_SPAN_DEG, gap=30.0):
         if offscreen:
             # Far enough in from the end for the whole square to show.
             x = 16.0 if offset < 0 else width - 16.0
+        watched = rig.get("watched", True) is not False
         marks.append({
             "n": rig.get("n"),
+            # "A3" / "B3" with two Rhinos' rigs down, else the number.
+            "label": str(rig.get("label") or rig.get("n") or ""),
+            "watched": watched,
             "commodity": str(rig.get("commodity") or ""),
             "range_m": metres,
             "offset": offset,
             "x": x,
             "offscreen": offscreen,
-            "far": bool(limit) and metres > limit,
+            # Only the Rhino being driven is warned about: the other one's
+            # rigs are measured from where that Rhino is parked.
+            "far": watched and bool(limit) and metres > limit,
             "off_contacts": metres > RIG_CONTACTS_M,
         })
     marks.sort(key=lambda m: m["x"])
@@ -711,6 +881,7 @@ def stack(marks, min_gap=74.0):
     without this the labels pile into an unreadable smear exactly when there
     is most to read.
     """
+    min_gap = em(min_gap)
     rows = []
     for mark in sorted(marks, key=lambda m: m["x"]):
         placed = False
@@ -796,12 +967,17 @@ def readout_rows(canvas, x, y, width, rows, gap=17, label_colour=None,
     label_colour = label_colour or TEXT
     value_colour = value_colour or AMBER
     for index, (label, value) in enumerate(rows):
-        line = y + index * gap
+        line = y + index * em(gap)
+        label = str(label).upper()
         canvas.create_text(x, line, anchor="w", fill=label_colour,
-                           font=("Consolas", 10), text=str(label).upper())
+                           font=("Consolas", 10), text=label)
+        # The value gets what the label leaves. On a narrow card at a big
+        # text size "MINERAL" and "Iridium" were written over each other.
+        room = width - text_box(label, 10)[0] - em(8)
         canvas.create_text(x + width, line, anchor="e", fill=value_colour,
-                           font=("Consolas", 10, "bold"), text=str(value))
-    return y + max(0, len(rows) - 1) * gap
+                           font=("Consolas", 10, "bold"),
+                           text=fit_text(str(value), room, 10))
+    return y + max(0, len(rows) - 1) * em(gap)
 
 
 def value_bars(canvas, x, y, width, height, bars, colour=None):
@@ -1146,6 +1322,28 @@ class Overlay:
                 saver()
             except Exception:
                 pass
+
+    def apply_preset(self, name):
+        """Lay the HUD out as one of LAYOUT_PRESETS: where each box goes and
+        which are on. Returns the set of boxes switched on."""
+        width, height = 1920, 1080
+        for win in [p.window for p in self.panels.values() if p.window] + \
+                [self.window, getattr(self, "app", None)]:
+            try:
+                width, height = int(win.winfo_screenwidth()), \
+                    int(win.winfo_screenheight())
+                break
+            except Exception:
+                continue
+        layout, shown = preset_layout(name, width, height)
+        self.settings["overlay_layout"] = layout
+        for key in PANEL_ORDER:
+            self.settings["overlay_show_%s" % key] = key in shown
+        self.settings["overlay_preset"] = name
+        for key in ("overlay_x", "overlay_y"):
+            self.settings.pop(key, None)
+        self.save_layout()
+        return shown
 
     def reset_layout(self):
         """Put every panel back where it started.
@@ -1868,7 +2066,10 @@ class Overlay:
                     continue
                 rebuilt = True
             self._drawing = panel
+            set_text_scale(self.text_scale(key))
+            set_dpi(tk_dpi(panel.canvas))
             self.canvas = scaled_canvas(panel.canvas, self.text_scale(key))
+            set_measure(self._real_measure)
             try:
                 self.canvas.delete("all")
                 width, height = panel.size()
@@ -1896,9 +2097,15 @@ class Overlay:
                 # Anything else is a real bug and goes to crash.log as before.
                 if gone is None or not isinstance(exc, gone):
                     self._drawing = None
+                    set_text_scale(1.0)
+                    set_dpi(1.0)
+                    set_measure(None)
                     raise
                 panel.window = panel.canvas = None
         self._drawing = None
+        set_text_scale(1.0)
+        set_dpi(1.0)
+        set_measure(None)
         if rebuilt:
             self.apply_click_through()
             self.apply_transparency()
@@ -1914,7 +2121,9 @@ class Overlay:
         accent = ORANGE
         dim = "#8a5a2c"
 
-        baseline = 26
+        # Low enough that N, E, S and W sit inside the box. At 26 their tops
+        # were cut off by the top edge on every screen (#169).
+        baseline = em(30)
         canvas.create_line(0, baseline, width, baseline, fill=dim)
 
         for mark in cardinal_marks(heading, width, span):
@@ -1922,7 +2131,19 @@ class Overlay:
             canvas.create_line(mark["x"], baseline - tall, mark["x"], baseline,
                                fill=accent if mark["major"] else dim)
             if mark["label"]:
-                canvas.create_text(mark["x"], baseline - tall - 8,
+                # A letter whose tick is near an end is left off rather
+                # than drawn half over the edge: at 200% "NW" hung off the
+                # left of the box. The tick still shows where it is.
+                half = text_box(mark["label"], 11)[0] / 2.0
+                if mark["x"] - half < 1 or mark["x"] + half > width - 1:
+                    continue
+                # And off the top or the bottom: in a strip squashed short
+                # at the very largest sizes the letters no longer fit at all.
+                rise = text_box(mark["label"], 11)[1] / 2.0
+                letter_y = baseline - tall - em(8)
+                if letter_y - rise < -1 or letter_y + rise > height + 1:
+                    continue
+                canvas.create_text(mark["x"], letter_y,
                                    text=mark["label"], fill=accent,
                                    font=("Consolas", 11, "bold"))
 
@@ -1934,8 +2155,8 @@ class Overlay:
         marks = stack(target_marks(rows, heading, width, span, limit))
         for mark in marks:
             row = mark.get("row", 0)
-            y = baseline + 22 + row * 20
-            if y > height - 6:
+            y = baseline + em(22) + row * em(20)
+            if y + text_box("M", 11)[1] / 2.0 > height - 1:
                 continue
             colour = self.colour(mark["commodity"])
             label = "%s %s %s" % (turn_arrow(mark["offset"]),
@@ -1944,7 +2165,7 @@ class Overlay:
             if mark["rigs"]:
                 label += " %sR" % mark["rigs"]
             if not mark["offscreen"]:
-                canvas.create_line(mark["x"], baseline + 2, mark["x"], y - 8,
+                canvas.create_line(mark["x"], baseline + 2, mark["x"], y - em(8),
                                    fill=colour)
             anchor = "w" if mark["x"] < width / 2 else "e"
             canvas.create_text(mark["x"], y, text=label, fill=colour,
@@ -1960,9 +2181,12 @@ class Overlay:
             tint = self.colour(what) if what else AMBER
             colour = RED if mark["far"] else tint
             x, y = mark["x"], baseline
-            canvas.create_rectangle(x - 7, y - 7, x + 7, y + 7, fill=GLASS,
-                                    outline=colour, width=2, tags=("rigtape",))
-            canvas.create_text(x, y, text=str(mark["n"]), fill=colour,
+            half = em(7) + (2 if len(str(mark.get("label") or "")) > 1 else 0)
+            canvas.create_rectangle(x - half, y - em(7), x + half, y + em(7),
+                                    fill=GLASS, outline=colour, width=2,
+                                    tags=("rigtape",))
+            canvas.create_text(x, y, text=mark.get("label") or str(mark["n"]),
+                               fill=colour,
                                font=("Consolas", 8, "bold"), tags=("rigtape",))
             label = format_range(mark["range_m"])
             if what:
@@ -1970,7 +2194,7 @@ class Overlay:
             if mark["offscreen"]:
                 label = ("< " + label) if mark["offset"] < 0 else (label + " >")
             right = x < width / 2.0
-            canvas.create_text(x + (10 if right else -10), y - 11,
+            canvas.create_text(x + (em(10) if right else -em(10)), y - em(11),
                                anchor="w" if right else "e", text=label,
                                fill=colour, font=("Consolas", 8, "bold"),
                                tags=("rigtape",))
@@ -1997,7 +2221,7 @@ class Overlay:
                     label = ("< " + label) if float(pin.get("offset") or 0) < 0 \
                         else (label + " >")
                 right = x < width / 2.0
-                canvas.create_text(x + (11 if right else -11), y + 12,
+                canvas.create_text(x + (em(11) if right else -em(11)), y + em(12),
                                    anchor="w" if right else "e", text=label,
                                    fill=AMBER, font=("Consolas", 9, "bold"),
                                    tags=("pintape",))
@@ -2054,10 +2278,14 @@ class Overlay:
         """
         canvas = self.canvas
         top = HANDLE_PX + 2 if not self.locked else 4
-        canvas.create_text(6, top + 6, anchor="w", fill=TEXT,
+        # Never higher than half its own height below the top, or its top
+        # is cut off at the very largest sizes.
+        canvas.create_text(6, top + max(em(6), text_box("M", 10)[1] / 2.0),
+                           anchor="w", fill=TEXT,
                            font=("Consolas", 10, "bold"),
-                           text="NEAREST  %s" % (body or "")[:18])
-        canvas.create_line(4, top + 16, width - 4, top + 16, fill=RULE)
+                           text=fit_text("NEAREST  %s" % (body or "")[:18],
+                                         width - 12, 10))
+        canvas.create_line(4, top + em(16), width - 4, top + em(16), fill=RULE)
 
         # The strip along the bottom is the shape of the money on this body -
         # one bar per commodity, height by what it is worth. A count of dots
@@ -2065,11 +2293,11 @@ class Overlay:
         # picture as six rigs of a gemstone.
         prices = self.prices()
         bar_h = 22 if height >= 190 else 0
-        line_h = 16
-        room = max(0, int((height - (top + 26) - bar_h) // line_h))
+        line_h = em(16)
+        room = max(0, int((height - (top + em(26)) - bar_h) // line_h))
         found = self.ranked(rows, heading, limit=room)
         if not found:
-            canvas.create_text(6, top + 30, anchor="w", fill=DIM,
+            canvas.create_text(6, top + em(30), anchor="w", fill=DIM,
                                font=("Consolas", 9),
                                text="nothing logged here yet")
             return
@@ -2086,17 +2314,18 @@ class Overlay:
                 value_bars(canvas, 6, height - bar_h - 10, width - 12,
                            bar_h - 8, bars, colour=ORANGE)
         for index, item in enumerate(found):
-            y = top + 26 + index * line_h
+            y = top + em(26) + index * line_h
             colour = FAINT if item["spent"] else self.colour(item["commodity"])
-            canvas.create_text(6, y, anchor="w", fill=colour,
-                               font=("Consolas", 10, "bold"),
-                               text="%s %s" % (turn_arrow(item["offset"]),
-                                               item["commodity"][:13]))
             tail = format_range(item["range_m"])
             if item["rigs"]:
                 tail += "  %sR" % item["rigs"]
             if item["spent"]:
                 tail = "mined"
+            canvas.create_text(6, y, anchor="w", fill=colour,
+                               font=("Consolas", 10, "bold"),
+                               text=fit_text("%s %s" % (turn_arrow(item["offset"]),
+                                                        item["commodity"][:13]),
+                                             width - 18 - text_box(tail, 10)[0], 10))
             canvas.create_text(width - 6, y, anchor="e", fill=colour,
                                font=("Consolas", 10), text=tail)
         self._brackets(width, height)
@@ -2114,33 +2343,57 @@ class Overlay:
         top = HANDLE_PX + 4 if not self.locked else 6
         total = int(guide.get("total") or 0)
         step = int(guide.get("step") or 0)
-        canvas.create_text(8, top + 8, anchor="w", fill=DIM,
+        # Progress as pips: how much is left is a shape, not a sum. The
+        # title gets the room the pips leave, and says less when that is
+        # short - at 200% on a small screen it ran under them and off the
+        # box.
+        pip = em(7)
+        pips = total * (pip + 4) if total else 0
+        title = "EDSMT GUIDE  %d/%d" % (step, total) if total else "EDSMT GUIDE"
+        if total and text_box(title, 9)[0] > width - 16 - pips - em(6):
+            title = "GUIDE %d/%d" % (step, total)
+        if total and text_box(title, 9)[0] > width - 16 - pips - em(6):
+            # No room for both: the words say how far along, so the pips go.
+            pips = 0
+        room = width - 16 - pips - (em(6) if pips else 0)
+        canvas.create_text(8, top + em(8), anchor="w", fill=DIM,
                            font=("Consolas", 9, "bold"),
-                           text=("EDSMT GUIDE  %d/%d" % (step, total)
-                                 if total else "EDSMT GUIDE"))
-        # Progress as pips: how much is left is a shape, not a sum.
-        if total:
-            pip = 7
-            x = width - 8 - total * (pip + 4)
+                           text=fit_text(title, room, 9))
+        if total and pips:
+            x = width - 8 - pips
             for index in range(total):
                 colour = ORANGE if index < step - 1 else (
                     AMBER if index == step - 1 else RULE)
-                canvas.create_rectangle(x, top + 5, x + pip, top + 5 + pip,
+                canvas.create_rectangle(x, top + em(5), x + pip,
+                                        top + em(5) + pip,
                                         fill=colour, outline="", tags=("pip",))
                 x += pip + 4
-        canvas.create_line(6, top + 18, width - 6, top + 18, fill=RULE)
+        canvas.create_line(6, top + em(18), width - 6, top + em(18), fill=RULE)
         self._hazard_bar(width, height)
         title = str(guide.get("title") or "Waiting for the game")
-        canvas.create_text(8, top + 34, anchor="w", fill=ORANGE,
-                           font=("Consolas", 13, "bold"), text=title[:30],
+        canvas.create_text(8, top + em(34), anchor="w", fill=ORANGE,
+                           font=("Consolas", 13, "bold"),
+                           text=fit_text(title[:30], width - 16, 13),
                            tags=("guide-title",))
-        detail = str(guide.get("detail") or "")
-        if detail:
-            canvas.create_text(8, top + 50, anchor="nw", fill=TEXT,
-                               font=("Consolas", 10), width=max(60, width - 16),
-                               text=detail[:160], tags=("guide-detail",))
+        detail = str(guide.get("detail") or "")[:160]
         following = str(guide.get("next") or "")
-        if following and height >= top + 118:
+        following = following if following and height >= top + em(118) else ""
+        # As many wrapped lines as the box has room for above the "then:"
+        # line, and a mark where it stops - at a large text size the box
+        # ends before the sentence does.
+        floor = height - 4 - (text_box("M", 9)[1] + 4 if following else 0)
+        per_line = max(1, int(max(60, width - 16)
+                              // max(1.0, text_box("M" * 10, 10)[0] / 10.0)))
+        lines = int((floor - (top + em(50))) // max(1.0, text_box("M", 10)[1]))
+        if detail and lines < 1:
+            detail = ""
+        elif len(detail) > per_line * lines:
+            detail = detail[:max(0, per_line * lines - per_line // 2 - 1)].rstrip() + "~"
+        if detail:
+            canvas.create_text(8, top + em(50), anchor="nw", fill=TEXT,
+                               font=("Consolas", 10), width=max(60, width - 16),
+                               text=detail, tags=("guide-detail",))
+        if following:
             canvas.create_text(8, height - 8, anchor="sw", fill=DIM,
                                font=("Consolas", 9),
                                text=("then: " + following)[:48],
@@ -2155,7 +2408,7 @@ class Overlay:
         if not hazard or not hazard.get("text"):
             return False
         canvas = self.canvas
-        tall = 18
+        tall = em(18)
         canvas.create_rectangle(2, height - tall - 2, width - 2, height - 2,
                                 fill=ALARM_RED, outline=ALARM_RED,
                                 tags=("hazard",))
@@ -2199,22 +2452,25 @@ class Overlay:
                 rigs += int(str((row.get("deposit") or {}).get("rigs") or 0))
             except (TypeError, ValueError):
                 pass
-        canvas.create_text(6, top + 8, anchor="w", fill=TEXT,
+        count = "%d DEP  %dR" % (len(rows), rigs)
+        canvas.create_text(6, top + em(8), anchor="w", fill=TEXT,
                            font=("Consolas", 10, "bold"),
-                           text="%s" % (body or self._body_of(rows) or "-")[:24])
-        canvas.create_text(width - 6, top + 8, anchor="e", fill=AMBER,
-                           font=("Consolas", 10, "bold"),
-                           text="%d DEP  %dR" % (len(rows), rigs))
-        canvas.create_line(4, top + 18, width - 4, top + 18, fill=RULE)
+                           text=fit_text((body or self._body_of(rows) or "-")[:24],
+                                         width - 24 - text_box(count, 10)[0], 10))
+        canvas.create_text(width - 6, top + em(8), anchor="e", fill=AMBER,
+                           font=("Consolas", 10, "bold"), text=count)
+        canvas.create_line(4, top + em(18), width - 4, top + em(18), fill=RULE)
         # What the patch is worth, stated as an estimate, because the price
         # is the part nobody can promise. A tall STATUS box gets the full
         # readout; a short one keeps the line that answers "is this trip
         # worth making" and drops the rest.
-        if height >= top + 78:
+        readout_end = 0
+        if height >= top + em(78):
             worth = PV.value_of(rows, self.prices())
             tail = ("" if not worth["unpriced"]
                     else "  +%d unpriced" % worth["unpriced"])
-            readout_rows(canvas, 6, top + 48, width - 12, [
+            readout_end = text_box("M", 10)[1] / 2.0 + readout_rows(
+                canvas, 6, top + em(48), width - 12, [
                 ("est. value", "%s Cr%s" % (money(worth["credits"]), tail)),
                 ("route", format_range(PV.drive_route(rows)["total_m"])),
             ])
@@ -2222,53 +2478,74 @@ class Overlay:
         nearest = self.ranked(rows, heading, limit=1)
         planned = getattr(self, "_plan", None) or {}
         pin = planned.get("next_pin") if planned.get("near") else None
+        # The right-hand end first, so the left-hand line is cut to what is
+        # left: at a large text size the two used to run into each other.
+        left = None
         if pin:
-            canvas.create_text(6, top + 30, anchor="w", fill=AMBER,
-                               font=("Consolas", 10, "bold"),
-                               text="PIN %d %s %s  (%d/%d)" % (
-                                   pin["n"], turn_arrow(pin.get("offset", 0.0)),
-                                   format_range(pin["range_m"]),
-                                   planned.get("done", 0),
-                                   len(planned.get("pins") or [])))
+            left = ("PIN %d %s %s  (%d/%d)" % (
+                pin["n"], turn_arrow(pin.get("offset", 0.0)),
+                format_range(pin["range_m"]), planned.get("done", 0),
+                len(planned.get("pins") or [])), AMBER, 10, True)
         elif nearest:
             item = nearest[0]
-            canvas.create_text(6, top + 30, anchor="w",
-                               fill=self.colour(item["commodity"]),
-                               font=("Consolas", 10, "bold"),
-                               text="%s %s %s %s" % (
-                                   "GO" if item["target"] else "NEXT",
-                                   turn_arrow(item["offset"]),
-                                   item["commodity"][:12],
-                                   format_range(item["range_m"])))
+            left = ("%s %s %s %s" % (
+                "GO" if item["target"] else "NEXT", turn_arrow(item["offset"]),
+                item["commodity"][:12], format_range(item["range_m"])),
+                self.colour(item["commodity"]), 10, True)
         elif note:
-            canvas.create_text(6, top + 30, anchor="w", fill=DIM,
-                               font=("Consolas", 9), text=note[:40])
+            left = (note[:40], DIM, 9, False)
         rigs = getattr(self, "_rigs", None)
         if rigs:
             # How many rigs are down and how far the farthest is, instead of
             # the key hint, while any are down.
-            canvas.create_text(width - 6, top + 30, anchor="e",
-                               fill=RED if rigs.get("far") else AMBER,
-                               font=("Consolas", 9, "bold"),
-                               text="%dR  FAR %s %s" % (
-                                   int(rigs.get("count") or 0),
-                                   turn_arrow(float(rigs.get("offset") or 0)),
-                                   format_range(rigs.get("range_m"))))
+            right = "%dR  FAR %s %s" % (
+                int(rigs.get("count") or 0),
+                turn_arrow(float(rigs.get("offset") or 0)),
+                format_range(rigs.get("range_m")))
+            right_colour, right_font = (RED if rigs.get("far") else AMBER,
+                                        ("Consolas", 9, "bold"))
         else:
-            canvas.create_text(width - 6, top + 30, anchor="e", fill=FAINT,
-                               font=("Consolas", 9), text=self.key_hint(short=True))
-        if found.get("label") and len(rows):
+            right_colour, right_font = FAINT, ("Consolas", 9)
+            # The key hint gives way first: down to the two keys a new
+            # commander cannot guess, then, if even that would take more than
+            # half a box the left-hand line cannot share, altogether.
+            need = text_box(left[0], left[2])[0] if left else 0
+            right = self.key_hint(short=True)
+            if need + text_box(right, 9)[0] + 18 > width:
+                right = self.key_hint(short=True, essential=True)
+            if need + text_box(right, 9)[0] + 18 > width \
+                    and text_box(right, 9)[0] > (width - 12) * 0.5:
+                right = ""
+        room = width - 18 - (text_box(right, 9)[0] if right else 0)
+        # A short box at a large text size has room for one line: the
+        # second is left off rather than drawn half out of the box.
+        if top + em(30) + text_box("M", 10)[1] / 2.0 > height:
+            left = right = None
+        if left:
+            text, colour, size, bold = left
+            canvas.create_text(6, top + em(30), anchor="w", fill=colour,
+                               font=("Consolas", size, "bold") if bold
+                               else ("Consolas", size),
+                               text=fit_text(text, room, size))
+        if right:
+            canvas.create_text(width - 6, top + em(30), anchor="e",
+                               fill=right_colour, font=right_font, text=right)
+        # The bottom row only when it clears the second line, and the
+        # readout when there is one.
+        bottom_room = height - em(6) - em(12) >= max(top + em(30) + em(8),
+                                                     readout_end + 2)
+        if bottom_room and found.get("label") and len(rows):
             canvas.create_text(6, height - 6, anchor="sw", fill=DIM,
                                font=("Consolas", 8),
                                text="SITE %s" % str(found["label"])[:16])
         survey = getattr(self, "_survey", None)
-        if survey and survey.get("percent") is not None:
+        if bottom_room and survey and survey.get("percent") is not None:
             done = survey["percent"]
             canvas.create_text(width - 6, height - 6, anchor="se",
                                fill=AMBER if done < 100 else CYAN,
                                font=("Consolas", 8, "bold"),
                                text="AREA SWEPT %d%%" % done)
-        cargo = self._cargo_text()
+        cargo = self._cargo_text() if bottom_room else ""
         if cargo:
             full = self._cargo or {}
             capacity = full.get("capacity")
@@ -2301,13 +2578,16 @@ class Overlay:
         split = int(width * 0.54)
 
         # -- header
-        canvas.create_polygon(16, top + 9, 23, top + 2, 30, top + 9, 23, top + 16,
+        canvas.create_polygon(16, top + em(9), 16 + em(7), top + em(2),
+                              16 + em(14), top + em(9), 16 + em(7), top + em(16),
                               fill="", outline=ORANGE)
-        canvas.create_text(40, top + 9, anchor="w", fill=TEXT,
-                           font=("Consolas", 14, "bold"), text="MINERAL DEPOSIT")
-        canvas.create_text(split + 12, top + 6, anchor="w", fill=DIM,
+        canvas.create_text(24 + em(16), top + em(9), anchor="w", fill=TEXT,
+                           font=("Consolas", 14, "bold"),
+                           text=fit_text("MINERAL DEPOSIT",
+                                         split - 30 - em(16), 14))
+        canvas.create_text(split + 12, top + em(6), anchor="w", fill=DIM,
                            font=("Consolas", 9), text="SIGNAL RADAR")
-        canvas.create_line(12, top + 24, width - 12, top + 24, fill=RULE)
+        canvas.create_line(12, top + em(24), width - 12, top + em(24), fill=RULE)
 
         # -- the readout, left
         # The card is the deposit you are nearest, whatever you are being
@@ -2323,30 +2603,42 @@ class Overlay:
                     deposit = row.get("deposit") or {}
                     break
         worth = PV.value_of(rows, prices)
-        readout_rows(canvas, 16, top + 40, split - 30, [
+        readout = [
             ("mineral", (here["commodity"] if here else "-")[:18]),
             ("range", format_range(here["range_m"]) if here else "-"),
             ("rigs", str(deposit.get("rigs") or "-")),
             ("density", str(deposit.get("density") or "-")),
             ("amount", str(deposit.get("amount") or "-")),
-        ], gap=18)
+        ]
+        # As many rows as fit above the signal line at the foot of the card,
+        # measured at the size they are drawn: a row's lower half and the
+        # signal line's upper half both take room, and at 200% on a
+        # 1080-line screen RANGE was written over SIGNAL POINT.
+        row_half = text_box("M", 10)[1] / 2.0
+        line_top = height - em(12) - text_box("M", 10)[1] / 2.0
+        fits = int((line_top - row_half - em(2) - (top + em(40))) // em(18)) + 1
+        shown = readout[:max(0, min(len(readout), fits))]
+        last = readout_rows(canvas, 16, top + em(40), split - 30, shown, gap=18)
 
-        # -- telemetry, under a rule, the way the card does it
-        foot = top + 40 + 4 * 18 + 16
-        if foot + 34 < height:
-            canvas.create_line(12, foot - 8, split - 8, foot - 8, fill=RULE)
-            canvas.create_text(16, foot + 4, anchor="w", fill=DIM,
+        # -- telemetry, under a rule, the way the card does it - and only if
+        # it clears the signal line too. On a 768-line screen it was written
+        # over SIGNAL POINT at 100%.
+        foot = last + em(16)
+        if len(shown) == len(readout) and \
+                foot + em(20) + text_box("M", 10)[1] / 2.0 < line_top - em(2):
+            canvas.create_line(12, foot - em(8), split - 8, foot - em(8), fill=RULE)
+            canvas.create_text(16, foot + em(4), anchor="w", fill=DIM,
                                font=("Consolas", 9), text="TELEMETRY")
-            canvas.create_text(16, foot + 20, anchor="w", fill=AMBER,
+            canvas.create_text(16, foot + em(20), anchor="w", fill=AMBER,
                                font=("Consolas", 10, "bold"),
                                text="ON THIS SIGNAL: %d DEP   ~%s Cr"
                                     % (len(rows), money(worth["credits"])))
 
         # -- the radar, right
-        scope_r = min((width - split) / 2.0 - 16, (height - top - 54) / 2.0)
+        scope_r = min((width - split) / 2.0 - 16, (height - top - em(54)) / 2.0)
         if scope_r >= 26:
             cx = split + (width - split) / 2.0
-            cy = top + 34 + scope_r
+            cy = top + em(34) + scope_r
             for step in (0.33, 0.66, 1.0):
                 r = scope_r * step
                 canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
@@ -2380,19 +2672,20 @@ class Overlay:
                 bars[name] = bars.get(name, 0) + PV.deposit_value(row, prices)
         bars = sorted(((n, v) for n, v in bars.items() if v > 0),
                       key=lambda pair: -pair[1])[:8]
-        if bars and height - (top + 40) > 90:
-            value_bars(canvas, split + 10, height - 34, width - split - 22, 18,
-                       bars, colour=ORANGE)
-        canvas.create_text(16, height - 12, anchor="w", fill=CYAN,
+        if bars and height - (top + em(40)) > em(90):
+            value_bars(canvas, split + 10, height - em(34), width - split - 22,
+                       18, bars, colour=ORANGE)
+        canvas.create_text(16, height - em(12), anchor="w", fill=CYAN,
                            font=("Consolas", 10, "bold"),
                            text="\u25b2 SIGNAL POINT %s" % (location or "-"))
         self._brackets(width, height)
 
-    def key_hint(self, short=False):
+    def key_hint(self, short=False, essential=False):
         """What to press, in the keys this commander actually bound.
 
         Short on the status strip, which is narrow by design; spelled out
-        everywhere there is room for it.
+        everywhere there is room for it. essential is the site and deposit
+        keys alone, for a box too narrow for the rest.
         """
         if not self.locked:
             return "unlocked - drag me"
@@ -2407,6 +2700,8 @@ class Overlay:
                   (rig_keys_words(self.settings) or key("hotkey_rigs"), "RIG")]
         if short:
             wanted = [pair for pair in wanted if pair[1] != "BORDER"]
+        if essential:
+            wanted = [pair for pair in wanted if pair[1] in ("SITE", "DEP", "DEPOSIT")]
         return "  ".join("%s %s" % (bound, what) for bound, what in wanted if bound)
 
     # -- the radar -------------------------------------------------------
@@ -2422,7 +2717,10 @@ class Overlay:
                    body="", location="", site=None):
         rows = list(rows or [])
         heading = float(heading or 0.0)
-        head, foot = 38, 30
+        # Above the scope: the two header rows, and the N over the dish.
+        # Grown text needs the N clear of the header, so the head grows by
+        # more than the text does - nothing changes at 100%.
+        head, foot = em(38) + (em(16) - 16), em(30)
 
         # Centred on the signal for planning, on the SRV for driving. With
         # nothing recorded there is no signal to centre on, so it says SRV
@@ -2518,6 +2816,7 @@ class Overlay:
         self._scope_taken = [(0, 0, width, head), (0, height - foot, width, height)]
         self._scope_bounds = (0, head, width, height - foot)
         self._scope_hidden = 0
+        self._north_box = None
         self._scope_queue = []
         self._scope(viewport, plan)
         self._survey_marks(viewport, origin)
@@ -2622,10 +2921,12 @@ class Overlay:
                 continue
             what = str(mark.get("commodity") or "")
             tint = self.colour(what) if what else AMBER
-            colour = RED if limit and mark["range_m"] > limit else tint
+            colour = RED if (limit and mark["range_m"] > limit
+                             and mark.get("watched", True) is not False) else tint
             canvas.create_rectangle(x - 5, y - 5, x + 5, y + 5, outline=colour,
                                     width=2, tags=("rigmark",))
-            canvas.create_text(x, y, text=str(mark["n"]), fill=colour,
+            canvas.create_text(x, y, text=mark.get("label") or str(mark["n"]),
+                               fill=colour,
                                font=("Consolas", 7, "bold"), tags=("rigmark",))
             self._taken().append((x - 6, y - 6, x + 6, y + 6))
             if what:
@@ -2653,21 +2954,23 @@ class Overlay:
                                  survey.get("centre"), survey.get("border_m"),
                                  view=(origin, viewport.extent_m)) \
             if survey.get("border_m") else []
+        fill, mesh = swept_style(self.settings.get("overlay_swept", "clear"),
+                                 SWEPT_SCOPE, CYAN)
         for shape in shapes:
             if shape[0] == "disc":
                 east, north = shape[1] - origin[0], shape[2] - origin[1]
                 x, y = viewport.to_canvas(east, north)
                 r = viewport.radius_px(shape[3])
-                canvas.create_oval(x - r, y - r, x + r, y + r, fill=SWEPT_SCOPE,
-                                   outline="", stipple="gray25",
+                canvas.create_oval(x - r, y - r, x + r, y + r, fill=fill,
+                                   outline="", stipple=mesh,
                                    tags=("swept",))
             else:
                 flat = []
                 for east, north in shape[1]:
                     flat.extend(viewport.to_canvas(east - origin[0],
                                                    north - origin[1]))
-                canvas.create_polygon(flat, fill=SWEPT_SCOPE, outline="",
-                                      stipple="gray25", tags=("swept",))
+                canvas.create_polygon(flat, fill=fill, outline="",
+                                      stipple=mesh, tags=("swept",))
         if not survey.get("centre"):
             return
         ce, cn = survey["centre"]
@@ -2690,7 +2993,7 @@ class Overlay:
                                text="GAP")
         done = survey.get("percent")
         if done is not None:
-            canvas.create_text(viewport.width - 8, viewport.height - 44,
+            canvas.create_text(viewport.width - 8, viewport.height - em(44),
                                anchor="e", font=("Consolas", 9, "bold"),
                                fill=AMBER if done < 100 else CYAN,
                                text="SWEPT %d%%" % done)
@@ -2750,8 +3053,14 @@ class Overlay:
             # to give way to a find's name.
             self._later(6, cx - 2, cy - radius + 7, format_range(ring["metres"]),
                         FAINT, 8, 2, False)
-        canvas.create_text(cx, cy - outer - 8, text="N", fill=DIM,
+        north_y = cy - outer - em(8)
+        canvas.create_text(cx, north_y, text="N", fill=DIM,
                            font=("Consolas", 9, "bold"))
+        # Claimed, so no label is put on top of it at a large text size.
+        w, h = self._measure("N", 9)
+        self._north_box = (cx - w / 2.0 - 1, north_y - h / 2.0,
+                           cx + w / 2.0 + 1, north_y + h / 2.0)
+        self._taken().append(self._north_box)
 
     def _scanner(self, viewport, plan):
         """The Rhino's scanner range, drawn round the VEHICLE.
@@ -2833,11 +3142,29 @@ class Overlay:
             # every one to work out which is nearest; with it the route is
             # just a number to follow.
             stop = (stops or {}).get(id(item))
-            if stop:
+            # Only when it fits on the dot: at a large text size the number
+            # is bigger than the dot and spills onto whatever is next to it.
+            sw, sh = text_box(str(stop), 8) if stop else (0, 0)
+            spill = (x - sw / 2.0, y - sh / 2.0, x + sw / 2.0, y + sh / 2.0)
+            # Taller than the dot at a large size, a number is only drawn
+            # where it lands on nothing already there - the N, or the next
+            # stop's number - and then claims its box.
+            if stop and sw <= 2 * radius + 2 and \
+                    (sh <= 2 * radius + 6 or self._free(spill)):
                 canvas.create_text(x, y, fill=VOID if not spent else colour,
                                    font=("Consolas", 8, "bold"), text=str(stop))
+                if sh > 2 * radius + 6:
+                    self._taken().append(spill)
             self._taken().append((x - radius - 1, y - radius - 1,
                                   x + radius + 1, y + radius + 1))
+
+    def _free(self, box):
+        """Does `box` touch nothing already placed on the scope?"""
+        for other in self._taken():
+            if box[0] < other[2] and other[0] < box[2] and \
+                    box[1] < other[3] and other[1] < box[3]:
+                return False
+        return True
 
     def _taken(self):
         taken = getattr(self, "_scope_taken", None)
@@ -2869,6 +3196,12 @@ class Overlay:
                                 font=("Consolas", size, "bold" if bold else "normal"))
         return True
 
+    def _real_measure(self, text, size):
+        """(width, height) of `text` in the bold font it will be drawn in,
+        from Tk itself, or None off a real canvas. What text_box and
+        fit_text measure with while a box is drawn."""
+        return self._font_box(text, size, True)
+
     def _measure(self, text, size, bold=True):
         """(width, height) of `text` in the font it will be drawn in.
 
@@ -2876,16 +3209,23 @@ class Overlay:
         not on every machine, and whatever stands in for it is wider - and
         from the character-width table when there is not.
         """
+        return self._font_box(text, size, bold) or text_box(text, size)
+
+    def _font_box(self, text, size, bold=True):
+        """Tk's own (width, height) for `text`, or None without a real
+        canvas to build the font on."""
         fonts = getattr(self, "_fonts", None)
         if not isinstance(fonts, dict):
             fonts = self._fonts = {}
-        key = (int(size), bool(bold))
+        # The real font is built at the size it is drawn at.
+        size_drawn = drawn_size(size)
+        key = (int(size_drawn), bool(bold))
         font = fonts.get(key)
         if font is None and key not in fonts:
             try:
                 import tkinter.font as tkfont
                 font = tkfont.Font(root=self.canvas, family="Consolas",
-                                   size=int(size),
+                                   size=int(size_drawn),
                                    weight="bold" if bold else "normal")
                 font.measure("M")
             except Exception:
@@ -2897,7 +3237,7 @@ class Overlay:
                     float(font.metrics("linespace"))
             except Exception:
                 pass
-        return text_box(text, size)
+        return None
 
     def _later(self, rank, x, y, text, colour, size, gap, bold, tags=(),
                points=None):
@@ -2987,15 +3327,26 @@ class Overlay:
     def _header(self, width, plan, found, centred, body, rows):
         canvas = self.canvas
         radius = "MAP RADIUS  %s" % format_range(plan["extent_m"])
+        # At a large text size on a small scope even the radius is wider
+        # than the box: say it shorter rather than off the edge.
+        for shorter in ("R %s" % format_range(plan["extent_m"]),
+                        format_range(plan["extent_m"])):
+            if self._measure(radius, 10)[0] <= width - 16:
+                break
+            radius = shorter
         room = width - 16 - self._measure(radius, 10)[0] - 12
         name = "BODY  %s" % (body or self._body_of(rows) or "-")
         # Cut to the room there is, in the font it is drawn in, so a long
         # body name stops short of the radius instead of running under it.
         while len(name) > 6 and self._measure(name, 10)[0] > room:
             name = name[:-2] + "~"
-        canvas.create_text(8, 11, anchor="w", fill=TEXT,
+        # Still too long at a large text size: the radius matters more on a
+        # scope than the body's name, which STATUS carries anyway.
+        if self._measure(name, 10)[0] > room:
+            name = ""
+        canvas.create_text(8, em(11), anchor="w", fill=TEXT,
                            font=("Consolas", 10, "bold"), text=name)
-        canvas.create_text(width - 8, 11, anchor="e", fill=AMBER,
+        canvas.create_text(width - 8, em(11), anchor="e", fill=AMBER,
                            font=("Consolas", 10, "bold"), text=radius)
         count = "%d DEP  %dR" % (len(plan["items"]), PV.total_rigs(plan["items"]))
         centre = "CENTRE  %s" % ((found.get("label") or "SITE")
@@ -3010,16 +3361,18 @@ class Overlay:
         room = width - 16 - self._measure(count, 9)[0] - 12
         while len(centre) > 8 and self._measure(centre, 9)[0] > room:
             centre = centre[:-2] + "~"
-        canvas.create_text(8, 26, anchor="w", fill=AMBER if far else DIM,
+        if self._measure(centre, 9)[0] > room:
+            centre = ""
+        canvas.create_text(8, em(26), anchor="w", fill=AMBER if far else DIM,
                            font=("Consolas", 9), text=centre)
-        canvas.create_text(width - 8, 26, anchor="e", fill=DIM,
+        canvas.create_text(width - 8, em(26), anchor="e", fill=DIM,
                            font=("Consolas", 9), text=count)
-        canvas.create_line(0, 34, width, 34, fill=RULE)
+        canvas.create_line(0, em(34), width, em(34), fill=RULE)
 
     def _footer(self, width, height, plan, note):
         """Where to go next, and how to record it without alt-tabbing."""
         canvas = self.canvas
-        canvas.create_line(0, height - 26, width, height - 26, fill=RULE)
+        canvas.create_line(0, height - em(26), width, height - em(26), fill=RULE)
         # Left to right, each only if it fits beside what is already there:
         # where to go next, what the patch is worth, the keys. Squeezed, the
         # keys go first - the GUIDE and STATUS boxes carry them too.
@@ -3035,32 +3388,40 @@ class Overlay:
                 turn_arrow(offset), target["commodity"][:13] or "deposit",
                 format_range(target["range_m"]),
                 int(round(target["bearing"])) % 360), width - 16, 10)
-            canvas.create_text(8, height - 13, anchor="w",
+            canvas.create_text(8, height - em(13), anchor="w",
                                fill=self.colour(target["commodity"]),
                                font=("Consolas", 10, "bold"), text=text)
             used += text_box(text, 10)[0]
         elif note:
             text = fit_text(note, width - 16, 9)
-            canvas.create_text(8, height - 13, anchor="w", fill=DIM,
+            canvas.create_text(8, height - em(13), anchor="w", fill=DIM,
                                font=("Consolas", 9), text=text)
             used += text_box(text, 9)[0]
         worth = PV.value_of(plan["items"], self.prices())
         if worth["credits"]:
             text = "~%s Cr" % money(worth["credits"])
             if used + 14 + text_box(text, 9)[0] <= width - 8:
-                canvas.create_text(used + 14, height - 13, anchor="w", fill=AMBER,
+                canvas.create_text(used + 14, height - em(13), anchor="w", fill=AMBER,
                                    font=("Consolas", 9, "bold"), text=text)
                 used += 14 + text_box(text, 9)[0]
         hint = self.key_hint()
         if hint and used + 14 + text_box(hint, 9)[0] <= width - 8:
-            canvas.create_text(width - 8, height - 13, anchor="e", fill=FAINT,
+            canvas.create_text(width - 8, height - em(13), anchor="e", fill=FAINT,
                                font=("Consolas", 9), text=hint)
         hidden = getattr(self, "_scope_hidden", 0)
         if hidden:
-            # Bottom left, clear of the survey readout on the right.
-            canvas.create_text(8, height - 34, anchor="w", fill=FAINT,
-                               font=("Consolas", 8),
-                               text="%d unlabelled" % hidden)
+            # Bottom left, clear of the survey readout on the right. Only a
+            # scope squashed flat by a huge text size brings its N down this
+            # far, and then the N wins: the count is not worth a letter
+            # printed over it.
+            note = "%d unlabelled" % hidden
+            nw, nh = text_box(note, 8)
+            spot = (8, height - em(34) - nh / 2.0, 8 + nw, height - em(34) + nh / 2.0)
+            north = getattr(self, "_north_box", None)
+            if not (north and spot[0] < north[2] and north[0] < spot[2]
+                    and spot[1] < north[3] and north[1] < spot[3]):
+                canvas.create_text(8, height - em(34), anchor="w", fill=FAINT,
+                                   font=("Consolas", 8), text=note)
 
     def _rig_banner(self, width, height):
         """TOO FAR FROM RIG n, across the foot of the box, naming the rig
@@ -3070,14 +3431,14 @@ class Overlay:
         if not (rigs and rigs.get("far")):
             return
         canvas = self.canvas
-        tall = 20 if height >= 60 else 16
+        tall = em(20 if height >= 60 else 16)
         canvas.create_rectangle(2, height - tall - 2, width - 2, height - 2,
                                 fill=RED, outline=RED, tags=("rigs",))
         canvas.create_text(width / 2.0, height - 2 - tall / 2.0, fill="#ffffff",
-                           font=("Consolas", 10 if tall == 20 else 8, "bold"),
+                           font=("Consolas", 10 if height >= 60 else 8, "bold"),
                            tags=("rigs",),
                            text="TOO FAR FROM RIG %s  %s %s" % (
-                               rigs.get("n", ""),
+                               rigs.get("label") or rigs.get("n", ""),
                                turn_arrow(float(rigs.get("offset") or 0)),
                                format_range(rigs.get("range_m"))))
 

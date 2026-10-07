@@ -36,6 +36,9 @@ journal-mining-events.log
 portable.txt
 
 # ---- databases and secrets ----------------------------------------------
+# The community API is run by Radio Raxxla and its source is not part of
+# this project. None of these belong in it either.
+/server/
 *.db
 *.db-journal
 *.db-wal
@@ -62,9 +65,8 @@ Journal.*.log
 Thumbs.db
 desktop.ini
 
-# Internal documents. They describe the live server and are never pushed.
-# Everything internal lives in internal/; the root-level names are listed as
-# well so a copy left at the top by mistake cannot slip into the repo.
+# Maintainer notes kept beside the project. Never committed; the names are
+# listed so a copy left here by mistake cannot slip in.
 internal/
 RUNBOOK.md
 DEVLOG.md

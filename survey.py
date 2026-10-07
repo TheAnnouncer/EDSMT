@@ -251,7 +251,7 @@ def turn_hint(heading, bearing):
 # tables - the stickied "Rhino Surface Hotspot list" on the Frontier forums -
 # refreshed to its 21 September 2026 prices, after the Community Goal whose
 # 1,038,104 Cr stood as the top price for three of these had ended. It
-# replaces a thirteen-entry list I built from Inara's
+# replaces a thirteen-entry list built from Inara's
 # "Mining (surface)" flag. That list was wrong twice over: it MISSED things
 # the game actually gives you - Water, Tantalum, Jadeite, Methanol Crystals -
 # and it had no idea which bodies anything appears on.
@@ -602,7 +602,8 @@ def ground_of(planet_class, volcanism):
     """One name for a kind of ground: body class, plus volcanism if any.
 
     MUST give exactly what the community map's ground_of gives - the grounds
-    it counts are looked up by this string.
+    it counts are looked up by this string, and the two are held side by
+    side where the map's source is kept.
     """
     kind = " ".join(str(planet_class or "").split())
     volc = " ".join(str(volcanism or "").lower().replace("volcanism", "").split())
@@ -1239,7 +1240,40 @@ SESSION_FIELDS = [
     "paused_at",       # when the pause in progress began; blank if running
     "started_by",      # rigs, refined, button - what opened it
     "ended_by",        # rigs, button, docked, lost, moved, quiet
+    # Added in 1.10033. Old rows read this as blank.
+    "rhinos",          # JSON: the session split per Rhino - see rhino_split()
 ]
+
+# The letters a session's Rhinos are shown under, in the order each was
+# first driven: A1-A6 are the first Rhino's rigs, B1-B6 the second's.
+RHINO_LETTERS = "ABCDEFGH"
+
+
+def rhino_split(row):
+    """A session's per-Rhino detail: [{id, label, mined, tonnes, rigs,
+    first, last}], in the order the Rhinos were first driven.
+
+    The game gives every vehicle its own ID - a Panther Clipper's two Rhinos
+    are 98 and 99 in one real journal - so a session that used both says
+    what each one dug up. Empty for a session that never knew."""
+    try:
+        data = json.loads(str((row or {}).get("rhinos") or "") or "{}")
+    except ValueError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    out = []
+    for key, part in data.items():
+        if not isinstance(part, dict):
+            continue
+        mined = unpack_counts(part.get("mined"))
+        out.append({"id": key, "label": str(part.get("label") or "?"),
+                    "mined": mined, "tonnes": sum(mined.values()),
+                    "rigs": int(_number(part.get("rigs"))),
+                    "first": str(part.get("first") or ""),
+                    "last": str(part.get("last") or "")})
+    out.sort(key=lambda part: part["label"])
+    return out
 
 # What a session is. Only Rhino sessions are shown and added up: the books
 # used to open a "run" on any landing and for any sale, so the Earnings tab
@@ -1548,6 +1582,11 @@ class Earnings:
         # Which SRV that is, by the journal's ID, so a second Rhino off the
         # same ship coming aboard - a crewmate's - does not end this one.
         self._srv_id = None
+        # Every Rhino of this commander's that is out of the ship, by ID: a
+        # Panther Clipper carries two. The session ends when the last of
+        # them comes aboard, not the first.
+        self._out = set()
+        self._docked_was_out = False
         # One session across several trips, for hauling back and forth to a
         # station: set from the Earnings window's box, kept in settings.
         self.multi = False
@@ -1630,7 +1669,21 @@ class Earnings:
             if note.get("player", True):
                 self._in_rhino = bool(note.get("rhino"))
                 self._srv_id = note.get("srv_id")
+                if note.get("rhino") and note.get("srv_id") is not None:
+                    self._out.add(str(note.get("srv_id")))
+        elif name == "SRVEmbark":
+            # Climbing into a Rhino left parked on the surface.
+            self._in_rhino = bool(note.get("rhino"))
+            if note.get("rhino") and note.get("srv_id") is not None:
+                self._srv_id = note.get("srv_id")
+                self._out.add(str(note.get("srv_id")))
+        elif name == "SRVDisembark":
+            self._in_rhino = False
         elif name in ("SRVDock", "SRVLost"):
+            sid = note.get("srv_id")
+            self._docked_was_out = sid is not None and str(sid) in self._out
+            if sid is not None:
+                self._out.discard(str(sid))
             if self._ours(note):
                 self._in_rhino = False
         if name in REPLAYED_EVENTS:
@@ -1816,6 +1869,42 @@ class Earnings:
         self.save()
         return row
 
+    @staticmethod
+    def _note_rhino(row, srv_id, when, gains=None, rig=False):
+        """Put a tonne or a rig against the Rhino that did it.
+
+        Kept as JSON in the row's "rhinos" cell: per Rhino its letter, what
+        it dug up, how many rigs went down from it, and its first and last
+        moment of work. A tonne or rig with no Rhino ID - an old journal,
+        a log that began mid-session - is left out rather than guessed."""
+        if row is None or srv_id is None:
+            return
+        try:
+            data = json.loads(str(row.get("rhinos") or "") or "{}")
+            if not isinstance(data, dict):
+                data = {}
+        except ValueError:
+            data = {}
+        key = str(srv_id)
+        part = data.get(key)
+        if not isinstance(part, dict):
+            used = {str(p.get("label")) for p in data.values()
+                    if isinstance(p, dict)}
+            label = next((c for c in RHINO_LETTERS if c not in used), "?")
+            part = data[key] = {"label": label, "mined": "", "rigs": 0,
+                                "first": when, "last": when}
+        if gains:
+            tally = unpack_counts(part.get("mined"))
+            add_counts(tally, {canonical(name): count
+                               for name, count in dict(gains).items()})
+            part["mined"] = pack_counts(tally)
+        if rig:
+            part["rigs"] = int(_number(part.get("rigs"))) + 1
+        if when:
+            part["first"] = min(str(part.get("first") or when), when)
+            part["last"] = _later(str(part.get("last") or when), when)
+        row["rhinos"] = json.dumps(data, sort_keys=True)
+
     def delete(self, row_id):
         """Take one session out of the books for good - a test run, a
         session opened by mistake, one that went wrong. The file before it
@@ -1929,12 +2018,18 @@ class Earnings:
                 row = None
             if row is None:
                 if self._reopen(note, when) is not None:
-                    return "Rhino session carries on - rigs down again"
-                self.start(note.get("system"), note.get("body"),
-                           note.get("cmdr"), when, by="rigs")
-                return "Rhino session started - first rig down"
+                    line = "Rhino session carries on - rigs down again"
+                else:
+                    self.start(note.get("system"), note.get("body"),
+                               note.get("cmdr"), when, by="rigs")
+                    line = "Rhino session started - first rig down"
+                self._note_rhino(self.current, note.get("srv_id"), when,
+                                 rig=True)
+                self.save()
+                return line
             resumed = self._resume(row, when)
             self._touch(row, when)
+            self._note_rhino(row, note.get("srv_id"), when, rig=True)
             self.save()
             return "Session running again - rig down" if resumed else None
 
@@ -1993,6 +2088,9 @@ class Earnings:
                     line = "Rhino session started - first tonne refined"
             elif self._resume(row, when):
                 line = "Session running again - mining"
+            # Per Rhino first, so the save inside note_mined writes both.
+            self._note_rhino(self.current, note.get("srv_id"), when,
+                             gains={commodity: 1})
             self.note_mined({commodity: 1}, when)
             return line
 
@@ -2015,7 +2113,16 @@ class Earnings:
             return "to ship: " + pack_counts(moved).replace(";", ", ")
 
         if name in ("SRVDock", "SRVLost"):
-            if row is None or not self._ours(note):
+            if row is None:
+                return None
+            # One of two Rhinos aboard while the other is still out: the
+            # session carries on until the last one is back.
+            if self._docked_was_out and self._out:
+                self._touch(row, when)
+                self.save()
+                return "Rhino aboard - %d still out, the session carries on" \
+                    % len(self._out)
+            if not (self._ours(note) or self._docked_was_out):
                 return None
             if self.multi:
                 self._touch(row, when)

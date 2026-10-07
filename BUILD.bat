@@ -77,10 +77,10 @@ set "BPY=.venv-build\Scripts\python.exe"
 "%BPY%" -m pip install --upgrade pip --quiet --disable-pip-version-check
 "%BPY%" -m pip install -r requirements.txt "pyinstaller>=6.0,<7" --quiet --disable-pip-version-check
 if errorlevel 1 goto FAIL
-rem The API's libraries are not needed to build the app, but installing them
-rem means the community API is actually tested before a release instead of
-rem being skipped. Best effort - a failure here must not stop the build.
-"%BPY%" -m pip install -r server\requirements.txt --quiet --disable-pip-version-check >nul 2>&1
+rem The API's source is kept in the private folder beside this one. Where it
+rem is, install its libraries too, so the API is tested before a release
+rem rather than skipped. Best effort - a failure must not stop the build.
+if exist "..\EDSMT-Private\server\requirements.txt" "%BPY%" -m pip install -r "..\EDSMT-Private\server\requirements.txt" --quiet --disable-pip-version-check >nul 2>&1
 echo         OK.
 
 rem  Bundles before 1.10028 put the internal documents at the top of this
@@ -92,13 +92,15 @@ set "OLDCOPIES=internal\old-copies"
 if exist "..\EDSMT-Private\" set "OLDCOPIES=..\EDSMT-Private\old-copies"
 set "STALE="
 for %%F in (BACKLOG.md DECISIONS.md DEVLOG.md RUNBOOK.md UPDATE-GUIDE.md DEPLOY-LIVE.md LEAK-TERMS.txt DISCORD-beta-1.10027.md) do if exist "%%F" set "STALE=1"
-if exist "server\*realip*.sh" set "STALE=1"
+rem  The API's source left this folder in 1.10033. A copy still here would be
+rem  zipped into the public source and could be uploaded by mistake.
+if exist "server\" set "STALE=1"
 if defined STALE (
     echo         Moving internal documents an older bundle left at the top
     echo         into the private folder's old-copies ...
     if not exist "%OLDCOPIES%" mkdir "%OLDCOPIES%"
     for %%F in (BACKLOG.md DECISIONS.md DEVLOG.md RUNBOOK.md UPDATE-GUIDE.md DEPLOY-LIVE.md LEAK-TERMS.txt DISCORD-beta-1.10027.md) do if exist "%%F" move /y "%%F" "%OLDCOPIES%\%%F" >nul
-    for %%F in ("server\*realip*.sh") do move /y "%%~F" "%OLDCOPIES%\%%~nxF" >nul
+    if exist "server\" move "server" "%OLDCOPIES%\server-from-EDSMT-GitHub-%RANDOM%" >nul
 )
 
 rem ---------------------------------------------------------------------
@@ -175,7 +177,7 @@ rem  left at the top by mistake. They describe one server, and GPL-3.0
 rem  asks for the source of the PROGRAM - not the notes on where it runs.
 echo         Zipping the source, which GPL-3.0 requires you to offer...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$i = Get-ChildItem -Path . -Force | Where-Object { $_.Name -notin @('.venv','.venv-build','dist','upload','__pycache__','.git','internal','RUNBOOK.md','DEVLOG.md','DECISIONS.md','BACKLOG.md','UPDATE-GUIDE.md') }; Compress-Archive -Path $i.FullName -DestinationPath 'upload\EDSMT-source.zip' -CompressionLevel Optimal -Force"
+  "$i = Get-ChildItem -Path . -Force | Where-Object { $_.Name -notin @('.venv','.venv-build','dist','upload','__pycache__','.git','internal','server','RUNBOOK.md','DEVLOG.md','DECISIONS.md','BACKLOG.md','UPDATE-GUIDE.md') }; Compress-Archive -Path $i.FullName -DestinationPath 'upload\EDSMT-source.zip' -CompressionLevel Optimal -Force"
 echo         OK.
 
 echo.

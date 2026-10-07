@@ -629,6 +629,25 @@ class UpdateCheck:
         return json.dumps(answer)
 
 
+def commodity_param(value) -> str:
+    """One commodity or several, as the community server takes them.
+
+    The app's commodity boxes take several names at once. They go to the
+    server as one parameter, commas between - one name is a list of one, so
+    a single pick is sent exactly as it always was. A string is taken as
+    already written that way; a list is joined. Duplicates and blanks go.
+    """
+    if value is None:
+        return ""
+    parts = str(value).split(",") if isinstance(value, str) else list(value)
+    names = []
+    for part in parts:
+        name = str(part or "").strip()
+        if name and name.lower() not in [n.lower() for n in names]:
+            names.append(name)
+    return ",".join(names)
+
+
 # ---------------------------------------------------------------------------
 # Community deposit sharing
 # ---------------------------------------------------------------------------
@@ -657,7 +676,11 @@ class CommunityClient:
 
     def configure(self, base_url: str, token: str = "",
                   enabled: bool = False, share_name: bool = True) -> None:
-        self.base_url = (base_url or "").strip().rstrip("/") or self.DEFAULT_URL
+        # There is one community map and Radio Raxxla runs it. An address
+        # left in an older settings.json is not followed anywhere else, so
+        # base_url is accepted from those callers and not used.
+        del base_url
+        self.base_url = self.DEFAULT_URL
         self.token = (token or "").strip()
         self.enabled = bool(enabled)
         self.share_name = share_name
@@ -751,7 +774,8 @@ class CommunityClient:
         if not self.can_read:
             return False
         params = {k: v for k, v in
-                  (("commodity", commodity), ("system", system), ("limit", limit))
+                  (("commodity", commodity_param(commodity)), ("system", system),
+                   ("limit", limit))
                   if v}
         params.update(self._near(near, within_ly))
         url = f"{self.base_url}/v1/deposits?" + urllib.parse.urlencode(params)
@@ -819,7 +843,7 @@ class CommunityClient:
         """
         if not self.can_read:
             return False
-        params = {k: v for k, v in (("commodity", commodity),
+        params = {k: v for k, v in (("commodity", commodity_param(commodity)),
                                     ("system", system),
                                     ("body", body),
                                     ("name", name),
@@ -854,7 +878,7 @@ class CommunityClient:
         """
         if not self.can_read:
             return False
-        params = {k: v for k, v in (("commodity", commodity),
+        params = {k: v for k, v in (("commodity", commodity_param(commodity)),
                                     ("system", system),
                                     ("body", body),
                                     ("name", name),
@@ -987,13 +1011,67 @@ class CommunityClient:
         """
         if not self.can_read:
             return False
-        params = {k: v for k, v in (("commodity", commodity),
+        params = {k: v for k, v in (("commodity", commodity_param(commodity)),
                                     ("near", near_system),
                                     ("limit", limit)) if v}
         params.update(self._near(near, within_ly))
         url = f"{self.base_url}/v1/prices?" + urllib.parse.urlencode(params)
         self.worker.submit(
             "market", lambda: json.dumps(get_json(url, headers=self._headers())))
+        return True
+
+    def system_prices(self, system: str, commodities=(), max_days: int = 0,
+                      tag: str = "system-prices") -> bool:
+        """The last known sell price of each commodity at every market in
+        one system - the Earnings window's system search.
+
+        One request for the whole system, whatever was picked. The server
+        answers from our own users' market reads and from a market index,
+        newest reading per station, each row saying which it came from.
+
+        A server older than this build has no /v1/system-prices. That is a
+        404, and it is answered from the plain price table instead - our
+        own users' reads for that system - with the answer saying so,
+        rather than putting an error over a search that can still say
+        something.
+        """
+        system = str(system or "").strip()
+        if not (self.can_read and system):
+            return False
+        wanted = commodity_param(commodities)
+        params = {"system": system}
+        if wanted:
+            params["commodity"] = wanted
+        if max_days:
+            params["max_days"] = int(max_days)
+        url = f"{self.base_url}/v1/system-prices?" + urllib.parse.urlencode(params)
+        # Every commodity, filtered here: an older server reads "A,B" as one
+        # commodity nobody has heard of and answers with nothing.
+        older = {"near": system, "limit": 200}
+        fallback = f"{self.base_url}/v1/prices?" + urllib.parse.urlencode(older)
+        keep = {fold(n) for n in wanted.split(",") if n}
+        headers = self._headers()
+
+        def ask():
+            try:
+                return json.dumps(get_json(url, headers=headers))
+            except RuntimeError as exc:
+                if "HTTP 404" not in str(exc):
+                    raise
+            reply = get_json(fallback, headers=headers)
+            rows = []
+            for row in reply.get("prices") or []:
+                if not isinstance(row, dict):
+                    continue
+                if keep and fold(row.get("commodity")) not in keep:
+                    continue
+                rows.append(dict(row, source=row.get("source") or "community"))
+            return json.dumps({"system": system, "prices": rows,
+                               "count": len(rows),
+                               "commodities": [n for n in wanted.split(",") if n],
+                               "upstream": "", "upstream_status": "server not updated"})
+
+        self.worker.submit(tag, ask)
         return True
 
     def sell(self, commodity: str, near_system: str = "", limit: int = 20,

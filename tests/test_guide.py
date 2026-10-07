@@ -238,7 +238,7 @@ picked.follow_target(State(target_signal="16"))
 check("until the game targets another", chosen == ["15", "16"], chosen)
 
 print("== driving into a logged signal makes it the one being worked ==")
-# The scope in his screenshot read MAP RADIUS 50 km: the box still named the
+# The scope in a tester's screenshot read MAP RADIUS 50 km: the box still named the
 # signal before, and a deposit marked there would have been filed under it.
 import math as _mm
 check("every poll with the game running follows the signal you are in",

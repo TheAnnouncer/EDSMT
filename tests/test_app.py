@@ -530,8 +530,8 @@ check("a sent request says so", "Searching sites" in w.said[-1], w.said)
 check("and arms a watchdog", bool(w.timers))
 
 w = _Find(_Comm(ok=False)); w.search_sites()
-check("a request that never left says so, and says why",
-      "not sent" in w.said[-1] and "URL" in w.said[-1], w.said)
+check("a request that never left says so, and says where to look",
+      "not sent" in w.said[-1] and "Settings" in w.said[-1], w.said)
 
 w = _Find(_Comm(boom=True)); w.search_sites()
 check("a raise becomes a message instead of a dead button",
@@ -1143,7 +1143,7 @@ check("with the scrollbar's pixels on top, not taken out of the controls",
 
 print("== the people who broke it first are credited ==")
 check("there is a list, and it is a constant",
-      isinstance(A.BETA_TESTERS, list) and len(A.BETA_TESTERS) == 5,
+      isinstance(A.BETA_TESTERS, list) and len(A.BETA_TESTERS) == 6,
       A.BETA_TESTERS)
 for name in ("CMDR MJH430", "CMDR StarTopaz", "CMDR Flossy", "CMDR Gamer Joe",
              "CMDR Rumphrend"):

@@ -528,7 +528,10 @@ _sm = OVSRC.split("    def _survey_marks(self")[1].split("\n    def ")[0]
 check("no swept-ground plate before there is a border to sweep inside",
       'if survey.get("border_m") else []' in _sm)
 check("and when there is one, it is a see-through mesh",
-      _sm.count('stipple="gray25"') == 2)
+      _sm.count("stipple=mesh") == 2
+      and OV.swept_style("faint", "#ff7a18", "#ffb000")[1] == "gray25"
+      and OV.swept_style("clear", "#ff7a18", "#ffb000")[1] == "gray50",
+      _sm.count("stipple=mesh"))
 
 print("== the top bar: where things are on the left, the overlay on the right ==")
 _top = SRC.split("    def _telemetry(self):")[1].split("\n    def ")[0]

@@ -59,9 +59,9 @@ the real answer and is a money question, not a technical one.
 
 **What you can do instead:** it is GPL-3.0. `EDSMT-source.zip` ships with
 every release, `RUN.bat` runs the app straight from that source without
-building anything, and the GitHub Actions workflow builds the exact same
-binaries on a GitHub-hosted Windows runner where you can read the log. If you
-do not want to trust a binary, do not — run the source.
+building anything, and the GitHub Actions workflow builds the same source on
+a GitHub-hosted Windows runner where you can read the log. If you do not want
+to trust a binary, do not — run the source.
 
 ---
 
@@ -107,10 +107,11 @@ Worth knowing before you decide whether any of the above matters.
 
 ## What leaves your machine
 
-- **Nothing, until you switch sharing on.** You are asked once on first run
-  and no is taken for an answer. The switch is in Settings either way.
-- With it on: the position, commodity, density, rig count and body facts of
-  what you record, plus the timestamp. **Your CMDR name is optional.**
+- **What you map, always.** The position, commodity, density, rig count and
+  body facts of each deposit you record, plus the timestamp, and the prices at
+  markets you open. That is what the community map is made of, so it is not
+  a switch. **Your CMDR name is optional** - asked on first run, in Settings
+  after.
 - A deposit is a position, a commodity and a date. No personal data is
   collected, there is no account and there is no sign-up.
 - **The wing link (beta) is off unless you switch it on and type a code.**

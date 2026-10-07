@@ -132,36 +132,6 @@ check("the table is the 21 September figures, after the CG",
 check("and Methanol Crystals turn up on rocky ice worlds too",
       SV.ROCKY_ICE in SV.bodies_for("Methanol Crystals")
       if hasattr(SV, "ROCKY_ICE") else "Rocky ice world" in SV.bodies_for("Methanol Crystals"))
-try:
-    os.environ["RR_DB"] = os.path.join(TMP, "sell.db")
-    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "server"))
-    import main as SERVER  # noqa
-except Exception as exc:                                   # noqa: BLE001
-    SERVER = None
-    print("  SKIP  no FastAPI here (%s)" % exc.__class__.__name__)
-if SERVER is not None:
-    import json as _json
-    import urllib.request as _ur
-
-    class _Reply:
-        def __init__(self, data): self.data = data
-        def read(self): return _json.dumps(self.data).encode()
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-
-    _rows = [{"commodityName": "iridium", "stationName": "CG", "systemName": "Ega",
-              "sellPrice": 1038104, "demand": 999999, "distance": 5.0},
-             {"commodityName": "iridium", "stationName": "Real", "systemName": "HR 7280",
-              "sellPrice": 640000, "demand": 800, "distance": 9.0}]
-    _was, _base = _ur.urlopen, SERVER.SELL_UPSTREAM_BASE
-    _ur.urlopen = lambda req, timeout=None: _Reply(_rows)
-    SERVER.SELL_UPSTREAM_BASE = "https://index.invalid"
-    try:
-        _got = SERVER.fetch_upstream_sell("Iridium", "HR 7280", 50, 20)
-    finally:
-        _ur.urlopen, SERVER.SELL_UPSTREAM_BASE = _was, _base
-    check("the server leaves the placeholder row out too",
-          [r["station"] for r in _got] == ["Real"], _got)
 
 print()
 print("FAILURES:", len(fails))

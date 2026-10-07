@@ -97,7 +97,7 @@ check("the app starts in the cockpit unless told otherwise",
 print("== Settings offers them ==")
 src = open(A.__file__, encoding="utf-8").read()
 check("a Basic settings section comes first",
-      src.index('"Basic settings"') < src.index('"Sharing your finds"'))
+      src.index('"Basic settings"') < src.index('"The community map"'))
 check("and says everything can be changed",
       "can be changed" in src.split('"Basic settings"')[1][:400])
 check("the app theme and the overlay theme are both there, with every theme",
