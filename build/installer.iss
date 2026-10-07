@@ -11,7 +11,7 @@
 
 #define AppName    "EDSMT"
 #define AppLong    "EDSMT - Surface Mining Survey"
-#define AppVersion "1.10032"
+#define AppVersion "1.10033"
 #define ExeName    "EDSMT.exe"
 
 [Setup]
@@ -24,7 +24,7 @@ AppVerName={#AppLong} {#AppVersion}
 AppPublisher=Radio Raxxla
 AppCopyright=Copyright (C) 2026 Radio Raxxla. GPL-3.0-only
 AppPublisherURL=https://www.radioraxxla.com/EDSMT
-VersionInfoVersion=1.10032.0.0
+VersionInfoVersion=1.10033.0.0
 
 ; Per-user by default: no admin prompt, which is one fewer thing to explain
 ; and one fewer reason for somebody to give up on the download.

@@ -1,15 +1,15 @@
 {
-  "version": "1.10032",
+  "version": "1.10033",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "New \u2014 an estimate of what a deposit holds, before you work it",
+  "headline": "New \u2014 look up any system's prices, and tick several commodities",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10032",
-    "sha256": "85e180eda090582278f62ba462ce411bd374ac4a5e0dcf91d0a0cc81f7728204",
-    "bytes": 12780045
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10033",
+    "sha256": "7ebb8509323627e6ef50e4470cd9675fb9e9977a342ee38bdf086edb60e46ccd",
+    "bytes": 13597040
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10032",
-    "sha256": "5fe55cccfd14d4d9c5b75f614843c3f38cd6a8e7d197b12d39dd3c57179ff16f",
-    "bytes": 14148602
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10033",
+    "sha256": "604bc2cf365cf281099eb4b2ab89946fc29d0c6f550edb44520fe87cc6719e62",
+    "bytes": 15148327
   }
 }

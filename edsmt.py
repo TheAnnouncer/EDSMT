@@ -463,7 +463,7 @@ def app_dir():
 
 
 # The Rhino, shown on the first-run window and in Settings > About EDSMT.
-# Elite Dangerous (c) Frontier Developments plc.
+# Screenshot by CMDR TheAnnouncer; Elite Dangerous (c) Frontier Developments plc.
 WELCOME_PICTURE = "rhino-banner.png"
 ABOUT_PICTURE = "rhino-about.png"
 # The first-run window's size, with the picture across its top and without.
@@ -8658,8 +8658,9 @@ def about_text():
     return ("EDSMT %s  -  radioraxxla.com/EDSMT\n"
             "Copyright (C) 2026 Radio Raxxla. GPL-3.0-only - the source is on "
             "GitHub at TheAnnouncer/EDSMT.\n"
-            "Elite Dangerous and the Rhino are (C) Frontier Developments plc. "
-            "EDSMT is not affiliated with Frontier Developments." % APP_VERSION)
+            "The Rhino: screenshot by CMDR TheAnnouncer. Elite Dangerous and "
+            "the Rhino are (C) Frontier Developments plc. EDSMT is not "
+            "affiliated with Frontier Developments." % APP_VERSION)
 
 
 class WelcomeWindow(ctk.CTkToplevel):
