@@ -8,7 +8,7 @@ The scope in the game did the same at its 50 km cap. This file holds the
 maths that fixes it, the key defaults, the rig distance a person types, and
 the words the overlay flashes - all without a display.
 """
-import os, sys, math, json, tempfile, re
+import os, sys, math, tempfile, re
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "stubs"))
 import _ctkstub  # noqa

@@ -1,5 +1,5 @@
 """The window, driven by a synthetic journal. No display, no Tk, no game."""
-import os, sys, json, time, tempfile, shutil
+import os, sys, json, tempfile, shutil
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "stubs"))
 import _ctkstub  # noqa
@@ -632,7 +632,7 @@ w = _Find(_Comm()); w.results("search", DEPOSITS, True)
 w.copy_all()
 block = w.clipboard.splitlines()
 check("the block leads with the headings",
-      block[0].startswith("System | Body"), block[0])
+      block[0].startswith("System | Distance | Body"), block[0])
 check("and carries every row on screen", len(block) == 3, block)
 check("including who found each one",
       "CMDR Jameson" in block[1] and A.ANONYMOUS in block[2], block)
@@ -841,10 +841,10 @@ INTACT = json.dumps({"sites": [
 w = _Find(_Comm()); w.results("intact", INTACT, True)
 check("the answer draws a table", bool(w._rows), w._rows)
 check("led by how sure we are it is still there",
-      w._headers[3] == "Still there", w._headers)
+      w._headers[4] == "Still there", w._headers)
 rows = _shown(w)
 check("shown as a percentage a person can read",
-      rows[0][3] == "94%", rows[0])
+      rows[0][4] == "94%", rows[0])
 check("the server's own ordering is not second-guessed",
       [r[0] for r in rows] == ["Sure", "Doubtful"], rows)
 check("and hide worked-out still does its job on the way in, because this "
@@ -853,9 +853,9 @@ check("and hide worked-out still does its job on the way in, because this "
 w.hide_worked.set(False); w._paint()
 check("unticking it brings the stripped one back", len(_shown(w)) == 3, _shown(w))
 # Sorts on the number behind the sentence, not on "94%" as text.
-w.sort_by(3)
+w.sort_by(4)
 check("the confidence column sorts as a number",
-      [r[3] for r in _shown(w)] == ["2%", "11%", "94%"], _shown(w))
+      [r[4] for r in _shown(w)] == ["2%", "11%", "94%"], _shown(w))
 
 print("== best sell prices asks near where you are, not what it is called ==")
 # A15. It sent the commander's current system, matched exactly. You are
@@ -1489,12 +1489,16 @@ _sw.app = type("App", (), {
     "refresh_locations": staticmethod(lambda: _restored.append("locations")),
     "refresh_deposits": staticmethod(lambda: _restored.append("deposits")),
     "refresh_commodities": staticmethod(lambda: _restored.append("commodities")),
-    "redraw": staticmethod(lambda: _restored.append("map"))})()
+    "redraw": staticmethod(lambda: _restored.append("map")),
+    "apply_settings": staticmethod(lambda data: _restored.append("settings")),
+    "say": staticmethod(lambda *a, **k: None)})()
+_sw.destroy = lambda: None
 _sw.restore_now()
 check("the deposit list is refreshed, not left showing the old database",
       "deposits" in _restored, _restored)
 check("and so is everything else",
-      set(_restored) == {"locations", "deposits", "commodities", "map"}, _restored)
+      set(_restored) == {"locations", "deposits", "commodities", "map", "settings"},
+      _restored)
 
 print("== a corrected deposit goes back up, not just a mined-out one ==")
 # EditWindow.save -> deposit_edited never re-uploaded, while mark_mined did.
@@ -2537,10 +2541,12 @@ _missing = [n.name for n in _rowfns
 check("and not one of them leaves the commander out", not _missing, _missing)
 # The header count and the row length have to agree or the column silently
 # shifts - which is how a table ends up showing the score under "Found by".
-for _name, _head in (("_site_row", ["System", "Body", "Signal", "Rigs", "Types",
-                                    "Last seen", "Found by", "Score"]),
-                     ("_intact_row", ["System", "Body", "Signal", "Still there",
-                                      "Rigs", "Types", "Last seen", "Found by"])):
+for _name, _head in (("_site_row", ["System", "Distance", "Body", "Signal",
+                                    "Rigs", "Types", "Last seen", "Found by",
+                                    "Score"]),
+                     ("_intact_row", ["System", "Distance", "Body", "Signal",
+                                      "Still there", "Rigs", "Types",
+                                      "Last seen", "Found by"])):
     _fn = next(n for n in _rowfns if n.name == _name)
     _ret = next(n for n in _ast.walk(_fn) if isinstance(n, _ast.Return))
     check("%s returns one cell per heading" % _name,

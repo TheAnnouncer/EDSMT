@@ -2,7 +2,7 @@
 
     python tests/test_110032.py
 """
-import os, sys, math, tempfile
+import os, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "stubs"))
 import _ctkstub  # noqa

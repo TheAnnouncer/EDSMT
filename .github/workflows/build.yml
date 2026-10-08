@@ -4,8 +4,8 @@
 # Push a tag and the installer plus the portable exe are attached to a
 # GitHub release, ready to be uploaded to radioraxxla.com/EDSMT/:
 #
-#     git tag v1.10033
-#     git push origin v1.10033
+#     git tag v1.10034
+#     git push origin v1.10034
 #
 # Every other push just builds and keeps the files as artifacts for 30 days,
 # so a broken build is caught before a release, not during one.

@@ -157,7 +157,7 @@
     </div>
     <p class="note">Free &middot; No account &middot; Every find goes on the community map</p>
     <p class="build">
-      <span>Build <b><!--VERSION-->1.10033<!--/VERSION--></b></span>
+      <span>Build <b><!--VERSION-->1.10034<!--/VERSION--></b></span>
       <span>Elite Dangerous <b>4.4.1.1</b></span>
       <span>Windows</span>
       <span>Source: <a href="https://github.com/TheAnnouncer/EDSMT">github.com/TheAnnouncer/EDSMT</a> (GPL-3.0)</span>
@@ -403,23 +403,21 @@
   </section>
 
   <section class="section" id="whatsnew">
-    <div class="sec-head"><div><span class="label on">Latest build &middot; <!--VERSION-->1.10033<!--/VERSION--></span><h2>What changed</h2></div></div>
+    <div class="sec-head"><div><span class="label on">Latest build &middot; <!--VERSION-->1.10034<!--/VERSION--></span><h2>What changed</h2></div></div>
     <!--WHATSNEW-->
-    <h3>New — look up any system&#x27;s prices, and tick several commodities</h3>
-    <p><b>Earnings → Prices in a system</b>: type a system, or leave it blank for the one you are in, and get the last known sell price of each commodity at every market there — station, pad, demand, when it was seen, and whether it came from another commander&#x27;s market read or the market index, whichever is newer. <b>Best market only</b> shows the best station for each commodity; untick it for all of them.</p>
-    <p>Every commodity box in a search — Find, Where to land, My sites and Prices in a system — now ticks several at once. Click to tick, click again to untick, <b>Any</b> clears them; or type <code>Monazite, bast</code> and press Enter. Best sell prices answers for each one you ticked, in one table.</p>
-    <h3>New — a key for the overlay, and the overlay only in the Rhino</h3>
-    <p><b>Alt+0</b> turns the overlay on and off (rebind it in Settings). By default it shows only while you are driving a Rhino; switch that off in Settings if you want it in the ship too.</p>
-    <h3>Changed — every find goes on the community map</h3>
-    <p>Sharing is no longer a switch: every deposit you mark and every market you open goes on the one community map, and <b>Find</b> is open to everybody from the start. The first start asks only whether to put your CMDR name on your finds — Settings has it after. Your notes, sessions and settings never leave your PC.</p>
-    <h3>New — a backup before every update</h3>
-    <p><b>INSTALL UPDATE</b> now saves a dated backup of your finds and settings to Documents → EDSMT backups first, and keeps the last ten.</p>
-    <h3>New — two Rhinos, and the overlay at any size</h3>
-    <ul><li>Two Rhinos on one ship: six rigs each, twelve in all, and the rig keys act on the Rhino you are driving. Earnings splits a session per Rhino.</li><li>Overlay text size now moves the rows instead of stacking them, on every screen from 1024×768 to 7680×2160, ultrawide and 4K included. Layout presets (Standard, Map focus, Minimal, Streamer) and a stronger look for the ground you have swept (Faint, Clear, Solid) are in Settings → Overlay.</li></ul>
+    <h3>Fixed — settings lost when you built or updated</h3>
+    <p>Every time the build was made on a PC with EDSMT&#x27;s data on it, one of the checks wrote its test settings over the real ones: overlay placement, layout, theme and keys went back to the defaults. Every check now runs in a folder of its own, and settings can no longer be lost for good:</p>
+    <ul><li><b>Earlier settings</b> (Settings → Your data): EDSMT keeps a dated copy of your settings whenever something that matters changes &mdash; the last thirty. Pick one and press <b>Put these back</b>: overlay placement, layout, theme, keys, the lot, at once.</li><li><b>Restore from a backup</b> now puts the settings in the zip back as well, straight away, instead of leaving the old ones in charge until a restart.</li><li>A backup now carries the ground you have swept and the survey border of every body, and the dated settings copies, as well as your finds.</li></ul>
+    <h3>New — Where to land remembers every system</h3>
+    <p>A system honked in an earlier session showed &quot;0 bodies scanned&quot;. EDSMT now reads all your older journals once, in the background, and remembers every body they describe; asks the public body database, through the community server, for systems your own journals have not covered; and keeps every new scan as it happens. Where to land says how many came from the public database, and while it is still reading your older journals. Your own journal always wins over the public database.</p>
+    <h3>New — your own Discord channel</h3>
+    <p>Settings → Sharing → <b>Discord</b>: paste a channel&#x27;s webhook and every find you mark, and a summary of every Rhino session &mdash; tonnes, time, credits, Cr/hr, t/hr, where you sold &mdash; is posted there as you play. <b>Send a test message</b> checks it. The webhook stays behind dots, and nobody in the channel is ever pinged by anything typed.</p>
+    <h3>New — rigs</h3>
+    <ul><li><b>Rigs survive a restart.</b> They used to be held in memory: close EDSMT and every rig was gone. They are written down as they change.</li><li><b>TOO CLOSE TO RIG n</b> on the boxes inside the rig spacing of one of your own rigs, so you know before you drop the next one; dropping one there anyway is marked and warned about. <b>COLLECT RIG n</b>, in cyan, when you are back at a rig that has been working.</li><li><b>A rig is marked where it lands</b>: 7 m behind the cockpit (a setting), not where you are sitting.</li><li>A Rhino <b>docking in the ship takes its own rigs off the scope</b> (a setting); the other Rhino&#x27;s stay.</li><li><b>Double-click a rig on the map</b> to put right what it is mining, or to pick it up on its own.</li><li><b>A rig dropped on somebody else&#x27;s shared find</b> &mdash; or on the one you picked &mdash; is on their commodity, not on whatever the box last said.</li><li><b>Past 6 km the rigs are forgotten</b>, and every warning with them. Out of the Rhino &mdash; in the ship, on foot &mdash; no rig warning goes up at all: the distance from there is not the Rhino&#x27;s.</li><li><b>Shared rig layouts</b>: when your rigs come up, how they were laid out on the deposit &mdash; and the edge and pins, if you used the rig planner &mdash; goes on the community map. On a deposit with no plan of your own, the best layout other commanders used shows as <b>SHARED PIN</b> pins on the scope.</li></ul>
+    <h3>New — and the rest</h3>
+    <ul><li><b>Find has a Distance column</b>: how many light years each site and deposit is from where you are, whether or not you picked a radius.</li><li><b>A note on every control</b>: rest the mouse on anything for what it does. Settings → Basics turns them off.</li><li><b>A first-run tour</b> of the main window, once; Settings → Basics runs it again. Never over the game.</li><li><b>Settings in tabs</b>: Basics, Overlay, Keys, Rigs, Sharing, Your data, About.</li><li><b>SRV FUEL LOW</b> on the boxes when the game says the SRV is low.</li><li><b>t/hr</b> in Earnings: tonnes an hour, beside Cr/hr.</li><li><b>In the Rhino with the overlay off</b>, EDSMT says how to turn it on &mdash; on your first three sessions only.</li><li><b>Installed to C:\EDTools\RadioRaxxla\EDSMT</b>, with a Radio Raxxla folder in the Start menu. An older install is moved there by the update: only its own program files are taken out of the old folder, and your finds and settings, which live elsewhere, are not touched.</li></ul>
     <h3>Fixed</h3>
-    <ul><li>The survey centre and border are kept through a trip back to the ship.</li><li>The guide no longer sticks on 2/11 when you drop out of supercruise straight at the body.</li><li>Touching down by a mining location fills in its signal number on a body you have not logged yet.</li><li>Rigs lost to a disconnect: after a relog EDSMT offers to clear them.</li><li>The compass letters are no longer cut off at the top of the strip.</li><li>The top bar no longer squeezes its buttons when the readouts are long.</li><li>On 768-line and 1080p screens the DEPOSIT box no longer wrote its rows over SIGNAL POINT.</li></ul>
-    <h3>Also</h3>
-    <p>EDSMT connects to the Radio Raxxla community map only — there is no server address to set. The Rhino is on the first-run window and in the new <b>Settings → About EDSMT</b>. Thanks to CMDR Todd Jenkins for testing.</p>
+    <ul><li>Finishing the guide left its box on the overlay, frozen on the last card. It goes as the guide does.</li><li>A box&#x27;s suggestion list stayed open after a click on the map or a panel. A click anywhere else, or a second click in the box, shuts it.</li><li>Radio Raxxla staff can take a wrong find, or a wrong site, off the community map from Find. What is removed is kept, with who removed it.</li></ul>
     <!--/WHATSNEW-->
   </section>
 

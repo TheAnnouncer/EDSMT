@@ -34,6 +34,13 @@ locations.csv
 crash.log
 journal-mining-events.log
 portable.txt
+settings.json.bak
+settings-history/
+sessions.csv
+rigs.json
+imported.json
+# With portable.txt beside the code, the data goes in data\ instead.
+/data/
 
 # ---- databases and secrets ----------------------------------------------
 # The community API is run by Radio Raxxla and its source is not part of

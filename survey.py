@@ -184,6 +184,21 @@ def local_offset(from_lat, from_lon, to_lat, to_lon, radius_m):
     return metres * math.sin(theta), metres * math.cos(theta)
 
 
+def destination(lat, lon, bearing, metres, radius_m):
+    """The point `metres` away along `bearing` from (lat, lon), across a
+    body of `radius_m`. Where a rig really is, a few metres behind the
+    cockpit that Status.json places; and later, a deposit seen from range."""
+    if not radius_m:
+        return lat, lon
+    p1, l1 = math.radians(lat), math.radians(lon)
+    th, d = math.radians(bearing), float(metres) / float(radius_m)
+    p2 = math.asin(max(-1.0, min(1.0, math.sin(p1) * math.cos(d)
+                                 + math.cos(p1) * math.sin(d) * math.cos(th))))
+    l2 = l1 + math.atan2(math.sin(th) * math.sin(d) * math.cos(p1),
+                         math.cos(d) - math.sin(p1) * math.sin(p2))
+    return math.degrees(p2), (math.degrees(l2) + 540.0) % 360.0 - 180.0
+
+
 def nearest_signal(locations, lat, lon, radius_m, within_m):
     """The logged signal you are standing in, or None.
 
@@ -822,6 +837,27 @@ def _land_verdict(row, unshared):
 # Storage
 # ---------------------------------------------------------------------------
 
+# What a backup carries: every file of these kinds in the data folder, and
+# in these folders inside it - the swept ground and survey area per body,
+# and the dated copies of the settings.
+BACKUP_KINDS = (".csv", ".json", ".log")
+BACKUP_FOLDERS = ("coverage", "settings-history")
+
+
+def backup_member_ok(name):
+    """A name in a backup zip that may be put back: a plain file at the top,
+    or one inside a folder a backup writes. Nothing absolute, nothing that
+    climbs out, nothing from a folder this never wrote."""
+    if not name or name.endswith("/") or "\\" in name or name.startswith("/"):
+        return False
+    parts = name.split("/")
+    if any(part in ("", ".", "..") or ":" in part for part in parts):
+        return False
+    if len(parts) == 1:
+        return True
+    return len(parts) == 2 and parts[0] in BACKUP_FOLDERS
+
+
 class Survey:
     """Every location and deposit this commander has recorded.
 
@@ -1019,9 +1055,21 @@ class Survey:
                 path = os.path.join(self.folder, filename)
                 if not os.path.isfile(path):
                     continue
-                if filename.endswith((".csv", ".json", ".log")):
+                if filename.endswith(BACKUP_KINDS):
                     bundle.write(path, filename)
                     wrote += 1
+            # The swept ground and survey area of every body, and the
+            # dated copies of the settings, live one folder down. A backup
+            # without them put back the finds and lost the survey.
+            for sub in BACKUP_FOLDERS:
+                base = os.path.join(self.folder, sub)
+                if not os.path.isdir(base):
+                    continue
+                for filename in sorted(os.listdir(base)):
+                    path = os.path.join(base, filename)
+                    if os.path.isfile(path) and filename.endswith(BACKUP_KINDS):
+                        bundle.write(path, sub + "/" + filename)
+                        wrote += 1
         if not wrote:
             os.remove(target)
             return None, 0
@@ -1039,12 +1087,11 @@ class Survey:
         stamp = time.strftime("%Y%m%d-%H%M%S")
         restored = 0
         with zipfile.ZipFile(zip_path) as bundle:
-            names = [n for n in bundle.namelist()
-                     if not n.endswith("/") and "/" not in n and "\\" not in n]
+            names = [n for n in bundle.namelist() if backup_member_ok(n)]
             if not names:
                 return 0
             for filename in names:
-                current = os.path.join(self.folder, filename)
+                current = os.path.join(self.folder, *filename.split("/"))
                 if os.path.exists(current):
                     shutil.move(current, current + ".before-restore-" + stamp)
                 bundle.extract(filename, self.folder)
@@ -1521,6 +1568,15 @@ def credits_per_hour(row):
     """
     hours = session_hours(row)
     return earned(row) / hours if hours > 0 else 0.0
+
+
+def tonnes_per_hour(row):
+    """What the run dug up an hour, over the hours it was actually running
+    (pauses left out, as for credits). Zero when it cannot be worked out."""
+    hours = session_hours(row)
+    if hours <= 0:
+        return 0.0
+    return sum(unpack_counts(row.get("mined")).values()) / hours
 
 
 def hold_value(counts, prices):

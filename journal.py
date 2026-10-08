@@ -54,6 +54,7 @@ FLAG_LANDED = 1 << 1
 FLAG_HAS_LATLONG = 1 << 21
 FLAG_IN_MAIN_SHIP = 1 << 24
 FLAG_IN_SRV = 1 << 26
+FLAG_LOW_FUEL = 1 << 19
 # Set when Status.json's Altitude is measured from the body's average radius
 # rather than from the ground under you - high up, in orbital cruise. Only
 # without it is Altitude a height above the surface you could deploy from.
@@ -82,6 +83,64 @@ BODY_EVENTS = {"Scan", "SAASignalsFound", "SAAScanComplete", "FSSBodySignals"}
 # string is not documented anywhere yet, so match on the shape of it and
 # keep whatever else turns up.
 MINING_SIGNAL = re.compile(r"mining|deposit|resource", re.I)
+
+
+def scan_facts(event, system=""):
+    """What one Scan event says about its body: (body name, facts).
+
+    Only what the event actually carries is in `facts`, so it can be laid
+    over what is already known without blanking anything. Which system it
+    is in, whether you can land on it and how far it is from the arrival
+    star are what Where to land is built from; the kind of world is what
+    the commodity odds are built from.
+    """
+    body = str(event.get("BodyName") or event.get("Body") or "")
+    facts = {}
+    system = str(event.get("StarSystem") or system or "")
+    if system:
+        facts["system"] = system
+    if "Landable" in event:
+        facts["landable"] = bool(event.get("Landable"))
+    if event.get("DistanceFromArrivalLS") is not None:
+        try:
+            facts["distance_ls"] = float(event["DistanceFromArrivalLS"])
+        except (TypeError, ValueError):
+            pass
+    for key, field in (("radius_m", "Radius"),
+                       ("temperature_k", "SurfaceTemperature"),
+                       ("gravity", "SurfaceGravity")):
+        if event.get(field) is not None:
+            try:
+                facts[key] = float(event[field])
+            except (TypeError, ValueError):
+                pass
+    # Nobody has published which surface deposits favour which bodies,
+    # because nobody has been collecting both halves at once - so collect
+    # both halves.
+    for key, field in (("planet_class", "PlanetClass"),
+                       ("atmosphere", "AtmosphereType"),
+                       ("volcanism", "Volcanism"),
+                       ("terraform", "TerraformState")):
+        value = event.get(field)
+        if value not in (None, ""):
+            facts[key] = str(value).strip()
+    # The journal writes "No volcanism" as an empty string on some bodies
+    # and omits the key on others. Both mean the same thing, and "unknown"
+    # and "none" are different answers to "does volcanism matter".
+    if "Volcanism" in event and not str(event.get("Volcanism") or "").strip():
+        facts["volcanism"] = "None"
+    return body, facts
+
+
+def signal_rows(event):
+    """The signal list of a SAASignalsFound or FSSBodySignals event, as the
+    watcher files it, or None when the event carries no list."""
+    signals = event.get("Signals") or []
+    if not isinstance(signals, list):
+        return None
+    return [{"type": str(sig.get("Type_Localised") or sig.get("Type") or ""),
+             "count": int(sig.get("Count") or 0)}
+            for sig in signals if isinstance(sig, dict)]
 SYSTEM_EVENTS = {"Location", "FSDJump", "CarrierJump", "SupercruiseExit",
                  "ApproachBody", "Touchdown", "Liftoff", "Embark", "Disembark",
                  "LeaveBody", "SupercruiseEntry"}
@@ -355,6 +414,7 @@ class JournalWatcher:
         # to a Saved Games folder whose permissions had been changed.
         self.problem = ""
         self.on_foot = False           # Odyssey, from Flags2 - not Flags
+        self.low_fuel = False          # Flags bit 19, ship or SRV
         self.gliding = False
         self.game_version = ""         # from Fileheader, e.g. "4.4.1.0"
         self.journal_part = 1
@@ -385,6 +445,8 @@ class JournalWatcher:
         # Systems the discovery scanner has been fired in, this session and
         # replayed - the guide's first step is "jump in and honk".
         self.honked = set()
+        # system lower-cased -> bodies the honk counted there.
+        self.body_counts = {}
         # The last body approached, with its system - the guide's second
         # step, "pick where to land", is done once you head for one.
         self.approached = ("", "")
@@ -649,6 +711,8 @@ class JournalWatcher:
         self.running = True
         self.landed = bool(flags & FLAG_LANDED)
         self.in_srv = bool(flags & FLAG_IN_SRV)
+        # The game's own low-fuel flag, in whatever is being driven.
+        self.low_fuel = bool(flags & FLAG_LOW_FUEL)
         self.in_ship = bool(flags & FLAG_IN_MAIN_SHIP)
         self.gliding = bool(flags2 & FLAG2_GLIDE)
         height = number(data.get("Altitude"))
@@ -904,6 +968,11 @@ class JournalWatcher:
                 where = str(event.get("SystemName") or self.system or "")
                 if where:
                     self.honked.add(where.lower())
+                    # How many bodies the honk counted: Where to land asks
+                    # for the rest when fewer than this are known.
+                    count = event.get("BodyCount", event.get("Count"))
+                    if isinstance(count, int):
+                        self.body_counts[where.lower()] = count
                 continue
 
             # The sale, the pad and the shutdown are what a run's takings are
@@ -1002,62 +1071,29 @@ class JournalWatcher:
         """Remember what the DSS and the scanner said about a body.
 
         Scan units are the journal's own, not the ones the game UI shows:
-        Radius is in metres, SurfaceTemperature in kelvin.
+        Radius is in metres, SurfaceTemperature in kelvin. The reading is
+        done by scan_facts and signal_rows, which the older-journal reader
+        (bodybook) shares, so a body read from last month's journal is
+        filed exactly the way a body scanned now is.
         """
         body = str(event.get("BodyName") or event.get("Body") or "")
         if not body:
             return
 
         if name == "Scan":
+            _body, found = scan_facts(event, self.system)
             facts = self.body_facts.setdefault(body, {})
-            # Which system it is in, whether you can land on it and how far
-            # it is from the arrival star: what Where to land is built from.
-            system = str(event.get("StarSystem") or self.system or "")
-            if system:
-                facts["system"] = system
-            if "Landable" in event:
-                facts["landable"] = bool(event.get("Landable"))
-            if event.get("DistanceFromArrivalLS") is not None:
-                try:
-                    facts["distance_ls"] = float(event["DistanceFromArrivalLS"])
-                except (TypeError, ValueError):
-                    pass
-            for key, field in (("radius_m", "Radius"),
-                               ("temperature_k", "SurfaceTemperature"),
-                               ("gravity", "SurfaceGravity")):
-                if event.get(field) is not None:
-                    try:
-                        facts[key] = float(event[field])
-                    except (TypeError, ValueError):
-                        pass
-
-            # What kind of world it is. Nobody has published which surface
-            # deposits favour which bodies, because nobody has been
-            # collecting both halves at once - so collect both halves.
-            for key, field in (("planet_class", "PlanetClass"),
-                               ("atmosphere", "AtmosphereType"),
-                               ("volcanism", "Volcanism"),
-                               ("terraform", "TerraformState")):
-                value = event.get(field)
-                if value not in (None, ""):
-                    facts[key] = str(value).strip()
-
-            # The journal writes "No volcanism" as an empty string on some
-            # bodies and omits the key on others. Both mean the same thing,
-            # and "unknown" and "none" are different answers to the question
-            # "does volcanism matter", so say which this is.
-            if "Volcanism" in event and not str(event.get("Volcanism") or "").strip():
-                facts["volcanism"] = "None"
+            # A body first known from elsewhere - an older journal or the
+            # public body database - is the journal's own from now on.
+            facts.pop("source", None)
+            facts.update(found)
 
         elif name in ("SAASignalsFound", "FSSBodySignals"):
-            signals = event.get("Signals") or []
             if name == "SAASignalsFound":
                 self.body_mapped.add(body)
-            if isinstance(signals, list):
-                self.body_signals[body] = [
-                    {"type": str(sig.get("Type_Localised") or sig.get("Type") or ""),
-                     "count": int(sig.get("Count") or 0)}
-                    for sig in signals if isinstance(sig, dict)]
+            rows = signal_rows(event)
+            if rows is not None:
+                self.body_signals[body] = rows
 
     def mining_signals(self, body=None):
         """How many mining locations the DSS reported on this body, if any."""

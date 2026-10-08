@@ -33,7 +33,7 @@ datas += [(os.path.join(ROOT, "images", name), "images")
 
 hiddenimports = collect_submodules("customtkinter")
 hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",
-                  "rigplan"]
+                  "rigplan", "bodybook"]
 
 excludes = [
     "PyQt5", "PyQt6", "PySide2", "PySide6", "wx",

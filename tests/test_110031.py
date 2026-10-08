@@ -5,7 +5,7 @@ positions are synthetic, and the server is FastAPI's own test client.
 
     python tests/test_110031.py
 """
-import os, sys, json, math, tempfile, time
+import os, sys, json, math, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "stubs"))
 import _ctkstub  # noqa

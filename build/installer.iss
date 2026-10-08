@@ -11,7 +11,7 @@
 
 #define AppName    "EDSMT"
 #define AppLong    "EDSMT - Surface Mining Survey"
-#define AppVersion "1.10033"
+#define AppVersion "1.10034"
 #define ExeName    "EDSMT.exe"
 
 [Setup]
@@ -24,19 +24,26 @@ AppVerName={#AppLong} {#AppVersion}
 AppPublisher=Radio Raxxla
 AppCopyright=Copyright (C) 2026 Radio Raxxla. GPL-3.0-only
 AppPublisherURL=https://www.radioraxxla.com/EDSMT
-VersionInfoVersion=1.10033.0.0
+VersionInfoVersion=1.10034.0.0
 
 ; Per-user by default: no admin prompt, which is one fewer thing to explain
 ; and one fewer reason for somebody to give up on the download.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-DefaultDirName={autopf}\EDSMT
-DefaultGroupName=EDSMT
+; Every Radio Raxxla tool lives under C:\EDTools\RadioRaxxla\<tool>, and in
+; one Start menu folder, Radio Raxxla (1.10034, #167). Windows lets an
+; ordinary user make a folder at the top of the system drive, so this needs
+; no admin prompt either.
+DefaultDirName={sd}\EDTools\RadioRaxxla\EDSMT
+DefaultGroupName=Radio Raxxla
 DisableProgramGroupPage=yes
-UsePreviousAppDir=yes
+; Not the previous folder or group: an EDSMT installed before 1.10034 is
+; MOVED here - the new copy goes in, then [Code] below takes out only the
+; files the old Setup put in the old folder, and its old Start menu entries.
+UsePreviousAppDir=no
+UsePreviousGroup=no
 ; UPGRADES. Same AppId, so Windows replaces the installed copy rather
-; than putting a second one beside it, and UsePreviousAppDir keeps it in
-; the folder it is already in. CloseApplications lets the Restart Manager
+; than putting a second one beside it. CloseApplications lets the Restart Manager
 ; shut EDSMT first: PyInstaller folder builds hold their DLLs open, and
 ; installing over a running copy is how you get a half-updated one.
 CloseApplications=yes
@@ -108,3 +115,70 @@ Filename: "{app}\{#ExeName}"; Flags: nowait skipifnotsilent runasoriginaluser
 ; Finds live in %LOCALAPPDATA%\RadioRaxxla\EDSMT and are deliberately left
 ; alone on uninstall. Nobody should lose a mapped system because they
 ; reinstalled.
+
+[Code]
+// 1.10034 (#167): an EDSMT installed before this, in its old folder, is
+// moved to C:\EDTools\RadioRaxxla\EDSMT. The new copy is installed first;
+// only then are the files the OLD Setup put in the old folder removed, one
+// by name - never the folder's other contents, never the finds and settings
+// in %LOCALAPPDATA%\RadioRaxxla\EDSMT - and the old folder itself only if
+// that left it empty. The old Start menu entries go the same way.
+var
+  OldDir: String;
+
+function PreviousInstallDir(): String;
+var
+  Key, Dir: String;
+begin
+  Result := '';
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B4E7A1C9-3D62-4F08-9A15-7C2E5B8D4610}_is1';
+  if RegQueryStringValue(HKCU, Key, 'Inno Setup: App Path', Dir) then
+    Result := Dir
+  else if IsWin64 and RegQueryStringValue(HKLM64, Key, 'Inno Setup: App Path', Dir) then
+    Result := Dir
+  else if RegQueryStringValue(HKLM32, Key, 'Inno Setup: App Path', Dir) then
+    Result := Dir;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  OldDir := PreviousInstallDir();
+  Result := True;
+end;
+
+procedure RemoveOldShortcuts(Folder: String);
+begin
+  DeleteFile(AddBackslash(Folder) + 'EDSMT.lnk');
+  DeleteFile(AddBackslash(Folder) + 'Uninstall EDSMT.lnk');
+  RemoveDir(Folder);
+end;
+
+procedure RemoveOldCopy(Dir: String);
+var
+  Base: String;
+begin
+  Base := AddBackslash(Dir);
+  DeleteFile(Base + '{#ExeName}');
+  DelTree(Base + '_internal', True, True, True);
+  DeleteFile(Base + 'README.md');
+  DeleteFile(Base + 'LICENSE');
+  DeleteFile(Base + 'JOURNAL-NOTES.md');
+  DeleteFile(Base + 'unins000.exe');
+  DeleteFile(Base + 'unins000.dat');
+  // Only if nothing else is in it.
+  RemoveDir(Dir);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and (OldDir <> '') and
+     (CompareText(RemoveBackslashUnlessRoot(OldDir),
+                  RemoveBackslashUnlessRoot(ExpandConstant('{app}'))) <> 0) then
+  begin
+    RemoveOldCopy(OldDir);
+    RemoveOldShortcuts(ExpandConstant('{userprograms}\EDSMT'));
+    if IsAdminInstallMode then
+      RemoveOldShortcuts(ExpandConstant('{commonprograms}\EDSMT'));
+  end;
+end;
+

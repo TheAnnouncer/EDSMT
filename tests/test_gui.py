@@ -487,6 +487,21 @@ _lsave = next(b for w in le.winfo_children() for b in w.winfo_children()
 check("the signal editor's Save is inside the window", inside(_lsave, le))
 le.destroy()
 settle()
+# The rig editor (1.10034), opened by double-clicking a rig on the map.
+_rig = {"n": 2, "lat": 12.4, "lon": -98.7, "at": 0.0, "commodity": "Monazite",
+        "srv": None}
+_rw = A.RigEditWindow(app, _rig)
+settle(6)
+_rbuttons = [b for w in _rw.winfo_children() for b in w.winfo_children()
+             if isinstance(b, A.ctk.CTkButton)]
+check("the rig editor opens on the rig's commodity",
+      _rw.commodity.get() == "Monazite", _rw.commodity.get())
+check("and Save, Pick it up and Close are all inside the window",
+      sorted(b.cget("text") for b in _rbuttons) == ["Close", "Pick it up", "Save"]
+      and all(inside(b, _rw) for b in _rbuttons),
+      [(b.cget("text"), inside(b, _rw)) for b in _rbuttons])
+_rw.destroy()
+settle()
 
 print("== boxes open their list as you click or type, and Tab goes down ==")
 # Reported: "when selecting or typing it should auto show and you should be
@@ -578,6 +593,18 @@ settle(2)
 print("== Settings: the rig warning distance is a number or it is refused ==")
 _sw = A.SettingsWindow(app)
 settle(4)
+check("Settings is in tabs (#142)", list(_sw.pages) == list(A.SETTINGS_TABS)
+      and _sw.tabs.get() == A.SETTINGS_TABS[0], (list(_sw.pages), _sw.tabs.get()))
+_empty_tabs = [n for n, page in _sw.pages.items() if not texts_in(page)]
+check("every tab has its settings in it", not _empty_tabs, _empty_tabs)
+for _name in A.SETTINGS_TABS:
+    _sw.tabs.set(_name); settle(2)
+check("and each one opens", _sw.tabs.get() == A.SETTINGS_TABS[-1], _sw.tabs.get())
+_sw.tabs.set(A.SETTINGS_TABS[0]); settle(2)
+check("the rig warning is under Rigs, Discord under Sharing, backups under Your data",
+      "Warn me this far from a rig (m)" in texts_in(_sw.pages["Rigs"])
+      and any("DISCORD" in t.upper() for t in texts_in(_sw.pages["Sharing"]))
+      and any("Back up now" == t for t in texts_in(_sw.pages["Your data"])))
 _about_pics = [w for w in A_walk(_sw) if isinstance(w, tk.Label) and str(w.cget("image"))]
 check("Settings ends with About EDSMT: the Rhino, the build and the small print",
       "ABOUT EDSMT" in " ".join(texts_in(_sw)).upper() and _about_pics
@@ -614,6 +641,7 @@ app.apply_settings = _real_apply
 
 print("== Settings: the key boxes are dots until Show, safe on stream ==")
 _FAKE = "not-a-real-key-0123456789"
+_sw.tabs.set("Sharing"); settle(3)     # both keys live on the Sharing tab
 for _k in ("inara_api_key", "community_token"):
     _box = _sw.fields[_k]
     _box.delete(0, "end"); _box.insert(0, _FAKE); settle(2)
@@ -621,7 +649,9 @@ for _k in ("inara_api_key", "community_token"):
           repr(entry_of(_box).cget("show")))
     check("%s still holds the real text underneath" % _k, _box.get() == _FAKE)
     check("%s has a Show button beside it" % _k,
-          _sw.secrets[_k].cget("text") == "Show" and _sw.secrets[_k].winfo_ismapped())
+          _sw.secrets[_k].cget("text") == "Show" and bool(_sw.secrets[_k].winfo_manager()),
+          (_sw.secrets[_k].cget("text"), _sw.secrets[_k].winfo_manager(),
+           _sw.secrets[_k].winfo_ismapped()))
     _sw.secrets[_k].invoke(); settle(2)
     check("%s: Show shows it" % _k,
           entry_of(_box).cget("show") == "" and _sw.secrets[_k].cget("text") == "Hide")
@@ -1295,6 +1325,50 @@ check("and the second joins it in the same table",
       texts_in(finder.table)[:20])
 finder.destroy(); settle()
 app.community = _real_comm
+
+print("== a note on every control, and the tour (#166) ==")
+_note = getattr(app.tour_find, "_edsmt_tooltip", None)
+check("the Find button has a note", _note is not None
+      and "shared finds" in _note.text, getattr(_note, "text", None))
+_note._show(); settle(3)
+check("resting on it shows the note in a window of its own",
+      _note._win is not None and _note._win.winfo_exists())
+_shown_text = [w.cget("text") for w in _note._win.winfo_children()] if _note._win else []
+check("saying what the button is for", _shown_text and "shared finds" in _shown_text[0],
+      _shown_text)
+_note._leave(); settle(2)
+check("and moving off takes it away", _note._win is None)
+app.settings["show_tips"] = False
+_note._show(); settle(2)
+check("switched off in Settings, nothing shows", _note._win is None)
+app.settings["show_tips"] = True
+app.settings["tour_done"] = False
+check("the tour opens", app.start_tour()); settle(6)
+_tour = app.touring
+check("on its first step", _tour.at == 0 and "Welcome" in _tour.heading.cget("text"),
+      _tour.heading.cget("text"))
+while _tour.at < 3:
+    _tour.forward(); settle(2)
+_lit = _tour._lit
+check("a step rings the control it is about", _lit is not None
+      and _lit[0] is app.pad["signal"], _lit)
+_was = _lit[1] if _lit else {}
+_tour.forward(); settle(2)
+check("and puts it back as it was when it moves on",
+      _lit and all(str(app.pad["signal"].cget(k)) == str(v) for k, v in _was.items()),
+      (_was, {k: app.pad["signal"].cget(k) for k in _was}))
+_x, _y = _tour.winfo_rootx(), _tour.winfo_rooty()
+check("the tour window stays on the screen",
+      0 <= _x <= _tour.winfo_screenwidth() - 50 and 0 <= _y <= _tour.winfo_screenheight() - 50,
+      (_x, _y))
+_tour.backward(); settle(2)
+check("Back goes back", _tour.at == 3)
+_tour.finish(); settle(4)
+check("finishing closes it and remembers it was seen",
+      not _tour.winfo_exists() and app.settings.get("tour_done") is True)
+check("so it does not come back by itself", app.start_tour() is False)
+check("but Settings can run it again", app.start_tour(force=True)); settle(4)
+app.touring.finish(); settle(3)
 
 print("== first run: the community-map notice holds the keyboard until answered ==")
 app.settings["asked_to_share"] = False

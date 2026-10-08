@@ -13,7 +13,7 @@ of them are caught by testing the app's logic:
   * files named in the README that do not exist
   * functions written, never wired to anything, and shipped anyway
 """
-import ast, io, os, re, sys
+import ast, fnmatch, io, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -208,6 +208,27 @@ check("the workpath the specs are built into is the one that gets cleared",
       "--workpath build\\work" in bat)
 check("the build workflow is offered as source, since the README names it",
       "'.github'" not in bat[zip_at:zip_at + 400], "still excluded from the zip")
+# BUILD.bat zips whatever is at the top of this folder on his own PC, and
+# the zip is public. Settings carry the Inara key, the staff token and the
+# Discord webhook; portable.txt sends all of it into data\ beside the code.
+_zip_filter = re.search(r"-notin @\(([^)]*)\)(.*?)\}; Compress-Archive", bat)
+_zip_names = set(re.findall(r"'([^']+)'", _zip_filter.group(1))) if _zip_filter else set()
+_zip_like = set(re.findall(r"-notlike '([^']+)'", _zip_filter.group(2))) if _zip_filter else set()
+_LOCAL_DATA = ("data", "settings.json", "settings.json.bak", "settings-history",
+               "portable.txt", "deposits.csv", "locations.csv", "sessions.csv",
+               "sessions-seen.json", "rigs.json", "imported.json", "coverage",
+               "updates", "crash.log", "journal-mining-events.log",
+               "surfaceminingmap.csv", ".instance.lock", ".env")
+check("a commander's own data left in the folder never goes in the source zip",
+      _zip_filter is not None and not [n for n in _LOCAL_DATA if n not in _zip_names],
+      [n for n in _LOCAL_DATA if n not in _zip_names])
+check("nor does a database, a .bak, a .tmp or a backup zip",
+      {"*.db*", "*.bak", "*.tmp", "*.before-restore-*", "EDSMT-backup-*"} <= _zip_like,
+      sorted(_zip_like))
+check("while the program's own source still does",
+      not [n for n in ("edsmt.py", "survey.py", "coverage.py", "bodybook.py", "build",
+                       "tests", "site", "README.md", "LICENSE")
+           if n in _zip_names or any(fnmatch.fnmatch(n, p) for p in _zip_like)])
 
 print("== an update replaces the old version and keeps the finds ==")
 # The failure this guards against is silent: install 1.2 over 1.1 and a
@@ -216,8 +237,12 @@ print("== an update replaces the old version and keeps the finds ==")
 iss = read("build", "installer.iss")
 check("the AppId is a fixed GUID, so Windows replaces rather than duplicates",
       re.search(r"^AppId=\{\{[0-9A-F-]{36}\}", iss, re.M) is not None)
-check("it installs back into the folder it is already in",
-      "UsePreviousAppDir=yes" in iss)
+# 1.10034 (#167): one folder for every Radio Raxxla tool. An update moves
+# an older install there instead of staying in it - test_110034 holds the
+# move itself down.
+check("it installs into the Radio Raxxla folder, moving an older install there",
+      "DefaultDirName={sd}\\EDTools\\RadioRaxxla\\EDSMT" in iss
+      and "UsePreviousAppDir=no" in iss and "RemoveOldCopy" in iss)
 check("the running app is closed before its DLLs are replaced",
       "CloseApplications=yes" in iss)
 check("the previous build's runtime is cleared first",

@@ -225,6 +225,8 @@ full rather than leaving you to find them yourself.
     journal.py         reading Status.json and Journal.*.log
     edonline.py        Inara, the community map client, ranking
     rigplan.py         the rig planner
+    coverage.py        the ground swept, per body
+    bodybook.py        every body ever described, per system (Where to land)
     build/             PyInstaller and Inno Setup configuration
     tests/             the headless test suite, including one check per
                        numbered requirement

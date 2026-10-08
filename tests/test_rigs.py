@@ -43,7 +43,10 @@ def probe(limit=1000, sound=True):
     app = A.EDSMT.__new__(A.EDSMT)
     app.said, app.sounds, app.redraws = [], [], []
     app.say = lambda t, c=None: app.said.append((t, c))
-    app.settings = dict(A.DEFAULT_SETTINGS, rig_warn_m=limit, rig_warn_sound=sound)
+    # Rig positions here are measured from the cockpit itself; the 1.10034
+    # offset behind it has checks of its own in test_110034.
+    app.settings = dict(A.DEFAULT_SETTINGS, rig_warn_m=limit, rig_warn_sound=sound,
+                        rig_offset_m=0)
     app.where = ("Ega", "Ega 1")
     app.here = lambda: app.where
     app.redraw = lambda: app.redraws.append(True)

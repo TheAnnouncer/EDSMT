@@ -4,6 +4,96 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10034
+
+### Fixed — settings lost when you built or updated
+
+Every time the build was made on a PC with EDSMT's data on it, one of the
+checks wrote its test settings over the real ones: overlay placement,
+layout, theme and keys went back to the defaults. Every check now runs in a
+folder of its own, and settings can no longer be lost for good:
+
+- **Earlier settings** (Settings → Your data): EDSMT keeps a dated copy of
+  your settings whenever something that matters changes - the last thirty.
+  Pick one and press **Put these back**: overlay placement, layout, theme,
+  keys, the lot, at once.
+- **Restore from a backup** now puts the settings in the zip back as well,
+  straight away, instead of leaving the old ones in charge until a restart.
+- A backup now carries the ground you have swept and the survey border of
+  every body, and the dated settings copies, as well as your finds.
+
+### New — Where to land remembers every system
+
+A system honked in an earlier session showed "0 bodies scanned". EDSMT now
+reads all your older journals once, in the background, and remembers every
+body they describe; asks the public body database, through the community
+server, for systems your own journals have not covered; and keeps every new
+scan as it happens. Where to land says how many came from the public
+database, and while it is still reading your older journals. Your own
+journal always wins over the public database.
+
+### New — your own Discord channel
+
+Settings → Sharing → **Discord**: paste a channel's webhook and every find
+you mark, and a summary of every Rhino session - tonnes, time, credits,
+Cr/hr, t/hr, where you sold - is posted there as you play. **Send a test
+message** checks it. The webhook stays behind dots, and nobody in the
+channel is ever pinged by anything typed.
+
+### New — rigs
+
+- **Rigs survive a restart.** They used to be held in memory: close EDSMT
+  and every rig was gone. They are written down as they change.
+- **TOO CLOSE TO RIG n** on the boxes inside the rig spacing of one of your
+  own rigs, so you know before you drop the next one; dropping one there
+  anyway is marked and warned about. **COLLECT RIG n**, in cyan, when you
+  are back at a rig that has been working.
+- **A rig is marked where it lands**: 7 m behind the cockpit (a setting),
+  not where you are sitting.
+- A Rhino **docking in the ship takes its own rigs off the scope** (a
+  setting); the other Rhino's stay.
+- **Double-click a rig on the map** to put right what it is mining, or to
+  pick it up on its own.
+- **A rig dropped on somebody else's shared find** - or on the one you
+  picked - is on their commodity, not on whatever the box last said.
+- **Past 6 km the rigs are forgotten**, and every warning with them. Out of
+  the Rhino - in the ship, on foot - no rig warning goes up at all: the
+  distance from there is not the Rhino's.
+- **Shared rig layouts**: when your rigs come up, how they were laid out on
+  the deposit - and the edge and pins, if you used the rig planner - goes
+  on the community map. On a deposit with no plan of your own, the best
+  layout other commanders used shows as **SHARED PIN** pins on the scope.
+
+### New — and the rest
+
+- **Find has a Distance column**: how many light years each site and
+  deposit is from where you are, whether or not you picked a radius.
+- **A note on every control**: rest the mouse on anything for what it does.
+  Settings → Basics turns them off.
+- **A first-run tour** of the main window, once; Settings → Basics runs it
+  again. Never over the game.
+- **Settings in tabs**: Basics, Overlay, Keys, Rigs, Sharing, Your data,
+  About.
+- **SRV FUEL LOW** on the boxes when the game says the SRV is low.
+- **t/hr** in Earnings: tonnes an hour, beside Cr/hr.
+- **In the Rhino with the overlay off**, EDSMT says how to turn it on - on
+  your first three sessions only.
+- **Installed to C:\EDTools\RadioRaxxla\EDSMT**, with a Radio Raxxla folder
+  in the Start menu. An older install is moved there by the update: only
+  its own program files are taken out of the old folder, and your finds
+  and settings, which live elsewhere, are not touched.
+
+### Fixed
+
+- Finishing the guide left its box on the overlay, frozen on the last card.
+  It goes as the guide does.
+- A box's suggestion list stayed open after a click on the map or a panel.
+  A click anywhere else, or a second click in the box, shuts it.
+- Radio Raxxla staff can take a wrong find, or a wrong site, off the
+  community map from Find. What is removed is kept, with who removed it.
+
+---
+
 ## 1.10033
 
 ### New — look up any system's prices, and tick several commodities

@@ -1,15 +1,15 @@
 {
-  "version": "1.10033",
+  "version": "1.10034",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "New \u2014 look up any system's prices, and tick several commodities",
+  "headline": "Fixed \u2014 settings lost when you built or updated",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10033",
-    "sha256": "7ebb8509323627e6ef50e4470cd9675fb9e9977a342ee38bdf086edb60e46ccd",
-    "bytes": 13597040
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10034",
+    "sha256": "855e9cf343217a9bcfad9ca2e770ff2c27e0bb3640dece29758202660c6955ea",
+    "bytes": 14333041
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10033",
-    "sha256": "604bc2cf365cf281099eb4b2ab89946fc29d0c6f550edb44520fe87cc6719e62",
-    "bytes": 15148327
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10034",
+    "sha256": "af32aacbb42374dda1c3c5821220b5e9f4c0cab18b067a19a3ae4d3338a18ddc",
+    "bytes": 16187336
   }
 }
