@@ -21,6 +21,12 @@ Download it, run it, done. A normal installer wizard, a Start menu entry, a
 desktop shortcut if you want one, and a proper entry in Add/Remove Programs.
 **It installs for you only, so it never asks for admin.**
 
+It goes in `C:\EDTools\RadioRaxxla\EDSMT`, under **Radio Raxxla** in the
+Start menu. A copy installed somewhere else by an older version is moved
+there when you update: only EDSMT's own program files are taken out of the
+old folder, and your finds and settings, which never lived there, are not
+touched.
+
 If you would rather not install anything, `EDSMT.exe` on the same page is the
 same program as one portable file — save it anywhere and double-click it.
 
@@ -123,7 +129,7 @@ Windows sees it as Ctrl+Alt, so on a keyboard without one — a US layout —
 the same keys are **Ctrl+Alt+4** and so on, and EDSMT names them that way.
 None of these keys is bound by any of the game's own control schemes.
 
-Every one can be changed in **Settings → Hotkeys** — click it and press the
+Every one can be changed in **Settings → Keys** — click it and press the
 key you want, with or without Ctrl, Alt or Shift — and **Reset** puts it
 back. Windows hands out a key like this without telling the two Alt keys
 apart, so either Alt works. The game's own number-row keys (the panels, on
@@ -141,7 +147,15 @@ one if that program is off on your machine.
 **The guide.** A GUIDE box over the game shows the step you are on, the key
 for it, and what comes next, and moves on by itself as each step is done. It
 is on for a first run and switches itself off once you have followed it all
-the way through; Settings → Basic settings turns it back on.
+the way through; Settings → Basics turns it back on.
+
+**Not sure what something does? Rest the mouse on it.** Every control in
+every window says what it does. The first start also walks you round the
+main window once — Back, Next, Skip — and never over the game. Settings →
+Basics turns the notes off, and **Show me round again** runs the tour.
+
+**Settings is in tabs** — Basics, Overlay, Keys, Rigs, Sharing, Your data,
+About. Each tab scrolls on its own, and Save and Close are under all of them.
 
 **There is no centre to set and no bearing to work out.** The game hands over
 your latitude and longitude, so a deposit records where it *is*. Distances
@@ -383,6 +397,28 @@ warning is set to, because 200 m later the rig is gone. Past 5 km in the
 Rhino it is gone: EDSMT drops it, says so, and clears every warning for it.
 **AltGr+0** clears the lot by hand at any time.
 
+**A rig is marked where it lands**, 7 m behind the cockpit, not where you
+are sitting. Settings → Rigs has the figure if yours lands elsewhere; 0
+marks it under you.
+
+**Too close, and time to collect.** Inside the rig spacing of one of your
+own rigs (78 m unless you change it) every box says **TOO CLOSE TO RIG**
+and its number, so you know before you drop the next one — drop it there
+anyway and EDSMT marks it and says so. Back within a few metres of a rig
+that has been working for two minutes, the boxes say **COLLECT RIG** and
+its number, in cyan.
+
+**Rigs survive a restart.** They are written down as they change, so
+closing EDSMT, or a crash, does not lose them. When a Rhino docks in the
+ship its own rigs come off the scope — the other Rhino's stay — and
+Settings → Rigs turns that off. More than 6 km from where you are, in
+anything, the rigs are forgotten and every warning goes with them; out of
+the Rhino no rig warning goes up at all.
+
+**Double-click a rig's square on the map** to put right what it is mining,
+or to pick that one up. A rig dropped on a find somebody else shared — or
+on the one you picked — takes that find's commodity.
+
 ### The rig planner (beta)
 
 Off until you switch it on in **Settings → Rigs**. Drive to the deposit's
@@ -395,6 +431,16 @@ one, in driving order. The scope closes in on the pins while you are near
 them, STATUS says which pin is next and how far, the compass tape points at
 it, and each pin goes green as a rig goes down within half the spacing of
 it.
+
+### Shared rig layouts
+
+When your rigs come up, how they were laid out on that deposit goes on the
+community map — where each one went down and what it was on, and the edge
+you drove and the pins, if you used the rig planner. Drive onto a deposit
+with no plan of your own and the best layout anyone has shared for it — the
+most rigs, newest first — shows on the scope as **SHARED PIN** pins, with the
+same guidance as your own planner pins. Settings → Rigs turns the pins off.
+Your commander name goes with a layout only if name sharing is on.
 
 ### The wing link (beta)
 
@@ -464,6 +510,14 @@ the middle of its signal, so a friend can drive straight to it.
 The **Where to land** button lists every landable body in the system you are
 in, best first, and fills itself in as you scan — honk, resolve bodies in the
 FSS, map one with the DSS, and it keeps up without a click.
+
+**It remembers every system you have scanned**, not just this session's.
+The first start reads all your older journals once, in the background — the
+summary line says how far it has got — and every new scan is kept as it
+happens, in `bodies.db` beside your finds. Arrive somewhere your own
+journals have not fully described and EDSMT asks the public body database,
+through the community server, for the rest; the summary says how many bodies
+came from there. Your own journal always wins over the public database.
 
 | Column | Where it comes from |
 |---|---|
@@ -649,10 +703,14 @@ cover a galaxy; a few thousand can.
 What goes up is the system, body, commodity, position and how rich it was,
 and the prices at markets you open. Your CMDR name goes on your finds only if
 you choose - the first start asks, and Settings has it after. Your notes,
-sessions and settings never leave your PC.
+sessions and settings never leave your PC — sessions go to your own Discord
+channel only if you set one up. When your rigs come up, how they were laid
+out goes too (see *Shared rig layouts*).
 
 Find is filtered by commodity, minimum rigs, how many different
-commodities sit in one patch, and how recently anybody confirmed it.
+commodities sit in one patch, and how recently anybody confirmed it. Every
+row has a **Distance** column — light years from where you are now, whether
+or not you picked a radius.
 
 **Tick several commodities.** Every commodity box in a search — Find, Where
 to land, My sites and Prices in a system — opens a list of tick boxes. Click
@@ -677,6 +735,21 @@ top as the closest thing in the galaxy.
 Your own game fills the gap: every time you open a commodity market EDSMT
 reads the surface-mining prices out of it and adds them to the community's.
 
+### Your own Discord channel
+
+**Settings → Sharing → Discord.** Paste a channel's webhook — the channel's
+**Edit Channel → Integrations → Webhooks → Copy Webhook URL** — and EDSMT
+posts there as you play: every find you mark (commodity, rigs, system, body,
+signal, amount, density, position), and a summary of every Rhino session
+when it ends — tonnes of each commodity, time, t/hr, credits, Cr/hr and
+where you sold. Each has its own switch. **Send a test message** checks the
+address before you rely on it.
+
+The address stays behind dots like a password, it goes to Discord and
+nowhere else, and nothing in a post can ping anyone — an `@everyone` typed
+into a note is just text. Your commander name is on the posts: it is your
+channel.
+
 ---
 
 ## Where your finds live
@@ -691,6 +764,9 @@ Everything EDSMT records is in one folder, and nothing else touches it:
     imported.json              which files you have already imported
     settings.json              written by the Settings window
     settings.json.bak          the last good copy, kept automatically
+    settings-history\          dated copies of your settings, the last thirty
+    rigs.json                  the rigs you have down, so a restart keeps them
+    bodies.db                  every body your journals have described
     coverage\                  the survey areas you have swept, per body
     updates\                   a downloaded update, until it is installed
     journal-mining-events.log  new game events as they are discovered
@@ -702,9 +778,18 @@ kept as `settings.json.bak`. A settings file that cannot be read is set
 aside and the backup used — never overwritten with defaults — and EDSMT
 tells you on the status line when that has happened.
 
+**Earlier settings can be put back.** Whenever something that matters
+changes — overlay placement, layout, theme, keys — EDSMT keeps a dated copy,
+at most one every fifteen minutes, the last thirty. Settings → Your data →
+*Earlier settings*: pick one and press **Put these back**, and the lot comes
+back at once.
+
 Plain CSV on purpose — open them in a spreadsheet, back them up, or take them
-with you. **Updating EDSMT never touches this folder.** Settings has
-**Back up now**, **Restore from a backup** and **Open my data folder**.
+with you. **Updating EDSMT never touches this folder.** Settings → Your data
+has **Back up now**, **Restore from a backup** and **Open my data folder**.
+A backup carries your finds, signals, sessions, settings and their dated
+copies, and the ground you have swept on every body; restoring one puts its
+settings back straight away.
 
 **Running it off a USB stick?** Put an empty file called `portable.txt` next
 to `EDSMT.exe` and it keeps everything in a `data` folder beside itself

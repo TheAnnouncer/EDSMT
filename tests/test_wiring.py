@@ -16,10 +16,18 @@ Nothing else catches this. The stubs answer any attribute with a callable,
 so a headless run cannot see it; the packaging audit looks for functions
 written and never called, which is the exact opposite failure.
 """
-import ast, os, sys, importlib.util
+import ast, os, sys, importlib.util, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
+
+# The app is imported further down, and importing it fixes DATA_DIR. Without
+# this line that was the commander's own %LOCALAPPDATA%\RadioRaxxla\EDSMT,
+# and the windows driven below saved their test settings over his - every
+# BUILD.bat run put his overlay, theme and keys back to the defaults
+# (7 Oct 2026: "settings are lost when an update is done").
+os.environ["LOCALAPPDATA"] = os.path.join(
+    tempfile.mkdtemp(prefix="edsmt-wiring-home-"), "appdata")
 
 fails = []
 def check(label, cond, extra=""):
@@ -263,6 +271,20 @@ def _land_app():
     return app
 
 
+RIG = {"n": 2, "lat": 1.0, "lon": 2.0, "at": 0.0, "commodity": "Monazite",
+       "srv": None}
+
+
+def _rig_app():
+    """The stub app, with the real rig naming on it (1.10034's rig editor)."""
+    import types
+    app = _app()
+    app.rigs_at = {"rigs": [RIG], "rhinos": [None]}
+    for name in ("rig_label", "_rig_rhinos"):
+        setattr(app, name, types.MethodType(getattr(A.EDSMT, name), app))
+    return app
+
+
 WINDOWS = [
     ("FindWindow", lambda: A.FindWindow(_app())),
     ("LandWindow", lambda: A.LandWindow(_land_app())),
@@ -271,6 +293,7 @@ WINDOWS = [
     ("WelcomeWindow", lambda: A.WelcomeWindow(_app())),
     ("EditLocationWindow", lambda: A.EditLocationWindow(_app(), dict(ROW))),
     ("EditWindow", lambda: A.EditWindow(_app(), dict(DEPOSIT))),
+    ("RigEditWindow", lambda: A.RigEditWindow(_rig_app(), dict(RIG))),
 ]
 
 print("== every window finishes building ==")

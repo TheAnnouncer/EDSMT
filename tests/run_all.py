@@ -6,9 +6,15 @@ This is what has to pass before a release. GUI code cannot be executed in
 CI, so the widgets are stubbed and the real logic underneath is driven with
 synthetic Status.json and Journal.*.log files.
 """
-import os, subprocess, sys
+import os, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Every check runs with its own %LOCALAPPDATA%, so nothing it does can reach
+# the commander's real data folder - BUILD.bat runs this on his own PC. One
+# check that forgot to set its own wrote its test settings over his on every
+# build (fixed in 1.10034); this is the net under all of them.
+os.environ["LOCALAPPDATA"] = os.path.join(
+    tempfile.mkdtemp(prefix="edsmt-checks-"), "appdata")
 CHECKS = [
     ("survey model and plan view", "test_core.py"),
     ("a full session on Ega 1", "test_app.py"),
@@ -32,6 +38,7 @@ CHECKS = [
     ("what 1.10031 adds", "test_110031.py"),
     ("what 1.10032 adds", "test_110032.py"),
     ("what 1.10033 adds", "test_110033.py"),
+    ("what 1.10034 adds", "test_110034.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
 # The checks on the API and on the documents that describe the live server

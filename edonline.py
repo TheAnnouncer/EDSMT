@@ -43,7 +43,13 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10033"
+APP_VERSION = "1.10034"
+# The worker tag the bodies of a system come back under.
+BODIES_TAG = "bodies"
+# How a deposit was rigged (#218): sent, and the best ones read back.
+LAYOUT_SCHEMA = "radioraxxla/surfacemining-rig-layout/1"
+LAYOUTS_TAG = "rig-layouts"
+LAYOUT_SHARE_TAG = "share-layout"
 # An honest, contactable User-Agent. Bot filters at the edge judge
 # unattended clients on exactly this, and a bare name with no way to
 # reach anyone reads as something worth blocking.
@@ -58,6 +64,7 @@ DEPOSIT_SCHEMA = "radioraxxla/surfacemining/1"
 DEPLETION_SCHEMA = "radioraxxla/surfacemining-depletion/1"
 MARKET_SCHEMA = "radioraxxla/surfacemining-market/1"
 VERIFY_SCHEMA = "radioraxxla/surfacemining-verify/1"
+REMOVE_SCHEMA = "radioraxxla/surfacemining-remove/1"
 
 # Inara's author, on the API board: "please ensure your apps are doing TWO
 # requests per minute AT MAXIMUM". Batching is how you stay under it - queue
@@ -217,6 +224,110 @@ def get_json(url: str, timeout: float = 20.0, headers: dict | None = None) -> di
         raise RuntimeError("could not reach %s: %s"
                            % (_host_of(url), exc.reason)) from None
     return _decode(raw, url)
+
+
+# ---------------------------------------------------------------------------
+# Discord: your own channel, through a webhook you made (1.10034, #150)
+# ---------------------------------------------------------------------------
+# Discord's Execute Webhook (checked 7 Oct 2026): POST to the webhook's own
+# address with content and/or up to 10 embeds; content up to 2000
+# characters; ?wait=true makes Discord answer with the message, so a bad or
+# deleted webhook says so instead of vanishing. A webhook address is a
+# password - anyone holding it can post to that channel - so it lives in
+# Settings behind dots, and only its host ever appears in an error.
+DISCORD_HOOK = re.compile(
+    r"^https://(?:(?:canary|ptb)\.)?discord(?:app)?\.com/api/webhooks/"
+    r"(\d{5,25})/([A-Za-z0-9_\-]{20,200})/?$")
+DISCORD_TAG = "discord"
+DISCORD_TEST_TAG = "discord-test"
+DISCORD_AVATAR = "https://radioraxxla.com/EDSMT/rhino-card.jpg"
+DISCORD_COLOUR = 0xFF7A18
+DISCORD_LIMITS = {"title": 256, "description": 4096, "name": 256,
+                  "value": 1024, "footer": 2048, "content": 2000}
+
+
+def discord_hook_ok(url) -> bool:
+    """A Discord webhook address, and nothing else that might be pasted."""
+    return bool(DISCORD_HOOK.match(str(url or "").strip()))
+
+
+def _clip(text, limit):
+    text = str(text if text is not None else "")
+    return text if len(text) <= limit else text[:max(0, limit - 1)] + "\u2026"
+
+
+def discord_message(title, fields=(), description="", when=None) -> dict:
+    """One embed, inside Discord's limits, with nobody pinged.
+
+    allowed_mentions is empty on purpose: a commodity or a note typed as
+    @everyone is text in your channel, never a ping to every member."""
+    embed = {"title": _clip(title, DISCORD_LIMITS["title"]),
+             "color": DISCORD_COLOUR,
+             "footer": {"text": _clip("EDSMT %s - radioraxxla.com/EDSMT"
+                                      % APP_VERSION, DISCORD_LIMITS["footer"])},
+             "timestamp": utc_stamp(when)}
+    if description:
+        embed["description"] = _clip(description, DISCORD_LIMITS["description"])
+    rows = [{"name": _clip(name, DISCORD_LIMITS["name"]),
+             "value": _clip(value, DISCORD_LIMITS["value"]), "inline": True}
+            for name, value in fields if str(value or "").strip()][:25]
+    if rows:
+        embed["fields"] = rows
+    return {"username": "EDSMT", "avatar_url": DISCORD_AVATAR,
+            "embeds": [embed], "allowed_mentions": {"parse": []}}
+
+
+def discord_find_message(deposit: dict, cmdr: str = "", when=None) -> dict:
+    """A deposit just marked, for your channel."""
+    commodity = str(deposit.get("commodity") or deposit.get("type") or "Deposit")
+    rigs = str(deposit.get("rigs") or "").strip()
+    title = "New find: %s" % commodity
+    if rigs:
+        title += " - %s rig%s" % (rigs, "" if rigs == "1" else "s")
+    lat, lon = deposit.get("lat"), deposit.get("lon")
+    where = ""
+    try:
+        where = "%.4f, %.4f" % (float(lat), float(lon))
+    except (TypeError, ValueError):
+        pass
+    return discord_message(title, [
+        ("System", deposit.get("system")), ("Body", deposit.get("body")),
+        ("Signal", deposit.get("location")), ("Amount", deposit.get("amount")),
+        ("Density", deposit.get("density")), ("Lat, long", where),
+        ("CMDR", cmdr)], when=when)
+
+
+def discord_session_message(row: dict, cmdr: str = "", when=None) -> dict:
+    """A Rhino session that has just ended, for your channel."""
+    from survey import (unpack_counts, earned, session_hours, credits_per_hour,
+                        tonnes_per_hour)
+    mined = unpack_counts(row.get("mined") or "")
+    tonnes = sum(mined.values())
+    lines = ["%s: %d t" % (name, count) for name, count in
+             sorted(mined.items(), key=lambda kv: (-kv[1], kv[0]))]
+    hours = session_hours(row)
+    spent = "%dh %02dm" % (int(hours), int(round((hours % 1) * 60))) if hours else ""
+    credits = earned(row)
+    return discord_message(
+        "Rhino session: %d t mined" % tonnes,
+        [("Where", " / ".join(p for p in (row.get("system"), row.get("body")) if p)),
+         ("Time", spent),
+         ("t/hr", "%.1f" % tonnes_per_hour(row) if tonnes_per_hour(row) else ""),
+         ("Credits", "{:,} Cr".format(int(credits)) if credits else ""),
+         ("Cr/hr", "{:,}".format(int(credits_per_hour(row))) if credits else ""),
+         ("Sold at", " / ".join(p for p in (row.get("station"), row.get("sold_in")) if p)),
+         ("CMDR", cmdr)],
+        description="\n".join(lines), when=when)
+
+
+def discord_post(url: str, payload: dict, timeout: float = 15.0) -> dict:
+    """Post one message and wait for Discord to say it took it. Raises with
+    a sentence; the address itself never appears in one."""
+    url = str(url or "").strip()
+    if not discord_hook_ok(url):
+        raise ValueError("That is not a Discord webhook address - copy it from "
+                         "the channel's Integrations > Webhooks.")
+    return post_json(url.rstrip("/") + "?wait=true", payload, timeout=timeout)
 
 
 def utc_stamp(when: float | None = None) -> str:
@@ -757,17 +868,25 @@ class CommunityClient:
     def _near(near, within_ly):
         """Turn "where I am" into query parameters, or nothing at all.
 
-        A radius without a position is meaningless, and a position without
-        a radius is a filter nobody asked for, so it is both or neither.
+        The position goes whenever it is known: the server measures every
+        result from it, which is the Find window's distance column (1.10034).
+        The radius goes only when one was picked - a position on its own
+        filters nothing. A radius without a position is meaningless, so it
+        never goes alone.
         """
-        if not within_ly or not near or len(near) != 3:
+        if not near or len(near) != 3:
             return {}
         try:
             x, y, z = (float(v) for v in near)
         except (TypeError, ValueError):
             return {}
-        return {"near_x": x, "near_y": y, "near_z": z,
-                "within_ly": float(within_ly)}
+        params = {"near_x": x, "near_y": y, "near_z": z}
+        try:
+            if within_ly and float(within_ly) > 0:
+                params["within_ly"] = float(within_ly)
+        except (TypeError, ValueError):
+            pass
+        return params
 
     def search(self, commodity: str = "", system: str = "", limit: int = 50,
                near=None, within_ly: float = 0) -> bool:
@@ -959,6 +1078,33 @@ class CommunityClient:
             lambda: self._verified(post_json(url, payload, headers=self._headers())))
         return True
 
+    def remove(self, cmdr: str, system: str, planet: str, spot: str = "1",
+               deposit_id: int | None = None, reason: str = "") -> bool:
+        """Staff only (1.10034): take a wrong find - or, with no id, a whole
+        site - off the community map. The server keeps what it removed."""
+        if not self.can_verify or not system or not planet:
+            return False
+        payload = {
+            "$schema": REMOVE_SCHEMA,
+            "header": {"uploaderID": cmdr, "softwareName": APP_NAME,
+                       "softwareVersion": APP_VERSION,
+                       "gatewayTimestamp": utc_stamp()},
+            "message": {"system": system, "planet": planet,
+                        "spot": spot or "1", "reason": reason[:200]},
+        }
+        if deposit_id:
+            payload["message"]["deposit_id"] = int(deposit_id)
+        url = f"{self.base_url}/v1/remove"
+
+        def go():
+            reply = post_json(url, payload, headers=self._headers())
+            count = int(reply.get("removed") or 0)
+            return "Removed %d find%s%s from the community map." % (
+                count, "" if count == 1 else "s",
+                " and the site" if reply.get("site") else "")
+        self.worker.submit("remove", go)
+        return True
+
     def wing(self, code: str, beat: dict) -> bool:
         """One beat of the wing link (beta): where this commander is, and
         back, where the rest of the wing is. The server keeps nothing past
@@ -1018,6 +1164,52 @@ class CommunityClient:
         url = f"{self.base_url}/v1/prices?" + urllib.parse.urlencode(params)
         self.worker.submit(
             "market", lambda: json.dumps(get_json(url, headers=self._headers())))
+        return True
+
+    def share_layout(self, cmdr: str, layout: dict) -> bool:
+        """One rig layout - where the rigs went down on a deposit, and the
+        edge and pins if the rig planner was used - to the community map."""
+        if not self.ready or not layout or len(layout.get("placed") or []) < 2:
+            return False
+        payload = {"$schema": LAYOUT_SCHEMA,
+                   "header": {"uploaderID": cmdr if self.share_name else "",
+                              "softwareName": APP_NAME,
+                              "softwareVersion": APP_VERSION,
+                              "gatewayTimestamp": utc_stamp()},
+                   "message": layout}
+        url = f"{self.base_url}/v1/rig-layouts"
+        self.worker.submit(
+            LAYOUT_SHARE_TAG,
+            lambda: json.dumps(post_json(url, payload, headers=self._headers())))
+        return True
+
+    def rig_layouts(self, system: str, planet: str, spot: str) -> bool:
+        """The best layouts other commanders shared for one deposit."""
+        if not (self.can_read and system and planet):
+            return False
+        params = {"system": str(system).strip(), "planet": str(planet).strip(),
+                  "spot": str(spot or "").strip(), "limit": 5}
+        url = f"{self.base_url}/v1/rig-layouts?" + urllib.parse.urlencode(params)
+        self.worker.submit(
+            LAYOUTS_TAG, lambda: json.dumps(get_json(url, headers=self._headers())))
+        return True
+
+    def bodies(self, address, system: str = "") -> bool:
+        """Every body the public body database knows in one system, through
+        the EDSMT server (1.10034). For Where to land, when the journals on
+        this PC have not described the system."""
+        try:
+            address = int(address)
+        except (TypeError, ValueError):
+            return False
+        if not (self.can_read and address > 0):
+            return False
+        params = {"address": address}
+        if system:
+            params["system"] = str(system).strip()
+        url = f"{self.base_url}/v1/bodies?" + urllib.parse.urlencode(params)
+        self.worker.submit(
+            BODIES_TAG, lambda: json.dumps(get_json(url, headers=self._headers())))
         return True
 
     def system_prices(self, system: str, commodities=(), max_days: int = 0,

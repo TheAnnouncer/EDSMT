@@ -2409,10 +2409,13 @@ class Overlay:
             return False
         canvas = self.canvas
         tall = em(18)
+        # Red by default; a rig to pick up is the one cue that is good news
+        # (1.10034: COLLECT RIG n) and carries its own colour.
+        fill = str(hazard.get("colour") or ALARM_RED)
         canvas.create_rectangle(2, height - tall - 2, width - 2, height - 2,
-                                fill=ALARM_RED, outline=ALARM_RED,
-                                tags=("hazard",))
-        canvas.create_text(width / 2.0, height - 2 - tall / 2.0, fill="#ffffff",
+                                fill=fill, outline=fill, tags=("hazard",))
+        canvas.create_text(width / 2.0, height - 2 - tall / 2.0,
+                           fill="#000000" if hazard.get("kind") == "collect" else "#ffffff",
                            font=("Consolas", 10, "bold"), tags=("hazard",),
                            text=fit_text("/!\\ " + str(hazard["text"]),
                                          width - 12, 10))
@@ -2482,7 +2485,9 @@ class Overlay:
         # left: at a large text size the two used to run into each other.
         left = None
         if pin:
-            left = ("PIN %d %s %s  (%d/%d)" % (
+            # A pin from another commander's layout says so (#218).
+            left = ("%sPIN %d %s %s  (%d/%d)" % (
+                "SHARED " if planned.get("shared") else "",
                 pin["n"], turn_arrow(pin.get("offset", 0.0)),
                 format_range(pin["range_m"]), planned.get("done", 0),
                 len(planned.get("pins") or [])), AMBER, 10, True)
