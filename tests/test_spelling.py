@@ -95,7 +95,7 @@ for name in SOURCES:
 
 
 print("== the documents ==")
-DOCS = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"]
+DOCS = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "docs/GUIDE.md"]
 for name in DOCS:
     path = os.path.join(REPO, name)
     if not os.path.exists(path):

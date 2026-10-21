@@ -131,7 +131,7 @@ print("== the docs do not describe features that were taken out ==")
 # The README went on describing both for a
 # release. A doc that promises something the app does not do reads, to a
 # commander, exactly like the app being broken.
-_PLAYER_FACING = ("README.md", "CHANGELOG.md", "site/edsmt.html")
+_PLAYER_FACING = ("README.md", "CHANGELOG.md", "site/edsmt.html", "docs/GUIDE.md")
 _GONE = ("sweep", "sweeping")
 _stale = []
 for _doc in _PLAYER_FACING:
