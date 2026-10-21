@@ -57,7 +57,7 @@ jobs:
       # Nothing ships that has not passed. The suite needs no display and no
       # Elite Dangerous, which is the whole reason it can run here.
       - name: Run the tests
-        run: python tests/run_all.py
+        run: python tests/run_all.py --quiet
 
       - name: Build the folder build (goes inside the installer)
         run: pyinstaller build/EDSMT.spec --noconfirm --distpath dist --workpath build/work

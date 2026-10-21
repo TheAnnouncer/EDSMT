@@ -18,7 +18,7 @@ loud, for that half without one.
 
     python tests/test_110035_survey.py
 """
-import os, sys, json, math, random, tempfile
+import os, sys, json, math, random, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
@@ -618,9 +618,20 @@ def _session():
           app.game.body == "Ega 1" and app.game.has_position and app.game.in_srv)
     app.settings.update(overlay_enabled=True, overlay_show_radar=True, overlay_show_strip=True,
                         overlay_show_status=False, overlay_show_targets=False)
+    # The app may already have opened the boxes it had before these settings
+    # (a slower machine gets a tick in first); show() keeps what is open, so
+    # start from none.
+    app.overlay.hide()
     app.overlay.show()
-    pump()
-    check("the compass and the scope are up", OV.STRIP in app.overlay.panels and OV.RADAR in app.overlay.panels)
+    # A slow machine (the CI runner) can take a few passes to build the
+    # boxes; wait for them rather than read a half-built overlay.
+    for _ in range(50):
+        pump()
+        if OV.STRIP in app.overlay.panels and OV.RADAR in app.overlay.panels:
+            break
+        time.sleep(0.1)
+    check("the compass and the scope are up", OV.STRIP in app.overlay.panels and OV.RADAR in app.overlay.panels,
+          sorted(app.overlay.panels))
     look()
     check("no survey area yet: no waypoints on any of the three", on_none("WP "))
     app.set_survey_centre()

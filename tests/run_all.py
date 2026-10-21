@@ -66,18 +66,21 @@ if INTERNAL_TESTS and os.path.isdir(INTERNAL_TESTS):
             CHECKS.append(("internal: " + _name[5:-3].replace("_", " "),
                            os.path.join(INTERNAL_TESTS, _name)))
 
+# --quiet (the public build): a check that passes is one line, a failure
+# prints in full. The full output is for the machine that builds releases.
+QUIET = "--quiet" in sys.argv[1:]
 passed, skipped, failed = 0, [], []
 for label, script in CHECKS:
     print("=" * 66); print(label); print("=" * 66)
     result = subprocess.run([sys.executable, os.path.join(HERE, script)],
                             capture_output=True, text=True)
     out = result.stdout + result.stderr
-    if label.startswith("internal:") and result.returncode == 0:
+    if (label.startswith("internal:") or QUIET) and result.returncode == 0:
         # The internal checks describe the live server line by line. On a
         # pass there is nothing to read, and nothing about the server
         # belongs on a screen that might be shared or streamed - so a pass
         # is one line. A failure still prints in full.
-        print("  %d internal checks passed" % out.count("  PASS  "))
+        print("  %d checks passed" % out.count("  PASS  "))
     else:
         print(out.rstrip())
     print()
