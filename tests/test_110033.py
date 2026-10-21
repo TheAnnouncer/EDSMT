@@ -758,12 +758,14 @@ _best = A.system_price_rows(_ROWS, best_only=True)
 check("best market only: one row a commodity, the best of them",
       [(r["commodity"], r["station"]) for r in _best]
       == [("Magnesite", "Vonarburg"), ("Bastnäsite", "Black Hide")], _best)
+# 1.10035: a market with Demand 0 lists it and buys none - not a market
+# that buys it, and not a row.
 check("each row says how many markets there buy it",
-      [r["markets"] for r in _best] == [3, 1], [r["markets"] for r in _best])
+      [r["markets"] for r in _best] == [1, 1], [r["markets"] for r in _best])
 _all = A.system_price_rows(_ROWS, best_only=False)
-check("every market: all of them, best first within each commodity",
+check("every market that buys it, best first within each commodity",
       [r["station"] for r in _all if r["commodity"] == "Magnesite"]
-      == ["Vonarburg", "Bokeili", "Black Hide"], _all)
+      == ["Vonarburg"], _all)
 check("a zero price is not a price", all(r["commodity"] != "Olivine" for r in _all))
 check("pads and station types read the way the game says them",
       A.pad_size(3) == "L" and A.pad_size(2) == "M" and A.pad_size("s") == "S"

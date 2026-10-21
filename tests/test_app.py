@@ -938,8 +938,8 @@ rows = _shown(w)
 check("both sources land in one table", len(rows) == 2, rows)
 check("nearest first here too",
       rows[0][_col(w, "Station")] == "Ours", rows)
-check("and each row says which index said so",
-      [r[_col(w, "Source")] for r in rows] == ["community", "market index"],
+check("and each row says which source said so, in neutral words (1.10035)",
+      [r[_col(w, "Source")] for r in rows] == ["community", "market data"],
       rows)
 # Neither toggle means anything to a station, and the box went out as
 # "near here" - so filtering the answer by it would empty the screen.

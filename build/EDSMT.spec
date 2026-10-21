@@ -33,7 +33,15 @@ datas += [(os.path.join(ROOT, "images", name), "images")
 
 hiddenimports = collect_submodules("customtkinter")
 hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",
-                  "rigplan", "bodybook"]
+                  "rigplan", "bodybook", "mapimage", "shiphold",
+                  "sessionledger", "supportbundle",
+                  "chattags", "inputdev", "inputmix"]
+# Guided survey and the pointers (1.10035): the window imports both.
+hiddenimports += ["waypoints", "guidance"]
+# Map pictures (1.10035) are drawn with Pillow. It is imported inside
+# functions, so name it: a build that left it out would still start, and
+# every picture button would then say the library is missing.
+hiddenimports += ["PIL", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont"]
 
 excludes = [
     "PyQt5", "PyQt6", "PySide2", "PySide6", "wx",
@@ -44,6 +52,13 @@ excludes = [
     # the server and the test harness have no business in the installer
     "fastapi", "uvicorn", "pydantic", "httpx", "tests", "_ctkstub",
 ]
+
+# 1.10035: the Find filters and the Powerplay record.
+hiddenimports += ["finder", "powerplay", "sellplan"]
+
+# 1.10035: importing from other tools, depleted marks and regrowth, the bin
+# and favourites, and the map filters.
+hiddenimports += ["importers", "regrowth", "sitebook", "markerfilter"]
 
 a = Analysis([os.path.join(ROOT, "edsmt.py")], pathex=[ROOT],
              binaries=[], datas=datas,

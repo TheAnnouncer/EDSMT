@@ -6,10 +6,36 @@
 Maps surface mining for the Rhino. It reads your journal, so you never type a
 coordinate, a system name or a distance.
 
-Original work. Not affiliated with Frontier Developments.
+Not affiliated with Frontier Developments.
 Copyright (C) 2026 Radio Raxxla. GPL-3.0-only.
 
 Built for Elite Dangerous 4.4.1.1.
+
+## Screenshots
+
+From a made-up session: the commander, the system and every number in them
+are invented.
+
+![The EDSMT main window: the deposit map with the driven trail, a golden group ring and the rings round two rigs](docs/images/map.png)
+<sub>The main window: your finds round you, the trail you drove, the golden group worth a stop, and a ring round each rig down.</sub>
+
+![The overlay boxes: the compass tape, the scope with numbered deposits and the nearest targets](docs/images/overlay.png)
+<sub>The overlay in the Rhino: the compass tape, the scope and the nearest targets, each a box of its own.</sub>
+
+![EDSMT Find: best sell prices for Iridium and Rhodplumsite, filtered by pad size, price age and distance](docs/images/find.png)
+<sub>Find: where to sell what you mined, nearest first, with the filters that hide what is no use to you.</sub>
+
+![EDSMT Where to land: the bodies in a system ranked by estimated value](docs/images/where-to-land.png)
+<sub>Where to land: every landable body in the system, the best bet first.</sub>
+
+![EDSMT Powerplay: whether selling in each nearby system counts for your Power](docs/images/powerplay.png)
+<sub>Powerplay: what selling in each system would do for your Power, from your own journal.</sub>
+
+![EDSMT Earnings: the session running now with estimated Cr/hr and merits/hr, and the sessions before it](docs/images/earnings.png)
+<sub>Earnings: the session you are on first, with Cr/hr and merits/hr, then every session before it.</sub>
+
+![The map picture EDSMT saves when the Rhino docks, ready for Discord](docs/images/session-map.png)
+<sub>The session map picture, saved when the Rhino docks and sent with the summary to your Discord channel if you set one.</sub>
 
 ---
 
@@ -31,8 +57,7 @@ If you would rather not install anything, `EDSMT.exe` on the same page is the
 same program as one portable file — save it anywhere and double-click it.
 
 Windows SmartScreen will warn you the first time, because the build is not
-code-signed — a certificate costs a few hundred a year and this is free.
-**More info → Run anyway.**
+code-signed. **More info → Run anyway.** See `SECURITY.md`.
 
 Your finds live in `%LOCALAPPDATA%\RadioRaxxla\EDSMT`, not the program
 folder, so updating never touches them.
@@ -73,7 +98,7 @@ build runs on GitHub from `.github/workflows/build.yml`.
 
 ---
 
-## How it actually works
+## Using EDSMT
 
 The keys are **Left Alt and the number row, in the order you work a
 signal** — step 3 is Alt+3. The number row, not the number pad.
@@ -118,7 +143,7 @@ signal** — step 3 is Alt+3. The number row, not the number pad.
 | AltGr+4 to AltGr+9 | Rig 1 to rig 6 up |
 | AltGr+3 | Update the deposit I am on |
 | AltGr+0 | Every rig up |
-| AltGr+2 | Rig planner: trace the deposit's edge (beta, off until switched on) |
+| AltGr+2 | Rig planner: trace the deposit's edge |
 | Alt+0 | Overlay on / off |
 
 The overlay only comes up while you are driving a Rhino - not in the ship,
@@ -138,11 +163,11 @@ Alt and a number, or another program of yours does, move one of the two.
 
 **Keys other programs own.** Whoever registers a key first gets it, and
 EDSMT never hears it. Settings names the owner the moment you press one of
-these: NVIDIA's Alt+F1 (screenshot), Alt+F3, Alt+F9 (record), Alt+Shift+F10,
-Alt+Z and Alt+R; AMD's Alt+R, Alt+Z and Ctrl+Shift keys; any Win+ key
-(Windows and the Xbox Game Bar); Steam's Shift+Tab and F12; Discord's
-Shift+\` and Ctrl+Shift+M/D; the game's F10 and Alt+F10. You can still keep
-one if that program is off on your machine.
+these: graphics-driver capture keys (Alt+F1, Alt+F3, Alt+F9, Alt+Shift+F10,
+Alt+Z, Alt+R and Ctrl+Shift combinations); any Win+ key (Windows and the Xbox
+Game Bar); the Shift+Tab and F12 keys of game-launcher overlays; the Shift+\`
+and Ctrl+Shift+M/D keys of chat overlays; and the game's F10 and Alt+F10. You
+can still keep one if that program is off on your machine.
 
 **The guide.** A GUIDE box over the game shows the step you are on, the key
 for it, and what comes next, and moves on by itself as each step is done. It
@@ -157,15 +182,12 @@ Basics turns the notes off, and **Show me round again** runs the tour.
 **Settings is in tabs** — Basics, Overlay, Keys, Rigs, Sharing, Your data,
 About. Each tab scrolls on its own, and Save and Close are under all of them.
 
-**There is no centre to set and no bearing to work out.** The game hands over
-your latitude and longitude, so a deposit records where it *is*. Distances
-and directions are worked out live from wherever you happen to be standing —
-which is the number you want while driving, and it means nothing has to be
-pressed before a find can be recorded.
+**There is no centre to set and no bearing to work out.** A deposit records
+where it is, and distances and directions are worked out live from wherever
+you are standing, so nothing has to be pressed before a find can be recorded.
 
 **Every box, every time.** A deposit goes on the map with its commodity,
-rigs, amount and density, or not at all — finds were reaching the shared map
-without the two things a commander deciding whether to fly there needs most.
+rigs, amount and density, or not at all, so every shared find is complete.
 Anything that changes later, **UPDATE** puts right.
 
 **Amount and Density are different things.** Density is how rich the deposit
@@ -192,15 +214,13 @@ button that puts the number right.
 **MINED OUT** sets a deposit to Depleted and stamps the note with the date
 and time — `Mined 10/09/2026 01:05`. Press it again next month and it adds
 another line, so the site keeps its history. It is not a delete: the deposit
-stays on the map, because "empty as of the tenth" is worth more to the next
-commander than nothing at all.
+stays on the map, with the date it was worked out.
 
 **The commodity box filters as you type** and is sorted roughly by worth.
 Typing `bastna` finds Bastnäsite without the umlaut. The ordering is what the
 surface-mining tables say a commodity averages, with a coarse band standing in
-for anything outside them — a rough guide, not a quote. Real prices move with
-every balance pass and with whatever community goal is running, so live
-community prices override it entirely.
+for anything outside them — a rough guide, not a quote. Live community
+prices override it where they are available.
 
 **Best patch** finds the tightest group with the most rigs and the most
 different commodities in it, and points the map at it — the surface
@@ -213,34 +233,28 @@ site drops out of results and climbs back as it regenerates.
 left panel with an **edit** button beside it, and you can still double-click
 it on the map. Signal number, commodity,
 rigs, density and notes are all editable, and Delete is in the same window
-behind a second press. Marking a deposit is one keypress with the game in
-front of you, so the commodity or the signal number can easily be whatever
-the boxes happened to say at that moment — that is what this is for.
+behind a second press.
 
 **Signals can be corrected too.** Every row in the mining locations list has
 an **edit** button: change the number, change what it offers, or remove it.
-Renumbering a signal takes its deposits with it — otherwise they would be
-stranded under a number that no longer exists, which is worse than the wrong
-number you started with. Deleting a signal does *not* delete its deposits.
-They were real places you drove to, so they stay on the map, and the window
-tells you how many before you commit.
+Renumbering a signal takes its deposits with it, so none are left under a
+number that no longer exists. Deleting a signal does *not* delete its
+deposits: they stay on the map, and the window tells you how many before you
+commit.
 
-The position and the timestamp are shown but not editable. They came from
-the game, and if a deposit really is in the wrong place, delete it and mark
-it again. Editing is local: a correction to something already shared does
-not rewrite the copy on the server.
+The position and the timestamp are shown but not editable. If a deposit
+really is in the wrong place, delete it and mark it again. Editing is local:
+a correction to something already shared does not change the shared copy.
 
-The map works with Elite shut. It falls back to the last body you recorded
-on and centres on the finds themselves, because tidying up is something you
-do at the desk, not in the SRV.
+The map works with Elite closed. It falls back to the last body you recorded
+on and centres on the finds themselves.
 
 **Drag the map** to move around it, scroll to zoom, right-click to snap back
 to you in the middle.
 
 **Back up your finds** from Settings — one dated zip with everything in it.
 Restore puts it back and keeps whatever was already there alongside, renamed
-rather than overwritten. Anyone restoring a backup is already having a bad
-day; taking their last session away as the price would make it worse.
+rather than overwritten.
 
 ---
 
@@ -270,7 +284,7 @@ again — until you untick it.
 
 **More than one SRV on the ship.** A crewmate taking the ship's other Rhino
 out is not your trip, and it coming back aboard does not end your session:
-the journal says whose SRV each one is, and EDSMT follows yours.
+EDSMT follows your own SRV.
 
 After every transfer to the ship the overlay flashes what is in the ship and
 the room left, and the STATUS box shows the ship's and the Rhino's holds for
@@ -298,13 +312,19 @@ with how many markets there buy it; untick it to see every one. The answer
 opens on the **System prices** view of the table; **Rhino sessions** puts the
 sessions back, and **Copy all** copies whichever is showing.
 
-**Tonnes mined per deposit.** The game writes one line in the journal for
-every tonne refined. EDSMT puts each one against the marked deposit it came
-off — the one of the same commodity first, then the nearest — and the
-selected deposit shows what it has given, by-products and all. Once you have
-worked a deposit out it says what it holds; before that, **est. holds** and
-**est. left** come from the deposits you have worked out with the same rigs
-and density, and say how many they rest on.
+**Tonnes mined per deposit.** Every tonne refined is counted against the
+marked deposit it came from, and the selected deposit shows what it has given,
+by-products and all. Once you have worked a deposit out it says what it holds;
+before that, **est. holds** and **est. left** come from the deposits you have
+worked out with the same rigs and density, and say how many they rest on.
+
+**One stop for the whole hold.** Under the prices, Where to sell names the
+three stations that pay the most for everything aboard - ship and SRV
+together - with what each takes of every commodity, where its demand runs
+out, what it does not buy, how old its prices are and how many jumps away it
+is. The distance box takes light years or 1, 2, 4 or 8 jumps, at your ship's
+jump range (or the one in Settings → Basics). When a station has been read
+twice, its line says which way the price and demand moved, and over how long.
 
 ## Themes
 
@@ -325,8 +345,6 @@ with their range in metres and their commodity. Anything beyond the edge gets
 an arrowhead pointing its way, with the distance. Scroll to zoom. Click a pin
 and it tells you how far, which way, and whether to go left or right from
 your current heading.
-
-No plotting library aboard, which is why it opens in about a second.
 
 **It is the signal you are at.** Drive into a signal you have logged and
 EDSMT picks it for you, once — a number you then pick by hand stays picked
@@ -362,8 +380,8 @@ you happened to drive through.
 
 The Survey area panel and the STATUS box say how much is swept — **AREA
 SWEPT 83%**. It only reads 100% when all of it is, never rounded up. Each
-circle is spaced so that the scanner's 2 km sweeps overlap a little, which is
-what makes "drive the circles" leave no gaps. The map is kept per body and
+circle is spaced so that the scanner's 2 km passes overlap a little, so
+"drive the circles" leaves no gaps. The map is kept per body and
 saved as you go, so you can come back tomorrow and carry on where you
 stopped. **CLEAR** starts the area again, and **MOVE CENTRE HERE** moves the
 centre without logging the signal again.
@@ -385,7 +403,7 @@ farthest one is.
 Drive further than your limit from any rig (Settings → Rigs, 3,500 m unless
 you change it — the game warns at 4 km and destroys a rig at 5 km) and every
 overlay box you have open shows **TOO FAR FROM RIG**
-and its number in red, with a warning sound if you want one — or the profane one, if you tick it. It
+and its number in red, with a warning sound if you want one. It
 sounds once per trip out, not every second you are over the line, and is
 ready again once you are back well inside it. Picking each one up forgets
 it, **AltGr+0** (every rig up) forgets the lot, and leaving the body does too.
@@ -419,9 +437,9 @@ the Rhino no rig warning goes up at all.
 or to pick that one up. A rig dropped on a find somebody else shared — or
 on the one you picked — takes that find's commodity.
 
-### The rig planner (beta)
+### The rig planner
 
-Off until you switch it on in **Settings → Rigs**. Drive to the deposit's
+Drive to the deposit's
 edge, press **AltGr+2**, and drive round the edge back to where you pressed
 it: the loop closes by itself, or press the key again to close it where you
 are. EDSMT works out where up to six rigs fit inside what you drove, each at
@@ -430,7 +448,17 @@ figure, which you can change — and puts a numbered pin on the scope for each
 one, in driving order. The scope closes in on the pins while you are near
 them, STATUS says which pin is next and how far, the compass tape points at
 it, and each pin goes green as a rig goes down within half the spacing of
-it.
+it. The plan and the edge you drove are saved with the deposit and come back
+when you return, and each deposit remembers how many rigs fit on it.
+
+### Spacing rings and NEXT RIG
+
+With a rig down, every rig gets a ring of your rig spacing on the map and
+the scope: red while you are too close to any of them, green once you are
+clear of them all. **NEXT RIG: 39 m, bearing 168** points to the nearest spot
+the next rig can legally go. Rigs can be counted by key, by a joystick or
+HOTAS button (Settings → Keys), by a chat command, or - if you switch it on
+in Settings → Rigs - by holding a mouse button for two seconds in the Rhino.
 
 ### Shared rig layouts
 
@@ -449,8 +477,8 @@ Switch on **Settings → Wing link**, and everyone types the same
 six-character code (**Make a new code** makes one up to read out). Each of
 you sees the others' Rhinos and rigs on the scope in a colour of their own,
 and dropping a rig closer than the rig spacing to a wingmate's says so. Your
-commander name goes with it only if name sharing is on. The server keeps
-nothing: it forgets you two minutes after your last beat.
+commander name goes with it only if name sharing is on. Nothing is stored:
+you drop out two minutes after your last update.
 
 ---
 
@@ -500,8 +528,9 @@ EDSMT find | HR 7280 | HR 7280 A 3 | signal 5 | Haematite | rigs 4 | amount High
 Paste it in Discord. Anyone running EDSMT copies it, pastes it into the box in
 **Settings → Your finds** and presses **Import** (or Enter) — chat around it is
 ignored, and a find they already have is not added twice. EDSMT never reads
-the clipboard by itself: only what you paste into that box. A deposit's details also say where it is from
-the middle of its signal, so a friend can drive straight to it.
+the clipboard by itself: only what you paste into that box. A deposit's
+details also say where it is from the middle of its signal, so a friend can
+drive straight to it.
 
 ---
 
@@ -557,7 +586,7 @@ RHODPLUMSITE, SIGNAL 5 LOGGED.
 **Text size, box by box.** Settings → In-game overlay has a text size for
 each box, 80% to 200%, on its own — bigger words without a bigger scope.
 
-The compass and the scope redraw ten times a second, so they turn with the
+The compass and the scope update continuously, so they turn with the
 Rhino. On a body at or over the gravity set in Settings (2 g to start with) a
 warning triangle takes the middle of the screen when you arrive, once, and
 GUIDE and STATUS carry a red **HIGH GRAVITY** bar for as long as you are
@@ -595,27 +624,23 @@ theme.
 
 **Draw a border** decides where the frame goes: round the cards only (the
 default), round everything, or nothing at all. The scope gets none by default
-and its dish is not filled in — it is something you look through at the
-ground, and a bright box round it sits in your cockpit whether you are looking
-at it or not.
+and its dish is not filled in, so it stays out of the way of the view.
 
-It **cannot** draw over the game in exclusive fullscreen. That is how DirectX
-works, and no tool gets around it. Set Elite to **borderless** or windowed and
-it appears.
+It **cannot** draw over the game in exclusive fullscreen; that is a DirectX
+limitation. Set Elite to **borderless** or windowed and it appears.
 
 ---
 
 ## What a patch is worth
 
-Six rigs of a cheap metal and six rigs of a gemstone draw the same picture
-and are not the same trip. EDSMT prices it: rig count times what the commodity sells for, using the
-community's live prices where the server has them and the published table
-where it does not. The estimate is on the SCOPE, on the STATUS box, and as a
+EDSMT prices a patch as rig count times what the commodity sells for, using
+the community's live prices where they are available and the published table
+where they are not. The estimate is on the SCOPE, on the STATUS box, and as a
 bar per commodity on TARGETS.
 
 **BEST PATCH and BEST VALUE are bracketed separately.** One is where the most
 rigs are; the other is where the most money is. On a body with one commodity
-they are the same bracket. They part company exactly when it matters.
+they are the same bracket.
 
 Anything nobody has priced yet is counted and said out loud — *"4.18M Cr, +3
 unpriced"* — rather than quietly left out of the total.
@@ -624,9 +649,8 @@ unpriced"* — rather than quietly left out of the total.
 
 The order to drive them in is numbered on the dots, nearest-next from where
 you are standing, with the total distance on the STATUS box. It is not the
-shortest possible route — nobody needs the travelling salesman solved to two
-metres in an SRV — but it is the order you would drive anyway, and having it
-on the map means not stopping at every dot to work out which is closest.
+shortest possible route, but it is the order you would drive anyway, and having
+it on the map saves working out which dot is closest.
 
 Worked-out deposits come off the route and stay on the map. The route is what
 to drive; the map is what is there.
@@ -635,9 +659,9 @@ to drive; the map is what is there.
 
 ## What a session was worth
 
-EDSMT reads the journal's `LaunchSRV`, `MiningRefined`, `CargoTransfer`,
-`DockSRV` and `MarketSell`, and your own rig keys, and keeps a history of each Rhino session in
-`sessions.csv` next to your finds — so it is already inside the backup.
+EDSMT follows your Rhino sessions from the game and your own rig keys, and
+keeps a history of each one in `sessions.csv` next to your finds, so it is
+already inside the backup.
 
 While you are playing, the telemetry strip shows the session in progress —
 how long, how many tonnes mined, how many moved to the ship — and what the
@@ -645,11 +669,10 @@ hold is worth at the last market you saw. The **Earnings** button opens the
 history: when, where, what was mined, what went to the ship, what sold,
 credits, and credits per hour of mining.
 
-Four things it deliberately gets right, because they are the four ways of
-getting it wrong:
+How a session is counted:
 
-- **Only the Rhino counts.** A tonne refined by the ship mining asteroids is
-  the same journal event; it is not booked, because the Rhino was aboard.
+- **Only the Rhino counts.** Tonnes refined by the ship, mining asteroids for
+  example, are not booked.
 - **Moving ore to the ship does not mine it twice.** Transfers are counted in
   their own column.
 - **A sale is put against the session that dug it up,** newest first, and
@@ -660,16 +683,21 @@ getting it wrong:
   mining. In Multi-session the whole haul is the session, by design — and
   Pause takes the drive back out.
 
-A session's row on disk is complete the whole way through, not written when
-it ends. A crash, a kill or a power cut costs the closing flag and nothing
-else. Runs written by builds before 1.10030 stay in the file but are not
+A session is saved as it goes, so a crash or power cut costs only the closing
+mark. Runs written by builds before 1.10030 stay in the file but are not
 shown.
 
 ---
 
-## Coming from another tool
+## Importing from other tools
 
-Settings → **Import another tool's CSV** reads a `surfaceminingmap.csv` in
+**My sites → Import...** reads a bookmark database, pasted share lines, a
+survey CSV or a map JSON exported by another mining tool - the contents
+decide which, whatever the file is called. It shows what is new, what you
+already have and what it skipped, and why, before anything changes, and makes
+a dated backup first.
+
+Settings → **Import another tool's CSV** also reads a `surfaceminingmap.csv` in
 either of the two layouts other surface-mining tools write. Both use the same
 file name, so the header row decides which it is — you are never asked.
 
@@ -682,23 +710,19 @@ naming exactly what it expected to see.
 
 ## Commodities
 
-The thirteen from the 4.4.1.0 notes, plus the ones that actually come out of
-the ground — copper, haematite, lithium, palladium, uranium and the rest.
+The thirteen from the 4.4.1.0 notes, plus the others that come out of the
+ground: copper, haematite, lithium, palladium, uranium and the rest.
 
-**The list is suggestions, not a rulebook.** Anything the game names is
-accepted and remembered, because the alternative is refusing to record a real
-find on the grounds that it was not in a list written by somebody who had not
-seen it yet.
+**The list is suggestions, not a restriction.** Any commodity the game names is
+accepted and remembered.
 
 ---
 
 ## Sharing
 
 Every deposit you mark goes on the community map, and everyone else's turns
-up under **Find** and on your map. That is not a switch: the map is a
-database of every surface-mining site anybody has found, and it is only
-worth something because everybody's finds go into it. One commander cannot
-cover a galaxy; a few thousand can.
+up under **Find** and on your map. There is no switch for this: the map is
+only useful if everybody's finds are on it.
 
 What goes up is the system, body, commodity, position and how rich it was,
 and the prices at markets you open. Your CMDR name goes on your finds only if
@@ -718,22 +742,22 @@ one, click another, click a ticked one again to take it off; **Any** clears
 them. Or type: `Monazite, Bast` and Enter ticks Bastnäsite beside it. The
 search then finds anything carrying **any** of the ticked commodities.
 
-Age is part of the ranking, not a column you are left to interpret. Ring
-hotspots are permanent; surface deposits are not. Frontier were explicit that
-they "regenerate at a very slow rate", so a site nobody has touched in three
-months sinks below a smaller one confirmed last week.
+Age is part of the ranking. Ring hotspots are permanent; surface deposits are
+not, and Frontier have said they "regenerate at a very slow rate", so a site
+nobody has touched in three months sinks below a smaller one confirmed last
+week.
 
 ### Best sell prices
 
 **Find → Best sell prices** answers *where does this actually sell*, nearest
 first, with the distance in light years on every row — for every commodity
-you ticked, in one table. It combines live market data with
-what other commanders' games have read at markets, and says which is which.
+you ticked, in one table. It combines live market data with prices read at
+markets in other commanders' games, and says which is which.
 A station in a system nobody has placed reads "-" rather than sorting to the
 top as the closest thing in the galaxy.
 
-Your own game fills the gap: every time you open a commodity market EDSMT
-reads the surface-mining prices out of it and adds them to the community's.
+Every commodity market you open adds its surface-mining prices to the
+community's.
 
 ### Your own Discord channel
 
@@ -745,10 +769,9 @@ when it ends — tonnes of each commodity, time, t/hr, credits, Cr/hr and
 where you sold. Each has its own switch. **Send a test message** checks the
 address before you rely on it.
 
-The address stays behind dots like a password, it goes to Discord and
-nowhere else, and nothing in a post can ping anyone — an `@everyone` typed
-into a note is just text. Your commander name is on the posts: it is your
-channel.
+The address stays behind dots like a password and goes to Discord and nowhere
+else. Nothing in a post can ping anyone: an `@everyone` typed into a note is
+just text. Your commander name is on the posts, since it is your channel.
 
 ---
 
@@ -769,14 +792,13 @@ Everything EDSMT records is in one folder, and nothing else touches it:
     bodies.db                  every body your journals have described
     coverage\                  the survey areas you have swept, per body
     updates\                   a downloaded update, until it is installed
-    journal-mining-events.log  new game events as they are discovered
+    journal-mining-events.log  diagnostic capture; attach it to a bug report if asked
     crash.log                  only if something goes wrong
 
-**Settings are written safely.** Every save goes to a temporary file first
-and replaces the old one only once it is complete, and the last good copy is
-kept as `settings.json.bak`. A settings file that cannot be read is set
-aside and the backup used — never overwritten with defaults — and EDSMT
-tells you on the status line when that has happened.
+**Settings are written safely.** The last good copy is kept as
+`settings.json.bak`. A settings file that cannot be read is set aside and the
+backup used, never overwritten with defaults, and EDSMT tells you on the status
+line when that has happened.
 
 **Earlier settings can be put back.** Whenever something that matters
 changes — overlay placement, layout, theme, keys — EDSMT keeps a dated copy,
@@ -800,18 +822,17 @@ across first if you have any — it does not move them for you.
 
 ## Something wrong?
 
-**The version is in the title bar. Quote it.** It is the first thing anyone
-will ask.
+**Include the version shown in the title bar** in any report.
 
 If the app does something unexpected it writes `crash.log` next to your finds
 in `%LOCALAPPDATA%\RadioRaxxla\EDSMT`. Attach it.
 
 | What you see | What it usually is |
 |---|---|
-| The overlay does not appear over the game | Elite is in exclusive fullscreen. Set it to borderless or windowed — that is DirectX, not this app |
+| The overlay does not appear over the game | Elite is in exclusive fullscreen. Set it to borderless or windowed |
 | An overlay box is off-screen | Settings → **Reset box positions** |
-| Find returns nothing at all | Check you are online and that api.radioraxxla.com opens in a browser. Nobody may have mapped that commodity yet |
-| Find says the server is unreachable | It will say why. Usually the server is down or the network is blocking it |
+| Find returns nothing at all | Check you are online. Nobody may have mapped that commodity yet |
+| Find says the service is unreachable | It will say why. Usually the service is down or the network is blocking it |
 | System and body do not fill in | The app needs the game's journal folder. Settings → Journal folder |
 | **NO ACCESS** in red at the top | Windows is refusing to let EDSMT read the journal folder — usually a hidden or protected Saved Games folder, or security software. Allow EDSMT, or point Settings → Journal folder at a copy it can read |
 | "EDSMT is already running" | Only one copy runs at a time, so two cannot fight over your finds. Look on the taskbar |

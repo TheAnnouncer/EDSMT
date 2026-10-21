@@ -157,6 +157,8 @@ def calls_on_self(cls):
 
 
 FILES = ("edsmt.py", "overlay.py", "planview.py")
+# Mixins that live in a file of their own and are part of the main window.
+MIXIN_FILES = ("guidance.py",)
 print("== every self.x on a window class resolves ==")
 
 inspected, missing = 0, []
@@ -166,18 +168,30 @@ for filename in FILES:
         continue
     tree = ast.parse(open(path, encoding="utf-8").read())
     classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
-    for name, cls in classes.items():
+    # A mixin kept in a file of its own (guidance.py) is part of the window
+    # it is mixed into: its names count as the window's, and what it calls on
+    # self has to resolve against the window.
+    mixins = {}
+    for mixin_file in MIXIN_FILES:
+        mixin_path = os.path.join(REPO, mixin_file)
+        if filename == "edsmt.py" and os.path.exists(mixin_path):
+            mixins.update({n.name: n for n in ast.walk(ast.parse(open(mixin_path, encoding="utf-8").read()))
+                           if isinstance(n, ast.ClassDef)})
+    known = dict(classes, **mixins)
+    for name, cls in list(classes.items()) + list(mixins.items()):
         # Everything this class provides, plus everything its in-file
         # ancestors provide, plus the toolkit.
         pool = set(TOOLKIT)
         seen, queue = set(), [name]
+        if name in mixins:                         # judged as part of the window
+            queue.append("EDSMT")
         while queue:
             current = queue.pop()
-            if current in seen or current not in classes:
+            if current in seen or current not in known:
                 continue
             seen.add(current)
-            pool |= provided_by(classes[current])
-            queue.extend(base_names(classes[current]))
+            pool |= provided_by(known[current])
+            queue.extend(base_names(known[current]))
         for attr, line in calls_on_self(cls):
             inspected += 1
             if attr not in pool:
@@ -335,7 +349,9 @@ print("== nothing is defined twice ==")
 # - simply stops existing. Both shipped. Neither was caught by anything.
 import collections
 dupes = []
-for filename in FILES + ("survey.py", "journal.py", "edonline.py"):
+for filename in FILES + ("survey.py", "journal.py", "edonline.py",
+                         "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py",
+                         "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py"):
     path = os.path.join(REPO, filename)
     if not os.path.exists(path):
         continue

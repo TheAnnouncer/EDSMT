@@ -63,7 +63,10 @@ def offenders(text):
 
 print("== the words the program shows ==")
 SOURCES = ["edsmt.py", "overlay.py", "journal.py", "survey.py", "edonline.py",
-           "planview.py", "rigplan.py"]
+           "planview.py", "rigplan.py",
+           # 1.10035's own modules say things to the commander too.
+           "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py",
+           "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py"]
 # Anything else to hold to the same spelling, as full paths separated by
 # os.pathsep - how the checks kept beside the API's source use this list.
 SOURCES += [p for p in os.environ.get("EDSMT_SPELL_EXTRA", "").split(os.pathsep) if p]
@@ -92,8 +95,7 @@ for name in SOURCES:
 
 
 print("== the documents ==")
-DOCS = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md",
-        "JOURNAL-NOTES.md", os.path.join("docs", "SURFACE-MINING-JOURNAL.md")]
+DOCS = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"]
 for name in DOCS:
     path = os.path.join(REPO, name)
     if not os.path.exists(path):

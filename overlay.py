@@ -32,6 +32,7 @@ import math
 import os
 
 import planview as PV
+import markerfilter as MF
 
 # The window is filled with this colour and Windows is told to treat it as
 # transparent, which is how a rectangular window becomes a floating HUD.
@@ -99,6 +100,21 @@ MIN_RADIUS_M = 250.0
 # this, never wider than that.
 PLAN_VIEW_FLOOR_M = 120.0
 PLAN_VIEW_CAP_M = 1500.0
+# The zoom key steps the scope through these (1.10035): 1x is the scope as
+# it fits itself; 2x and 4x show that much less ground, round the Rhino.
+ZOOM_STEPS = (1, 2, 4)
+# What the new scope layers are drawn in. Fixed, like GREEN_OK and ALARM_RED
+# below: a gold circle and a red ring have to read as those on every theme.
+GOLD = "#ffd24a"
+TRAIL_COLOUR = "#4aa6b0"
+# Guidance (1.10035): the waypoint being driven to and the line from orbit,
+# and the pointer to the Rhino or the ship.
+WAYPOINT_COLOUR = "#7fd6ff"
+POINTER_COLOUR = "#a6e36e"
+# The order guidance is shown in, and the colour of each.
+GUIDE_ORDER = (("wp", WAYPOINT_COLOUR), ("ship", POINTER_COLOUR),
+               ("rhino", POINTER_COLOUR), ("orbit", WAYPOINT_COLOUR))
+RADAR_COLOURS = {"ok": "#5fd068", "edge": "#ffb545", "close": "#ff2a1a"}
 DEFAULT_MAX_RADIUS_M = PV.MAX_MAP_RADIUS_M
 
 # Cockpit palette, the same one edsmt.py draws the main window with. It is
@@ -113,6 +129,8 @@ AMBER = "#ffb545"
 TEXT = "#e9dccd"
 DIM = "#9c6a3c"
 FAINT = "#6d4826"
+# A depleted deposit is a grey ring, whatever the theme (1.10035).
+SPENT = "#8b929c"
 CYAN = "#37c6d4"
 # Wingmates' Rhinos and rigs (wing link, beta): a colour nothing else on the
 # scope uses, so another commander's rig is never read as one of yours.
@@ -272,17 +290,21 @@ def theme_palette(name):
 THEMES = {name: overlay_palette(full) for name, full in PALETTES.items()}
 
 
-def dot(canvas, x, y, radius, fill, outline, shared=False):
+def dot(canvas, x, y, radius, fill, outline, shared=False, spent=False):
     """One deposit on a map. Yours are round; another commander's are a
     diamond, so the two are told apart at a glance whatever the colour -
     a difference of shape survives every theme, a difference of shade
-    does not."""
+    does not. A depleted one (`spent`) is a grey ring, empty inside."""
+    width = 1
+    if spent:
+        fill, outline, width = "", SPENT, 2
     if shared:
         r = radius * 1.25
         return canvas.create_polygon(x, y - r, x + r, y, x, y + r, x - r, y,
-                                     fill=fill, outline=outline or fill)
+                                     fill=fill, outline=outline or fill,
+                                     width=width)
     return canvas.create_oval(x - radius, y - radius, x + radius, y + radius,
-                              fill=fill, outline=outline)
+                              fill=fill, outline=outline, width=width)
 
 
 def apply_theme(name, accent=None):
@@ -998,10 +1020,16 @@ def value_bars(canvas, x, y, width, height, bars, colour=None):
         tall = max(1.0, (float(value) / top) * height)
         canvas.create_rectangle(left, y + height - tall, left + pitch, y + height,
                                 fill=colour or ORANGE, outline="")
-        if step >= 26:
-            canvas.create_text(left + pitch / 2.0, y + height + 6, anchor="n",
+        if step >= max(26, text_box(str(name)[:6].upper(), 7)[0] + 2):
+            # Centred on the bar, then moved in so the whole word is inside
+            # the strip: the first bar's name was cut at the left edge
+            # ("IDIU" for IRIDIUM) and the last one at the right.
+            label = str(name)[:6].upper()
+            half = text_box(label, 7)[0] / 2.0
+            centre = min(max(left + pitch / 2.0, x + half), x + width - half)
+            canvas.create_text(centre, y + height + 6, anchor="n",
                                fill=FAINT, font=("Consolas", 7),
-                               text=str(name)[:6].upper())
+                               text=label, tags=("barlabel",))
 
 
 class _ScaledCanvas:
@@ -2228,6 +2256,8 @@ class Overlay:
             except (KeyError, TypeError, ValueError):
                 pass
 
+        self._guidance_tape(canvas, heading, width, height, baseline, span)
+
         if note:
             canvas.create_text(6, height - 8, text=note, fill=dim, anchor="sw",
                                font=("Consolas", 9))
@@ -2437,6 +2467,50 @@ class Overlay:
             bits.append("RHINO %dt" % int(rhino))
         return "  ".join(bits)
 
+    def _hold_card(self, width, height):
+        """The ship's hold card, along the foot of the STATUS box while in
+        the Rhino (1.10035, #240): what is in the ship against what it holds,
+        a fill bar, HOLD FULL, the loads left - or, when this session has not
+        seen the ship's hold, how much the Rhino has unloaded and BOARD SHIP
+        FOR FULL HOLD, not a total that would be a guess. False when there
+        is no card to draw."""
+        card = (getattr(self, "_cargo", None) or {}).get("hold")
+        if not isinstance(card, dict) or not card.get("title"):
+            return False
+        canvas = self.canvas
+        state = card.get("state")
+        tint = {"full": RED, "near": AMBER, "unknown": AMBER}.get(state, GREEN_OK)
+        text = card["title"] + "  " + card["detail"]
+        if card.get("known") and card.get("trip_t"):
+            text += "  UNLOADED %dt" % int(card["trip_t"])
+        rhino = card.get("rhino_t")
+        if rhino is None:
+            rhino = (getattr(self, "_cargo", None) or {}).get("rhino_t")
+        if rhino is not None:
+            text += "  RHINO %dt" % int(rhino)
+        bar = card.get("fraction")
+        room = width - 24
+        if bar is not None:
+            # The bar under the words, the width of the box less its margin.
+            x0, x1 = 12, width - 12
+            y1 = height - 4
+            y0 = y1 - 5
+            canvas.create_rectangle(x0, y0, x1, y1, outline=RULE, fill="",
+                                    tags=("hold",))
+            fill_to = x0 + (x1 - x0) * float(bar)
+            if fill_to > x0:
+                canvas.create_rectangle(x0, y0, fill_to, y1, outline=tint,
+                                        fill=tint, tags=("hold",))
+            base = y0 - 3
+        else:
+            base = height - 6
+        canvas.create_text(width / 2.0, base, anchor="s", fill=tint,
+                           font=("Consolas", 9, "bold"),
+                           text=fit_text(text, room, 9), tags=("hold",))
+        # Where the card starts, for whatever is drawn above it.
+        self._hold_top = base - text_box("M", 9)[1]
+        return True
+
     def draw_status(self, rows, heading, width, height, body="", location="",
                     note="", site=None):
         """One line of context, and one line of what to do next.
@@ -2539,18 +2613,28 @@ class Overlay:
         # readout when there is one.
         bottom_room = height - em(6) - em(12) >= max(top + em(30) + em(8),
                                                      readout_end + 2)
-        if bottom_room and found.get("label") and len(rows):
-            canvas.create_text(6, height - 6, anchor="sw", fill=DIM,
+        # The hold card is drawn first, so the two small lines under the box
+        # know where it starts: they sit above it, and are left off when
+        # there is no room above it, rather than printed through it.
+        carded = self._hold_card(width, height) if bottom_room else False
+        base = height - 6
+        side_room = bottom_room
+        if carded:
+            base = getattr(self, "_hold_top", height - 6) - 3
+            side_room = base - text_box("M", 8)[1] >= max(top + em(30) + em(8),
+                                                          readout_end + 2)
+        if side_room and found.get("label") and len(rows):
+            canvas.create_text(6, base, anchor="sw", fill=DIM,
                                font=("Consolas", 8),
                                text="SITE %s" % str(found["label"])[:16])
         survey = getattr(self, "_survey", None)
-        if bottom_room and survey and survey.get("percent") is not None:
+        if side_room and survey and survey.get("percent") is not None:
             done = survey["percent"]
-            canvas.create_text(width - 6, height - 6, anchor="se",
+            canvas.create_text(width - 6, base, anchor="se",
                                fill=AMBER if done < 100 else CYAN,
                                font=("Consolas", 8, "bold"),
                                text="AREA SWEPT %d%%" % done)
-        cargo = self._cargo_text() if bottom_room else ""
+        cargo = self._cargo_text() if bottom_room and not carded else ""
         if cargo:
             full = self._cargo or {}
             capacity = full.get("capacity")
@@ -2664,7 +2748,9 @@ class Overlay:
                 theirs = bool((row.get("deposit") or {}).get("shared")
                               or row.get("shared"))
                 dot(canvas, px, py, 3 if not theirs else 4, shade, "",
-                    shared=theirs)
+                    shared=theirs,
+                    spent=str((row.get("deposit") or {}).get("amount")
+                              or "").strip().lower() == "depleted")
             canvas.create_polygon(PV.arrow_points(cx, cy, 0, 8),
                                   fill=AMBER, outline="")
 
@@ -2720,7 +2806,7 @@ class Overlay:
 
     def draw_radar(self, rows, heading, note, width, height,
                    body="", location="", site=None):
-        rows = list(rows or [])
+        rows = MF.apply(list(rows or []), self._map_prefs())
         heading = float(heading or 0.0)
         # Above the scope: the two header rows, and the N over the dish.
         # Grown text needs the N clear of the header, so the head grows by
@@ -2796,6 +2882,14 @@ class Overlay:
             close += [tuple(p) for p in planned.get("outline") or []]
             extent = PV.extent_for(close, floor_m=PLAN_VIEW_FLOOR_M,
                                    headroom=1.3, cap_m=PLAN_VIEW_CAP_M)
+        # The zoom key: past 1x the scope is round the Rhino, not the signal,
+        # and shows 1/2 or 1/4 of the ground. The planner's close-up above
+        # is already as close as it goes.
+        zoom = self.scope_zoom()
+        if zoom > 1 and not planned.get("near"):
+            origin = (0.0, 0.0)
+            centred = False
+            extent = max(PV.ZOOM_CLOSEST_M, extent / zoom)
 
         # The header and footer eat into the window, so the scope is nudged
         # down between them rather than centred on a window it does not own
@@ -2828,6 +2922,8 @@ class Overlay:
         self._plan_marks(viewport, origin)
         self._wing_marks(viewport, origin)
         self._rig_marks(viewport, origin)
+        self._map_marks(viewport, plan, origin)
+        self._guidance_marks(viewport, plan, origin)
         self._scanner(viewport, plan)
         if patch:
             self._patch(patch)
@@ -2837,6 +2933,7 @@ class Overlay:
         if centred:
             self._centre_mark(viewport, found)
         self._commander(viewport, plan)
+        self._radar_me(plan)
         self._scope_labels(plan)
         self._header(width, plan, found, centred, body, rows)
         self._footer(width, height, plan, note)
@@ -2937,6 +3034,283 @@ class Overlay:
             if what:
                 self._later(5, x, y, what[:8], tint, 7, 8, False,
                             ("rigmark", "rigtype"))
+
+    # -- 1.10035: zoom steps, the trail, the lines, golden groups, the rig
+    #    radar ----------------------------------------------------------------
+
+    def scope_zoom(self):
+        """The scope's zoom step: 1, 2 or 4."""
+        step = getattr(self, "_zoom_step", 1)
+        return step if step in ZOOM_STEPS else 1
+
+    def set_zoom(self, step):
+        """Put the scope on a step. Anything that is not one is 1x."""
+        self._zoom_step = step if step in ZOOM_STEPS else 1
+        return self._zoom_step
+
+    def cycle_zoom(self):
+        """The next step, round to 1x again. What the zoom key does."""
+        at = ZOOM_STEPS.index(self.scope_zoom())
+        return self.set_zoom(ZOOM_STEPS[(at + 1) % len(ZOOM_STEPS)])
+
+    def _map_prefs(self):
+        prefs = getattr(self, "map_prefs", None)
+        return prefs if isinstance(prefs, dict) else {}
+
+    def _map_marks(self, viewport, plan, origin):
+        """The driven trail, golden groups, rig rings and the lines to the
+        nearest deposits, under the dots; their words are queued so they are
+        placed after the finds are named. Everything is cut at the rim of
+        the dish. Only what Settings has switched on."""
+        prefs = self._map_prefs()
+        if not prefs:
+            return
+        canvas = self.canvas
+        survey = getattr(self, "_survey", None) or {}
+        dish = ((0.0, 0.0), viewport.extent_m)
+
+        def draw_run(points, colour, width=1, dash=None, tags=()):
+            for run in PV.clip_polyline(points, dish[0], dish[1]):
+                flat = []
+                for east, north in run:
+                    flat.extend(viewport.to_canvas(east, north))
+                canvas.create_line(*flat, fill=colour, width=width, dash=dash,
+                                   tags=tags)
+
+        def shift(points):
+            return [(e - origin[0], n - origin[1]) for e, n in points]
+
+        scan = survey.get("scan_m") or PV.SCANNER_RANGE_M
+        if prefs.get("trail_paint") and survey.get("points") and not survey.get("border_m"):
+            fill, mesh = swept_style(self.settings.get("overlay_swept", "clear"),
+                                     SWEPT_SCOPE, CYAN)
+            for shape in PV.swept_shapes(PV.thin_points(survey["points"], scan / 4.0),
+                                         scan, None, None, view=(origin, viewport.extent_m)):
+                if shape[0] == "disc":
+                    x, y = viewport.to_canvas(shape[1] - origin[0], shape[2] - origin[1])
+                    r = viewport.radius_px(shape[3])
+                    canvas.create_oval(x - r, y - r, x + r, y + r, fill=fill,
+                                       outline="", stipple=mesh, tags=("swept", "trailpaint"))
+                else:
+                    flat = []
+                    for east, north in shape[1]:
+                        flat.extend(viewport.to_canvas(east - origin[0], north - origin[1]))
+                    canvas.create_polygon(flat, fill=fill, outline="", stipple=mesh,
+                                          tags=("swept", "trailpaint"))
+        if prefs.get("trail") and survey.get("trail"):
+            draw_run(shift(survey["trail"]), TRAIL_COLOUR, 1, None, ("trail",))
+
+        me = plan["commander"]
+        if prefs.get("golden"):
+            groups = PV.golden_groups(plan["items"], self.prices(),
+                                      prefs.get("golden_radius_m"),
+                                      start=(me["east_m"], me["north_m"]))
+            self._golden_groups = groups
+            for group in groups:
+                east, north, reach = group["east_m"], group["north_m"], group["radius_m"]
+                draw_run(PV.circle_points(east, north, reach), GOLD, 2, None, ("golden",))
+                rate = group.get("cr_per_h")
+                text = "P%d %dR %s" % (group["n"], group["rigs"],
+                                       ("%s/h" % money(rate)) if rate else "no price")
+                spots = [viewport.to_canvas(east + dx * reach, north + dy * reach)
+                         for dx, dy in ((0, 1), (0, 0), (1, 0), (-1, 0), (0, -1))]
+                self._later(1, spots[0][0], spots[0][1], text, GOLD, 8, 6, True,
+                            ("golden", "goldlabel"), points=spots[1:])
+        else:
+            self._golden_groups = []
+
+        radar = (getattr(self, "_rigs", None) or {}).get("radar") if prefs.get("radar") else None
+        if radar:
+            # Each rig is a band, 76 m to 80 m at the usual spacing. The
+            # bands are red while the rig's spot is inside 80 m of any rig,
+            # green once it is clear of every one.
+            band = radar.get("band") or ("green" if all(
+                r["state"] == "ok" for r in radar["rings"]) else "red")
+            colour = RADAR_COLOURS["close" if band == "red" else "ok"]
+            for ring in radar["rings"]:
+                inner = ring.get("inner", ring["radius"] - 2.0)
+                outer = ring.get("outer", ring["radius"] + 2.0)
+                thick = max(2, int(round(viewport.radius_px(outer - inner))))
+                for reach, line in ((inner, 1), ((inner + outer) / 2.0, thick), (outer, 1)):
+                    draw_run(shift(PV.circle_points(ring["east"], ring["north"], reach)),
+                             colour, line, None, ("rigring", "rigband"))
+            legal = radar.get("legal")
+            if radar["state"] == "close" and legal:
+                sx, sy = viewport.to_canvas(radar["spot"][0] - origin[0],
+                                            radar["spot"][1] - origin[1])
+                lx, ly = viewport.to_canvas(legal[0] - origin[0], legal[1] - origin[1])
+                canvas.create_line(sx, sy, lx, ly, fill=RADAR_COLOURS["edge"],
+                                   dash=(3, 3), tags=("rigring",))
+                canvas.create_oval(lx - 4, ly - 4, lx + 4, ly + 4,
+                                   outline=RADAR_COLOURS["ok"], width=2, tags=("rigring",))
+            bounds = getattr(self, "_scope_bounds", None) or (0, 0, viewport.width, 0)
+            text = fit_text(radar["text"], viewport.width - 16, 9)
+            colour = RADAR_COLOURS.get(radar["state"], DIM)
+            width, height = self._measure(text, 9)
+            top = bounds[1] + 4
+            canvas.create_text(8, top, anchor="nw", fill=colour,
+                               font=("Consolas", 9, "bold"), text=text, tags=("radar",))
+            self._taken().append((6, top - 1, 10 + width, top + height + 1))
+            below = top + height + 3
+        else:
+            below = None
+        if prefs.get("golden"):
+            self._golden_list(viewport, self._golden_groups, below)
+
+        if prefs.get("lines"):
+            focus = PV.focus_commodity(plan["items"], prefs.get("target"), prefs.get("last"))
+            lines = PV.nearest_lines(plan["items"], self.prices(), focus)
+            self._map_lines = lines
+            for kind in ("same", "cheaper"):
+                found = lines.get(kind)
+                if not found:
+                    continue
+                item = found["item"]
+                end = item["edge"] if item["offscreen"] else (item["x"], item["y"])
+                colour = self.colour(found["commodity"])
+                canvas.create_line(me["x"], me["y"], end[0], end[1], fill=colour,
+                                   width=2 if kind == "same" else 1,
+                                   dash=None if kind == "same" else (2, 4),
+                                   tags=("mapline", "line_" + kind))
+                self._later(3, (me["x"] + end[0]) / 2.0, (me["y"] + end[1]) / 2.0,
+                            format_range(found["range_m"]), colour, 8, 4, True,
+                            ("mapline",))
+        else:
+            self._map_lines = None
+
+    # -- guidance: waypoints, the Rhino, the ship, orbit (1.10035) -----------
+
+    def _guidance_data(self):
+        """What the app handed over to say where to go next, or {}."""
+        guide = getattr(self, "guidance", None)
+        return guide if isinstance(guide, dict) else {}
+
+    def _guidance_lines(self):
+        """[(key, text, colour, item)] for each piece of guidance, in the
+        order they are shown."""
+        guide = self._guidance_data()
+        return [(key, guide[key]["text"], colour, guide[key])
+                for key, colour in GUIDE_ORDER if guide.get(key)]
+
+    def _guidance_tape(self, canvas, heading, width, height, baseline, span):
+        """Guidance on the compass: a chevron on the tape where it lies, and
+        the words under it - WP 3/12: 1.50 km, bearing 087."""
+        row = 0
+        for key, text, colour, item in self._guidance_lines():
+            y = baseline + em(12) + row * em(11)
+            if y + text_box("M", 9)[1] / 2.0 > height - 1:
+                break
+            row += 1
+            if item.get("complete") or "bearing" not in item:
+                canvas.create_text(width / 2.0, y, fill=colour,
+                                   font=("Consolas", 9, "bold"), tags=("wptape", key),
+                                   text=fit_text(text, width - 12, 9))
+                continue
+            offset = relative_bearing(heading, item["bearing"])
+            x = tape_x(heading, item["bearing"], width, span)
+            if x is None:
+                x = 16.0 if offset < 0 else width - 16.0
+            canvas.create_polygon(x - 8, baseline - 7, x, baseline + 3, x + 8, baseline - 7,
+                                  x, baseline - 2, fill=colour, outline=VOID,
+                                  tags=("wptape", key, "chevron"))
+            right = x < width / 2.0
+            room = (width - x - em(11) - 6) if right else (x - em(11) - 6)
+            canvas.create_text(x + (em(11) if right else -em(11)), y,
+                               anchor="w" if right else "e", fill=colour,
+                               font=("Consolas", 9, "bold"), tags=("wptape", key),
+                               text=fit_text(text, max(20, room), 9))
+
+    def _guidance_marks(self, viewport, plan, origin):
+        """Guidance on the scope: the waypoints as dots with the current one
+        ringed, a chevron beside you pointing at each thing to go to, and the
+        words along the foot of the dish."""
+        lines = self._guidance_lines()
+        if not lines:
+            return
+        canvas = self.canvas
+        extent = viewport.extent_m
+        me = plan["commander"]
+        mx, my = (me["edge"] if me["offscreen"] else (me["x"], me["y"]))
+
+        def spot(east, north):
+            return viewport.to_canvas(east - origin[0], north - origin[1])
+
+        def within(east, north):
+            return math.hypot(east - origin[0], north - origin[1]) <= extent
+
+        for key, text, colour, item in lines:
+            if key == "wp" and not item.get("complete"):
+                for point in item.get("points") or []:
+                    if not within(point["east"], point["north"]):
+                        continue
+                    x, y = spot(point["east"], point["north"])
+                    if point["state"] == "current":
+                        r = max(6.0, viewport.radius_px(item.get("arrive_m") or 250.0))
+                        canvas.create_oval(x - r, y - r, x + r, y + r, outline=colour,
+                                           width=2, tags=("wp", "wpnow"))
+                        canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=colour,
+                                           outline="", tags=("wp", "wpnow"))
+                        self._later(1, x, y, "WP %d" % point["n"], colour, 8, r + 3, True,
+                                    ("wp", "wplabel"))
+                        self._taken().append((x - r, y - r, x + r, y + r))
+                    elif point["state"] == "todo":
+                        canvas.create_oval(x - 2, y - 2, x + 2, y + 2, outline=colour,
+                                           tags=("wp", "wpnext"))
+                    else:
+                        canvas.create_oval(x - 1, y - 1, x + 1, y + 1, fill=FAINT,
+                                           outline="", tags=("wp", "wpdone"))
+            if item.get("complete") or "bearing" not in item:
+                continue
+            dx = math.sin(math.radians(item["bearing"]))
+            dy = -math.cos(math.radians(item["bearing"]))
+            reach = 28.0
+            canvas.create_polygon(PV.arrow_points(mx + dx * reach, my + dy * reach,
+                                                  item["bearing"], 10),
+                                  fill=colour, outline=VOID, tags=("chevron", key))
+        # The words, along the foot of the dish, the newest line lowest.
+        bounds = getattr(self, "_scope_bounds", None) or (0, 0, viewport.width, viewport.height)
+        y = bounds[3] - 4
+        for key, text, colour, item in reversed(lines):
+            text = fit_text(text, viewport.width - 16, 9)
+            w, h = self._measure(text, 9)
+            canvas.create_text(8, y, anchor="sw", fill=colour,
+                               font=("Consolas", 9, "bold"), text=text,
+                               tags=("wptext", key))
+            self._taken().append((6, y - h - 1, 10 + w, y + 1))
+            y -= h + 3
+
+    def _golden_list(self, viewport, groups, below=None):
+        """The golden groups, top right under the header: most rigs first,
+        what each is worth an hour with the drive, how far it is. They start
+        under the rig radar's line when there is one."""
+        bounds = getattr(self, "_scope_bounds", None) or (0, 0, viewport.width, 0)
+        top = bounds[1] + 4 if below is None else below
+        for group in groups:
+            rate = group.get("cr_per_h")
+            text = fit_text("P%d %dR %s %s" % (group["n"], group["rigs"],
+                                               ("%s/h" % money(rate)) if rate else "-",
+                                               format_range(group["range_m"])),
+                            viewport.width - 16, 8)
+            width, height = self._measure(text, 8)
+            self.canvas.create_text(viewport.width - 8, top, anchor="ne", fill=GOLD,
+                                    font=("Consolas", 8, "bold"), text=text,
+                                    tags=("golden", "goldlist"))
+            self._taken().append((viewport.width - 10 - width, top - 1,
+                                  viewport.width - 6, top + height + 1))
+            top += height + 2
+
+    def _radar_me(self, plan):
+        """The Rhino's arrow in the colour of the rig radar's verdict: green
+        where the next rig can go, amber near a ring's edge, red inside one."""
+        prefs = self._map_prefs()
+        radar = (getattr(self, "_rigs", None) or {}).get("radar") if prefs.get("radar") else None
+        me = plan["commander"]
+        if not radar or me["offscreen"]:
+            return
+        self.canvas.create_polygon(
+            PV.arrow_points(me["x"], me["y"], plan["heading"], 11),
+            fill=RADAR_COLOURS.get(radar["state"], DIM), outline=VOID,
+            tags=("radar",))
 
     def _survey_marks(self, viewport, origin):
         """The survey area on the scope: the ground already swept, the
@@ -3141,8 +3515,8 @@ class Overlay:
                                    text=format_range(item["range_m"]))
                 continue
             radius, x, y = item["radius"], item["x"], item["y"]
-            dot(canvas, x, y, radius, "" if spent else colour, colour,
-                shared=bool(deposit.get("shared")))
+            dot(canvas, x, y, radius, colour, colour,
+                shared=bool(deposit.get("shared")), spent=spent)
             # The order to drive them in, on the dot. Without it you stop at
             # every one to work out which is nearest; with it the route is
             # just a number to follow.
@@ -3275,6 +3649,8 @@ class Overlay:
                       points=points)
 
     def _name_finds(self, items):
+        if not MF.labels_on(self._map_prefs()):
+            return
         for item in items:
             deposit = item["deposit"] or {}
             spent = str(deposit.get("amount") or "").strip().lower() == "depleted"
@@ -3332,6 +3708,8 @@ class Overlay:
     def _header(self, width, plan, found, centred, body, rows):
         canvas = self.canvas
         radius = "MAP RADIUS  %s" % format_range(plan["extent_m"])
+        if self.scope_zoom() > 1:
+            radius += "  %dx" % self.scope_zoom()
         # At a large text size on a small scope even the radius is wider
         # than the box: say it shorter rather than off the edge.
         for shorter in ("R %s" % format_range(plan["extent_m"]),

@@ -4,6 +4,192 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10035
+
+The biggest EDSMT release so far. It is built around three questions a
+Rhino miner asks every session - *where do I sell this, where do I drive
+next, and was it worth it* - and answers them from your own journal, the
+community map and the markets other commanders have read.
+
+### Selling: one answer for the whole hold
+
+- **One stop for the whole hold.** Earnings > Where to sell now names the
+  station that pays the most for *everything* aboard - ship and SRV
+  together - with what it takes of each commodity, what its demand caps,
+  what it does not buy, how old its prices are and how many jumps away it
+  is. Three stations, best first. Fleet carriers and prices older than a day
+  are left out.
+- **Sell within 1, 2, 4 or 8 jumps**, as well as in light years. The jump
+  range comes from your ship's own Loadout, or from Settings > Basics.
+- **Which way the market is moving.** When a station has been read twice,
+  each commodity says so: *demand 16,234 → 15,352, price 845,417 → 824,191
+  in 1 h 28 min*.
+- **Where to sell, per commodity**: the five best payers (most expensive
+  first) or the five nearest buyers, never a market with Demand 0, every
+  price aged and marked stale past a day.
+- **Powerplay, worked out per tonne.** The Powerplay window reads your
+  pledge, rank and merits from your journal and says, for every system you
+  have been in, whether selling there Expands, Reinforces or Undermines -
+  judged by where each tonne was mined. Bought goods and anything that went
+  through carrier storage are named as earning nothing. Once you have sold a
+  few loads while pledged it estimates the merits the hold will earn, from
+  your own sales, not a guess.
+
+### Finding: search like a database
+
+- **Find filters**: a distance window (at least / no further than), landing
+  pad, station type, no carriers, price age, a demand window, a minimum
+  price, Powerplay state and side, and best five per commodity. Every row a
+  filter hides is counted, with the reason.
+- **Body and signal search** in Where to land and My sites: body type,
+  volcanism, gravity, temperature, signals by kind and count, landable,
+  mapped - in this system, near you, or anywhere your journals have seen.
+- **Saved searches** by name in Find, Where to land and My sites.
+- **Bring your finds with you.** My sites > Import reads bookmark databases,
+  share lines, survey CSVs and map JSON exported by other mining tools. It
+  shows what is new and what is already known before it changes anything,
+  and makes a dated backup first.
+
+### On the ground: the map knows where you have been
+
+- **Guided survey.** Numbered waypoints from the signal centre outward that
+  skip the ground you have already swept: *WP 4/12: 640 m, bearing 212* on
+  the compass, scope and map. Next, back, skip and pause on keys you choose.
+  Resumes after a restart.
+- **Your trail**, **lines to the nearest same and cheaper deposit**, and
+  **scope zoom 1x / 2x / 4x**.
+- **Top patches.** The three best knots of intact deposits circled, each with
+  its rigs, an estimated Cr/h including the drive between them, and its
+  spread. The radius is yours to set.
+- **Spacing rings round every rig** - red while you are too close to one,
+  green when you are clear of all of them - and **NEXT RIG: 39 m, bearing
+  168** to the nearest spot a rig can legally go.
+- **Mark from range**: a bearing and a distance from the Rhino, worked out
+  across the body's own curve. It stays on your machine until you drive to it
+  and confirm it.
+- **Pointers home**: *RHINO: 1.2 km, bearing 044* on foot or in the ship, *SHIP*
+  from the Rhino, and from orbit the line to the deposit you picked.
+- **The rig planner is out of beta**: an exact packing pass, and the plan is
+  saved with the deposit. Each deposit also remembers how many rigs fit.
+- **Depletion with a memory.** A worked-out deposit keeps the date it was
+  first emptied. When it is due a recheck the card says so; confirm it and
+  the next recheck is set, or mark it REGROWN. Depleted deposits draw as
+  hollow rings.
+- **Refined with nothing marked?** One prompt, once per spot, to mark it.
+- **Arriving in a system** says how many of your sites, and how many shared
+  ones, are there.
+- **Map and scope filters** by commodity, amount and density, and labels on
+  or off.
+- **Favourites and a bin** in My sites: star a site; removing one moves it to
+  a bin you can restore from.
+
+### Hands on the stick
+
+- **Joystick and HOTAS buttons** for every EDSMT action, beside each key in
+  Settings > Keys.
+- **Chat commands** (off by default; local chat is public): mark a deposit,
+  mark from range, rigs down and up, centre here, undo - typed in the game's
+  own chat with your prefix.
+- **A long mouse press can count as a rig placed** (off by default), for
+  commanders who would rather not press a key at all.
+
+### After the session
+
+- **The ship's hold while you are in the Rhino**: what is in it, room left in
+  tonnes and in Rhino loads, HOLD FULL, and what this trip unloaded.
+- **Map pictures** saved each time the Rhino docks, with Save, Copy and Share.
+- **One Discord post per session**, edited in place after the sale with gross,
+  net after crew, merits paid against the estimate, materials and the map.
+- **Settings > About > Make a support bundle**: one zip, keys and webhook
+  removed.
+
+### Under the hood
+
+- New modules: `finder.py`, `powerplay.py`, `sellplan.py`, `mapimage.py`,
+  `shiphold.py`, `sessionledger.py`, `supportbundle.py`, `waypoints.py`,
+  `guidance.py`, `chattags.py`, `inputdev.py`, `inputmix.py`, `importers.py`,
+  `regrowth.py`, `sitebook.py`, `markerfilter.py`. Pillow is now required.
+- New data files: `searches.json`, `powerplay.json`, `price-trends.json`,
+  `ship_capacity.json`, `session_extras.json`, `discord_posts.json`,
+  `waypoints.json`, `rig_plans.json`, `sitebook.json`, `app.log`. Two new
+  deposit columns, `depleted_at` and `rechecks`; older files read fine.
+- README: screenshots.
+
+### Fixed — Where to sell gave the wrong answer
+
+Out on the body with 89 t of Iridium aboard - 23 in the SRV, 66 in the ship -
+Session earnings said **Aboard 33t**, **No market prices seen yet**, and put
+a four-day-old price 88 Ly away beside "Best within 100 Ly" as if it were
+current. Three things were wrong:
+
+- **Aboard** was the smaller of what is in the hold and what the session
+  books said was mined and unsold, so whenever the books had missed some
+  tonnes the hold was undercounted. It is now the hold as it is: SRV and ship
+  together. **Worth there** uses it.
+- **Only the last market you read was kept.** That was a fleet carrier two
+  systems away, which buys no Iridium, so the hold had no price - and your
+  own earlier reads of the station in the system you were mining had been
+  thrown away. EDSMT now keeps every market you read, and every sale you
+  make, by station. Docked, the hold is priced at the station you are docked
+  at; if you have not opened its board yet, it says so. Out on the surface it
+  is priced at your own read of a market in that system - the one that pays
+  most for what is aboard - and says how old that read is. When no market
+  you have read buys it, the line names the last one you read and points you
+  to Where to sell.
+- **Prices did not say how old they were.** Every price now shows its age
+  and whose it is: *your market read*, *community* (other EDSMT users) or
+  *market data*. Your own read comes first, then community, then market
+  data. Older than a day is marked **stale** and is never shown as what a
+  system pays now. A higher price that is stale is mentioned under the table,
+  not used. Demand 0 is not a market. A lone price far above every other in
+  range is marked **unconfirmed**.
+
+### Fixed — System prices
+
+- The Source column showed the name the price server was configured with.
+  It now says *your market read*, *community* or *market data*, and so does
+  Find's sell table. The server no longer sends that name at all.
+- The commodity that pays most comes first, not alphabetical order.
+- A market with Demand 0 is not listed - with or without **Best market
+  only**.
+- Every price says how old it is, and **stale** past a day.
+
+### Changed — the commodity picker ticks with a tick
+
+The **for** list showed `[ ] Alexandrite` beside `[x] Monazite`. A ticked
+commodity now has a ✓ and its row is lit; the rest are plain names.
+
+### Changed — Discord: one summary a session
+
+A post for every find filled the channel. Now one **Mining Summary** goes
+when a session ends - by End session or the automatic end - and only once:
+where, how long, tonnes and t/hr, the ship's hold, each commodity's tonnes,
+t/hr and estimated worth at the best price known and where, the total,
+Cr/hr, rigs placed, finds logged, deposits worked and Powerplay merits an
+hour. If a post fails, the message says why and names Discord - never your
+webhook.
+
+Posting every find is now a setting of its own, **off**. If 1.10034 had it
+on, it is turned off once; tick it again and it stays ticked.
+
+### New — the current session leads Session earnings
+
+The top of the window is now the session you are on: time, tonnes mined,
+t/hr, sold so far, what it is worth at the best credible price, Cr/hr, and
+**Powerplay merits an hour**. It keeps moving while the window is open, every
+few seconds. With no session running it shows the last one and says so. Your
+earlier sessions are the table under it, and the all-time totals are under
+that.
+
+Frontier publish no formula for merits. EDSMT learns it from your own
+journals: seconds after a sale the game awards its merits, and EDSMT pairs
+the two - older journals once, in the background, and every sale as you
+play. Each commodity gets its own rate once it has two such sales; until
+then the rate over all of them is used. Sales that paid no merits are not
+counted. Until it has seen two, it shows **—**.
+
+---
+
 ## 1.10034
 
 ### Fixed — settings lost when you built or updated

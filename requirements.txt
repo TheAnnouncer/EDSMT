@@ -6,3 +6,7 @@
 # why this starts in about a second and the download is a few MB rather
 # than fifty.
 customtkinter>=5.2.2,<6
+# Map pictures (1.10035): the plan view drawn to a PNG. Pillow ships
+# FreeType in its wheel, so it needs no Ghostscript and no system fonts.
+# 10.1 is the first with a sized default font; 13 is not tested.
+Pillow>=10.1,<13

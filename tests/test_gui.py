@@ -842,7 +842,9 @@ check("and the readout still has room for a long system and body",
       (app.t_where.winfo_width(), app.t_where.winfo_reqwidth()))
 check("because the buttons went under the readouts, not over them",
       app._top_stacked is True)
-app.geometry("1400x900+0+0"); settle(6)
+# 1.10035: the Powerplay button is a fifth on the left, so the buttons need
+# 112 pixels more room than they did at 1400.
+app.geometry("1520x900+0+0"); settle(6)
 check_wide("given the width back, the buttons go back beside the readouts",
            lambda: app._top_stacked is False)
 # 1.10033: a tester's screenshot - "mined aboard 59t worth ... Rhino session
@@ -1048,10 +1050,28 @@ app.take_quote(True, json.dumps({"commodity": "Sapphire", "market": [
      "seen": "2026-09-24T09:00:00Z"}]}))
 settle(4)
 _cells = texts_in(ledger.quote_table)
+# Both prices are weeks old by now, so 1.10035 says so on each of them -
+# and the best, more than twice the only other one, is unconfirmed as well.
 check("the best price is drawn, with where and how far",
-      "648,000" in _cells and "Mandi Port, Ten Mandi (8.2 Ly)" in _cells, _cells)
-check("beside what this system pays", "301,000" in _cells, _cells)
-check("and what the hold's worth of it fetches there", "1,296,000 Cr" in _cells, _cells)
+      "648,000 - stale, unconfirmed" in _cells
+      and "Mandi Port, Ten Mandi (8.2 Ly)" in _cells, _cells)
+check("beside what this system pays - marked stale, never as what it pays now",
+      any(c.startswith("301,000 - ") and c.endswith(", stale") for c in _cells), _cells)
+check("and what the hold's worth of it fetches there",
+      "1,296,000 Cr - stale, unconfirmed" in _cells, _cells)
+check("the price's age and source are given, in neutral words",
+      any("days ago (2026-09-23) - market data" in c for c in _cells), _cells)
+check("the session you are on leads the window (1.10035)",
+      ledger.current.cget("text").startswith("CURRENT SESSION")
+      and "t mined" in ledger.current.cget("text")
+      and "sold so far" in ledger.current.cget("text"), ledger.current.cget("text"))
+check("with Powerplay merits an hour, a dash until it has been learnt",
+      ledger.current_merits.cget("text") == "Powerplay merits/hr: \u2014",
+      ledger.current_merits.cget("text"))
+check("and the all-time totals sit under the sessions table",
+      ledger.summary.cget("text").startswith("All time:")
+      and ledger.summary.winfo_y() > ledger.scroller.winfo_y(),
+      (ledger.summary.winfo_y(), ledger.scroller.winfo_y()))
 check("the main strip quotes it too, and says what is not priced yet",
       "up to 1,296,000 Cr within 100 Ly (1 of 2 priced)"
       in app.t_earnings.cget("text"), app.t_earnings.cget("text"))
@@ -1174,17 +1194,25 @@ click_into(pick)
 ps = pick.suggest
 check("the commodity box under Prices in a system opens its list on click",
       ps.visible() and ps.multi, (ps.visible(), ps.multi))
-check("and the list is a list of tick boxes",
-      any(r.strip().startswith("[ ]") for r in list_rows(ps)), list_rows(ps)[:3])
+# 1.10035: a tick (A.TICK_MARK) on a ticked row, nothing on the rest -
+# "[ ]" beside "[x]" read as a column of empty boxes.
+check("and the list is a list of names to tick, no empty boxes drawn",
+      "Magnesite" in [r.strip() for r in list_rows(ps)]
+      and not any("[" in r for r in list_rows(ps)), list_rows(ps)[:3])
 click_row(ps, "Magnesite")
 check("clicking one ticks it", pick.get() == "Magnesite", pick.get())
 check("and the list stays open for the next", ps.visible())
 click_row(ps, "Bastnäsite")
 check("clicking another ticks that as well", pick.get() == "Magnesite, Bastnäsite",
       pick.get())
-check("both are shown ticked",
-      sum(1 for r in list_rows(ps) if r.strip().startswith("[x]")) == 2,
+check("both are shown ticked, with a tick",
+      sum(1 for r in list_rows(ps) if r.strip().startswith(A.TICK_MARK)) == 2,
       list_rows(ps))
+_ticked_at = [i for i, r in enumerate(list_rows(ps)) if r.strip().startswith(A.TICK_MARK)]
+check("and a ticked row is coloured as ticked",
+      _ticked_at and all(str(ps.listbox.itemcget(i, "fg")).lower() == A.GREEN.lower()
+                         for i in _ticked_at),
+      [ps.listbox.itemcget(i, "fg") for i in _ticked_at])
 click_row(ps, "Magnesite")
 check("clicking a ticked one again unticks it", pick.get() == "Bastnäsite", pick.get())
 click_row(ps, "Magnesite")
@@ -1226,15 +1254,22 @@ check("the answer lands in the Earnings window, on the System prices view",
 check("best market only: one row a commodity, the best one",
       "120,500" in _cells and "41,239" not in _cells and "49,538" in _cells, _cells)
 check("with the station, its pad and how many markets buy it",
-      "Vonarburg Co-operative" in _cells and "L" in _cells and "3" in _cells, _cells)
+      "Vonarburg Co-operative" in _cells and "L" in _cells and "1" in _cells, _cells)
 check("and when that price was last known, and whose it is",
-      any(c.startswith("today") for c in _cells) and "community" in _cells, _cells)
+      any(c.endswith("min ago") for c in _cells) and "community" in _cells, _cells)
+check("a price more than a day old says it is stale (1.10035)",
+      any(c.endswith("- stale") for c in _cells), _cells)
+check("the commodity that pays most comes first (1.10035)",
+      _cells.index("120,500") < _cells.index("49,538"), _cells)
+check("and no upstream's own name is a source - neutral words only",
+      "index" not in _cells and "market data" in _cells, _cells)
 check("the status line says what came back",
       "Wyrd: 2 commodities priced at 3 markets." in ledger.status.cget("text"),
       ledger.status.cget("text"))
 ledger.system_best.set(False); ledger._paint(); settle(6)
 _cells = texts_in(ledger.table)
-check("unticked, every market is listed", "41,239" in _cells and "22,911" in _cells,
+check("unticked, every market that buys it is listed - Demand 0 is not one (1.10035)",
+      "120,500" in _cells and "41,239" not in _cells and "22,911" not in _cells,
       _cells)
 _sell_head = next(w for w in ledger.table.winfo_children()
                   if isinstance(w, A.ctk.CTkButton) and _text_of(w).startswith("Sell"))

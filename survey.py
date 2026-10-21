@@ -35,6 +35,7 @@ import time
 import shutil
 import calendar
 import itertools
+import threading
 
 DEPOSIT_FIELDS = [
     "id",
@@ -62,6 +63,12 @@ DEPOSIT_FIELDS = [
                        # since it was last worked out, by-products included
     "cycles",          # "2026-09-20=56;2026-10-02=48" - its own commodity's
                        # tonnes each time it was worked out: what it held
+    "rigs_fit",        # how many rigs fit on it (7 or more is possible); the
+                       # Rhino still carries six at a time
+    # Added in 1.10035. Old files read these as blank. See regrowth.py.
+    "depleted_at",     # UTC: when it was FIRST marked depleted
+    "rechecks",        # "2026-10-14T09:00:00Z;..." - each look that found it
+                       # still depleted
 ]
 
 LOCATION_FIELDS = [
@@ -1196,7 +1203,7 @@ class Survey:
                                "body": str(body or "").strip(),
                                "signal": str(number or "").strip(),
                                "offers": [], "depleted": [], "logged": False,
-                               "finds": 0, "intact": 0, "rigs": 0,
+                               "finds": 0, "intact": 0, "rigs": 0, "fit": 0,
                                "types": {}, "mined": {}, "last": ""}
             return places[key]
 
@@ -1225,6 +1232,10 @@ class Survey:
             site["types"][name] = site["types"].get(name, 0) + 1
             try:
                 site["rigs"] += max(0, int(float(row.get("rigs") or 0)))
+            except (TypeError, ValueError):
+                pass
+            try:
+                site["fit"] += max(0, int(float(row.get("rigs_fit") or 0)))
             except (TypeError, ValueError):
                 pass
         return sorted(places.values(),
@@ -2320,3 +2331,405 @@ def _write(path, fields, rows):
         return True
     except OSError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# The commander's own market reads (1.10035)
+# ---------------------------------------------------------------------------
+# Every market this commander has read for himself - the Market.json the game
+# writes when the commodity screen opens, and every sale he makes - kept by
+# station. It is the one price nobody else has to be trusted for. Up to
+# 1.10034 only the last Market.json was kept, whichever station it came from:
+# mining on 13 October with 89 t of Iridium aboard, that was a fleet carrier
+# two systems away that bought none of it, his own reads of the station in
+# the system he was mining had been overwritten, and the window said "No
+# market prices seen yet". Docked, the same rule priced the hold at the last
+# board read rather than the station he was standing in.
+
+MARKET_BOOK_FILE = "markets.json"
+MARKET_BOOK_MAX = 300           # stations kept; the longest unvisited go first
+PRICE_STALE_S = 24 * 3600       # older than a day is stale, whoever read it
+OWN_SOURCE = "your market read"
+
+
+def _whole(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _station_key(system, station):
+    return fold(system) + "|" + fold(station)
+
+
+class MarketBook:
+    """What each station paid, the last time this commander looked. Never raises."""
+
+    def __init__(self, folder=None):
+        self.path = os.path.join(folder, MARKET_BOOK_FILE) if folder else ""
+        self.stations = {}
+        self.load()
+
+    def load(self):
+        if not self.path or not os.path.exists(self.path):
+            return
+        try:
+            with open(self.path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            return
+        stations = data.get("stations") if isinstance(data, dict) else None
+        if isinstance(stations, dict):
+            self.stations = {str(key): entry for key, entry in stations.items()
+                             if isinstance(entry, dict)
+                             and isinstance(entry.get("items"), dict)}
+
+    def save(self):
+        if not self.path:
+            return False
+        try:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+            temp = self.path + ".tmp"
+            with open(temp, "w", encoding="utf-8") as handle:
+                json.dump({"stations": self.stations}, handle)
+            os.replace(temp, self.path)
+            return True
+        except OSError:
+            return False
+
+    def _trim(self):
+        extra = len(self.stations) - MARKET_BOOK_MAX
+        if extra > 0:
+            oldest = sorted(self.stations,
+                            key=lambda key: _epoch(self.stations[key].get("when")))
+            for key in oldest[:extra]:
+                del self.stations[key]
+
+    def note_market(self, market):
+        """A whole market read - the reader's parse of Market.json. True when
+        it changed anything. A sale made after the read keeps its own price."""
+        if not isinstance(market, dict):
+            return False
+        system = str(market.get("system") or "").strip()
+        station = str(market.get("station") or "").strip()
+        when = str(market.get("when") or "").strip()
+        if not (system and station and _epoch(when)):
+            return False
+        key = _station_key(system, station)
+        entry = self.stations.get(key) or {}
+        if entry.get("read") == when:
+            return False
+        old = dict(entry.get("items") or {})
+        items = {}
+        for item in market.get("items") or ():
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("commodity") or "").strip()
+            sell = _whole(item.get("sell"))
+            if not name or sell <= 0:
+                continue
+            items[fold(name)] = {"commodity": name, "sell": sell,
+                                 "demand": _whole(item.get("demand")), "seen": when}
+        for folded, item in old.items():
+            if _epoch(item.get("seen")) > _epoch(when):
+                items[folded] = item
+        self.stations[key] = {"system": system, "station": station,
+                              "when": _later(entry.get("when"), when),
+                              "read": when, "items": items,
+                              "station_type": str(market.get("station_type")
+                                                  or entry.get("station_type") or "")}
+        self._trim()
+        return True
+
+    def note_sale(self, system, station, commodity, price, when):
+        """A sale: what this station paid for one commodity, at that second."""
+        system, station = str(system or "").strip(), str(station or "").strip()
+        commodity, price = str(commodity or "").strip(), _whole(price)
+        if not (system and station and commodity and price > 0 and _epoch(when)):
+            return False
+        key = _station_key(system, station)
+        entry = self.stations.setdefault(key, {"system": system, "station": station,
+                                               "when": when, "items": {}})
+        item = entry["items"].get(fold(commodity))
+        if item and _epoch(item.get("seen")) >= _epoch(when):
+            return False
+        entry["items"][fold(commodity)] = {
+            "commodity": commodity, "sell": price,
+            # A sale says it was buying; how much more it wants is unknown.
+            "demand": (item or {}).get("demand") or None, "seen": when}
+        entry["when"] = _later(entry.get("when"), when)
+        self._trim()
+        return True
+
+    def rows(self, commodity, system="", station=""):
+        """This commander's reads of one commodity, as price rows."""
+        out = []
+        for entry in list(self.stations.values()):
+            if system and fold(entry.get("system")) != fold(system):
+                continue
+            if station and fold(entry.get("station")) != fold(station):
+                continue
+            item = (entry.get("items") or {}).get(fold(commodity))
+            if not item or _whole(item.get("sell")) <= 0:
+                continue
+            out.append({"commodity": item.get("commodity") or commodity,
+                        "sell": _whole(item.get("sell")),
+                        "demand": item.get("demand"),
+                        "station": entry.get("station") or "",
+                        "system": entry.get("system") or "",
+                        "station_type": entry.get("station_type") or "",
+                        "seen": item.get("seen") or entry.get("when") or "",
+                        "source": OWN_SOURCE})
+        return out
+
+    def prices_at(self, system, station):
+        """{commodity: sell} at one station, as hold_value wants them."""
+        entry = self.stations.get(_station_key(system, station)) or {}
+        return {item.get("commodity"): _whole(item.get("sell"))
+                for item in (entry.get("items") or {}).values()
+                if _whole(item.get("sell")) > 0}
+
+    def best_in(self, system, cargo=None):
+        """(prices, station, when) of this commander's own read, in one
+        system, that pays most for `cargo` - or the newest read there when
+        there is no cargo to weigh. None when he has read no market there
+        that buys any of it (1.10035)."""
+        best, best_key = None, None
+        for entry in list(self.stations.values()):
+            if fold(entry.get("system")) != fold(system):
+                continue
+            prices = self.prices_at(entry.get("system"), entry.get("station"))
+            worth = hold_value(cargo, prices) if cargo else 0
+            if cargo and worth <= 0:
+                continue
+            key = (worth, _epoch(entry.get("when")))
+            if best_key is None or key > best_key:
+                best_key = key
+                best = (prices, entry.get("station") or "", entry.get("when") or "")
+        return best
+
+
+# ---------------------------------------------------------------------------
+# Powerplay merits, learnt from this commander's own sales (1.10035)
+# ---------------------------------------------------------------------------
+# Frontier publish no formula, so nothing is assumed: the estimate is learnt
+# from this commander's own sales, and nothing is estimated until enough has
+# been seen.
+
+MERITS_FILE = "merits.json"
+MERIT_PAIR_S = 90
+MERIT_MIN_PAIRS = 2             # one sale is an anecdote
+MERIT_MAX_PAIRS = 200
+_MERIT_EVENTS = (b'"MarketSell"', b'"PowerplayMerits"', b'"MissionCompleted"')
+
+
+def merit_note(event):
+    """A raw journal event as the note MeritRate.observe takes, or None."""
+    if not isinstance(event, dict):
+        return None
+    name = event.get("event")
+    if name == "MarketSell":
+        count = _whole(event.get("Count"))
+        return {"event": name, "when": str(event.get("timestamp") or ""),
+                "commodity": canonical(event.get("Type_Localised") or event.get("Type") or "")
+                             or str(event.get("Type_Localised") or event.get("Type") or ""),
+                "count": count,
+                "total": _whole(event.get("TotalSale")) or count * _whole(event.get("SellPrice")),
+                "avg_paid": _whole(event.get("AvgPricePaid"))}
+    if name == "PowerplayMerits":
+        note = {"event": name, "when": str(event.get("timestamp") or ""),
+                "merits": _whole(event.get("MeritsGained"))}
+        if event.get("TotalMerits") is not None:
+            note["total"] = _whole(event.get("TotalMerits"))
+        return note
+    if name == "MissionCompleted":
+        # Support missions pay merits too, seconds after they are handed in.
+        return {"event": name, "when": str(event.get("timestamp") or "")}
+    return None
+
+
+class MeritRate:
+    """Merits per credit of sale profit, from sales the game paid merits on."""
+
+    def __init__(self, folder=None):
+        self.path = os.path.join(folder, MERITS_FILE) if folder else ""
+        self.pairs = []
+        self.files = {}
+        self._pending = []
+        self._mission_at = 0
+        self._last_total = None
+        self._lock = threading.Lock()
+        self.load()
+
+    def load(self):
+        if not self.path or not os.path.exists(self.path):
+            return
+        try:
+            with open(self.path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        self.pairs = [p for p in data.get("pairs") or [] if isinstance(p, dict)
+                      and _whole(p.get("credits")) > 0 and _whole(p.get("merits")) > 0]
+        files = data.get("files")
+        self.files = dict(files) if isinstance(files, dict) else {}
+
+    def save(self):
+        if not self.path:
+            return False
+        rates = self.rates()
+        with self._lock:
+            data = {"pairs": list(self.pairs), "files": dict(self.files),
+                    "rates": rates}
+        try:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+            # One temp file per thread: the older-journal pass and the live
+            # tick can both save, and must not write into each other's.
+            temp = "%s.%d.tmp" % (self.path, threading.get_ident())
+            with open(temp, "w", encoding="utf-8") as handle:
+                json.dump(data, handle)
+            os.replace(temp, self.path)
+            return True
+        except OSError:
+            return False
+
+    def observe(self, note):
+        """One note off the reader. True when a sale and its merits were paired."""
+        if not isinstance(note, dict):
+            return False
+        name = note.get("event")
+        if name == "MarketSell":
+            profit = _whole(note.get("total")) - _whole(note.get("avg_paid")) * _whole(note.get("count"))
+            at = _epoch(note.get("when"))
+            # Only mined cargo is paid merits: in his own journals thirty
+            # profitable loads of bought goods paid none, so a bought load
+            # never stands in for a sale the merits were paid on.
+            if profit > 0 and at and not _whole(note.get("avg_paid")):
+                # Only sales the next merits could still be paying for: a
+                # commander who is not pledged sells all evening and is paid
+                # none, and this list must not grow with every sale.
+                self._pending = [s for s in self._pending
+                                 if 0 <= at - _epoch(s["when"]) <= MERIT_PAIR_S]
+                self._pending.append({"when": note.get("when"), "credits": profit,
+                                      "commodity": note.get("commodity") or "",
+                                      "tonnes": _whole(note.get("count"))})
+            return False
+        if name == "MissionCompleted":
+            self._mission_at = _epoch(note.get("when")) or 0
+            return False
+        if name != "PowerplayMerits":
+            return False
+        at, merits = _epoch(note.get("when")), _whole(note.get("merits"))
+        total, last = note.get("total"), self._last_total
+        if total is not None:
+            self._last_total = _whole(total)
+            # A merits line that leaves the total where it was paid nothing.
+            if last is not None and _whole(total) == last:
+                return False
+        latest = max((_epoch(s["when"]) for s in self._pending), default=0)
+        if self._mission_at and latest <= self._mission_at <= at:
+            # Handed in a mission after the last sale: these are the
+            # mission's merits. The sale's own may still be on their way.
+            self._mission_at = 0
+            return False
+        sales = [s for s in self._pending if 0 <= at - _epoch(s["when"]) <= MERIT_PAIR_S]
+        self._pending = []
+        credits = sum(s["credits"] for s in sales)
+        if merits <= 0 or credits <= 0:
+            return False
+        return self._add({"when": note.get("when"), "credits": credits, "merits": merits,
+                          "commodity": ", ".join(sorted({s["commodity"] for s in sales if s["commodity"]})),
+                          "tonnes": sum(s["tonnes"] for s in sales)})
+
+    def _add(self, pair):
+        with self._lock:
+            if any(p.get("when") == pair["when"] and _whole(p.get("merits")) == pair["merits"]
+                   for p in self.pairs):
+                return False
+            self.pairs.append(pair)
+            self.pairs.sort(key=lambda p: _epoch(p.get("when")))
+            del self.pairs[:-MERIT_MAX_PAIRS]
+        return True
+
+    def per_credit(self, commodity=None):
+        """Merits per credit of profit, or None until MERIT_MIN_PAIRS are seen.
+
+        With a commodity, that commodity's own rate once it has been paired
+        MERIT_MIN_PAIRS times on its own; until then the rate over every
+        paired sale. Goods differ, so each is kept apart."""
+        with self._lock:
+            pairs = list(self.pairs)
+        if commodity:
+            own = [p for p in pairs if fold(p.get("commodity")) == fold(commodity)]
+            if len(own) >= MERIT_MIN_PAIRS:
+                pairs = own
+        if len(pairs) < MERIT_MIN_PAIRS:
+            return None
+        credits = sum(_whole(p.get("credits")) for p in pairs)
+        merits = sum(_whole(p.get("merits")) for p in pairs)
+        return merits / float(credits) if credits > 0 and merits > 0 else None
+
+    def rates(self):
+        """{commodity: {"per_credit", "pairs"}} - the ratio learnt for each
+        commodity sold on its own, as it stands. Kept in merits.json too."""
+        with self._lock:
+            pairs = list(self.pairs)
+        groups = {}
+        for pair in pairs:
+            name = str(pair.get("commodity") or "").strip()
+            if not name or "," in name:
+                continue
+            groups.setdefault(name, []).append(pair)
+        out = {}
+        for name, group in sorted(groups.items()):
+            credits = sum(_whole(p.get("credits")) for p in group)
+            merits = sum(_whole(p.get("merits")) for p in group)
+            if credits > 0 and merits > 0:
+                out[name] = {"per_credit": merits / float(credits),
+                             "pairs": len(group)}
+        return out
+
+    def learn_file(self, path):
+        """Pair the sales and merits in one journal file. How many were new."""
+        with open(path, "rb") as handle:
+            data = handle.read()
+        if _MERIT_EVENTS[1] not in data:
+            return 0
+        scratch = MeritRate()
+        for raw in data.splitlines():
+            if not any(tag in raw for tag in _MERIT_EVENTS):
+                continue
+            try:
+                note = merit_note(json.loads(raw.decode("utf-8", "replace")))
+            except ValueError:
+                continue
+            if note:
+                scratch.observe(note)
+        return sum(1 for pair in scratch.pairs if self._add(pair))
+
+    def learn_folder(self, folder, stop=None):
+        """Every journal in the folder not read for merits yet. Never raises."""
+        learnt = 0
+        try:
+            names = sorted(n for n in os.listdir(folder)
+                           if n.startswith("Journal.") and n.endswith(".log"))
+        except OSError:
+            return 0
+        for name in names:
+            if stop is not None and stop.is_set():
+                break
+            path = os.path.join(folder, name)
+            try:
+                size = os.path.getsize(path)
+                if self.files.get(name) == size:
+                    continue
+                learnt += self.learn_file(path)
+            except OSError:
+                continue
+            with self._lock:
+                self.files[name] = size
+        self.save()
+        return learnt

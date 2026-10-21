@@ -453,9 +453,11 @@ run = {"id": "r1", "started": "2026-10-07T18:00:00Z", "ended": "2026-10-07T19:30
        "mined": "Monazite:96;Painite:24", "credits": "24000000", "station": "Port",
        "sold_in": "Ega"}
 summary = EDO.discord_session_message(run, "Jameson")["embeds"][0]
-check("a session says what came out of the ground", summary["title"] == "Rhino session: 120 t mined"
+# 1.10035: one Mining Summary a session, titled with the CMDR.
+check("a session says what came out of the ground",
+      summary["title"] == "CMDR Jameson \u2014 Mining Summary"
       and "Monazite: 96 t" in summary["description"], summary)
-check("and what it paid", any(f["name"] == "Credits" and "24,000,000" in f["value"]
+check("and what it paid", any(f["name"] == "Sold" and "24,000,000" in f["value"]
                               for f in summary["fields"]), summary["fields"])
 sent = []
 real_post = EDO.post_json
@@ -484,6 +486,9 @@ d.watcher = type("W", (), {"cmdr": "Jameson"})()
 check("with no webhook set, nothing is posted", d.post_discord_find({"commodity": "Gold"}) is False
       and d.worker.jobs == [])
 d.settings["discord_webhook"] = HOOK
+check("with one, but per-find posts off - the default from 1.10035 - a find does not go",
+      d.post_discord_find({"commodity": "Gold"}) is False)
+d.settings["discord_post_finds"] = True
 check("with one, a find goes", d.post_discord_find({"commodity": "Gold"})
       and d.worker.jobs == [EDO.DISCORD_TAG])
 d.settings["discord_post_finds"] = False
@@ -685,7 +690,7 @@ check("one cell per heading", len(cells) == len(A.RUN_HEADERS), (len(cells), len
 check("reading 60.0 t", cells[A.RUN_HEADERS.index("t/hr")][0] == "60.0 t",
       cells[A.RUN_HEADERS.index("t/hr")])
 check("and the Discord summary carries it", any(
-    f["name"] == "t/hr" and f["value"] == "60.0" for f in EDO.discord_session_message(
+    f["name"] == "Session" and "@ 60.0 t/hr" in f["value"] for f in EDO.discord_session_message(
         {"started": "2026-10-07T18:00:00Z", "ended": "2026-10-07T20:00:00Z",
          "mined": "Monazite:96;Painite:24"})["embeds"][0]["fields"]))
 

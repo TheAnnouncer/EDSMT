@@ -32,6 +32,11 @@ TARGETS = [
 SERVER_MAIN = os.path.join("..", "EDSMT-Private", "server", "main.py")
 if os.path.exists(os.path.join(REPO, SERVER_MAIN)):
     TARGETS.append((SERVER_MAIN, r'(APP_VERSION\s*=\s*")([\d.]+)(")', "plain"))
+# The runbook beside it says which version is current, and its own check
+# fails the build when that drifts - it did on the first run for 1.10035.
+RUNBOOK = os.path.join("..", "EDSMT-Private", "RUNBOOK.md")
+if os.path.exists(os.path.join(REPO, RUNBOOK)):
+    TARGETS.append((RUNBOOK, r'(Current version: \*\*)([\d.]+)(\*\*)', "plain"))
 
 
 def read(path):

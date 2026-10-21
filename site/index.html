@@ -27,77 +27,81 @@
    when the site does. Everything here is scoped to .edsmt.
    The ?v= on raxxla.css, config.js and raxxla.js must be the one the rest
    of the site uses: upload this page after the site update that sets it. */
-.edsmt .wrap{max-width:calc(1560px + 2 * var(--gutter))}
-.edsmt p{max-width:66ch}
+.edsmt .wrap{max-width:calc(1320px + 2 * var(--gutter))}
+.edsmt p{max-width:68ch}
 .edsmt a{color:var(--signal)}
-.edsmt .page-head h1{font-size:clamp(3rem,1.5rem + 6vw,6.5rem)}
-.edsmt .hero-shot{margin:30px 0 0;border:1px solid var(--line);background:#000;max-width:1100px}
-.edsmt .hero-shot img{display:block;width:100%;height:auto}
-.edsmt .hero-shot figcaption{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--faint);padding:8px 12px;border-top:1px solid var(--line-soft)}
-.edsmt .lede strong{color:var(--signal);font-weight:600}
-.edsmt .ctas{display:flex;flex-wrap:wrap;gap:12px;margin:26px 0 14px}
 .edsmt a.btn{color:var(--void)}
 .edsmt a.btn.ghost{color:var(--signal)}
 .edsmt a.btn.ghost:hover{color:var(--void)}
+.edsmt img{max-width:100%;height:auto}
+
+/* The top of the page: what it is, the download, the Rhino. */
+.edsmt .hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:clamp(24px,4vw,56px);align-items:center}
+.edsmt .page-head h1{font-size:clamp(3rem,1.5rem + 6vw,6rem);margin-bottom:4px}
+.edsmt .subtitle{font-family:var(--mono);font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin:0 0 18px}
+.edsmt .lede strong{color:var(--signal);font-weight:600}
+.edsmt .ctas{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0 14px}
 .edsmt .note{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;max-width:none}
-.edsmt .build{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:18px;max-width:none;
+.edsmt .build{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:16px;max-width:none;
   font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
 .edsmt .build b{font-weight:400;color:var(--paper)}
 .edsmt .build a{text-decoration:none}
 .edsmt .build a:hover{color:var(--paper)}
 
+/* A picture of the app, or of the game, with a line under it. */
+.edsmt figure{margin:0}
+.edsmt .shot{border:1px solid var(--line);background:#000}
+.edsmt .shot a{display:block}
+.edsmt .shot img{display:block;width:100%}
+.edsmt .shot figcaption{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);padding:8px 12px;border-top:1px solid var(--line-soft)}
+
+/* What it does: one card a feature, each opening its section. */
+.edsmt .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:18px}
+.edsmt .feature{display:flex;flex-direction:column;border:1px solid var(--line);background:var(--hull);text-decoration:none;color:inherit}
+.edsmt .feature:hover,.edsmt .feature:focus-visible{border-color:var(--signal)}
+.edsmt .feature .thumb{aspect-ratio:16/9;overflow:hidden;background:#000;border-bottom:1px solid var(--line-soft)}
+.edsmt .feature .thumb img{display:block;width:100%;height:100%;object-fit:cover;object-position:left top}
+.edsmt .feature .body{padding:16px 18px 18px}
+.edsmt .feature h3{font-size:.95rem;color:var(--signal);letter-spacing:.14em;margin:0 0 6px}
+.edsmt .feature p{font-size:.95rem;color:var(--mute);margin:0}
+
+/* The sections: words on one side, the picture on the other. */
 .edsmt .section{border-top:1px solid var(--line-soft)}
 .edsmt .section + .section{padding-top:clamp(32px,4vw,56px)}
 .edsmt .sec-head{margin-bottom:22px}
-.edsmt .section h3{font-size:.95rem;color:var(--signal);letter-spacing:.14em;margin:18px 0 8px}
+.edsmt .section h3{font-size:.95rem;color:var(--signal);letter-spacing:.14em;margin:22px 0 8px}
 .edsmt .section h3:first-child{margin-top:0}
-
+.edsmt .split{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(24px,3.5vw,48px);align-items:start}
+.edsmt .split + .split{margin-top:clamp(28px,3.5vw,48px)}
+.edsmt .split.flip > :first-child{order:2}
 .edsmt .cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:34px}
-.edsmt .cols3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
-.edsmt .cols3 > div{background:var(--hull);padding:22px 24px}
-.edsmt .cols3 p{font-size:.95rem;color:var(--mute);margin:0}
-
-.edsmt .keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px;margin-bottom:22px}
-.edsmt .key kbd{font-family:var(--mono);font-size:26px;color:var(--signal);display:block;margin-bottom:8px;letter-spacing:.08em;
-  text-shadow:0 0 10px rgba(255,122,24,.45)}
-.edsmt .key p{font-size:.95rem;color:var(--mute);margin:0}
-.edsmt .key b{color:var(--paper);font-weight:600}
-
-.edsmt .readout{align-self:start}
-.edsmt .kv .v.ok{color:var(--ok)}
-.edsmt .kv .v.warn{color:var(--warn)}
-
-.edsmt .chip{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;
-  padding:3px 9px;border:1px solid currentColor;white-space:nowrap;display:inline-block}
-.edsmt .chip.verified{color:var(--ok)}
-.edsmt .chip.reported{color:var(--mute)}
-.edsmt .chip.stale{color:var(--bad)}
-
-.edsmt .tablewrap{overflow-x:auto;border:1px solid var(--line);margin-top:18px;background:rgba(10,9,8,.78)}
-.edsmt table{border-collapse:collapse;width:100%;min-width:640px;font-family:var(--mono);font-size:13px}
-.edsmt th,.edsmt td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft)}
-.edsmt th{font-size:.66rem;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;background:var(--hull);font-weight:400}
-.edsmt td{color:var(--paper)}
-.edsmt tr:last-child td{border-bottom:none}
-.edsmt td.dim{color:var(--faint)}
-
-.edsmt .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px;margin-top:18px;align-self:start}
-.edsmt .tier{border:1px solid var(--line);background:var(--hull);padding:16px 18px}
-.edsmt .tier .n{font-family:var(--mono);font-size:.7rem;letter-spacing:.2em;color:var(--signal);text-transform:uppercase;display:block;margin-bottom:6px}
-.edsmt .tier p{font-size:.95rem;color:var(--mute);margin:0}
 
 .edsmt ul{margin:0 0 14px;padding-left:20px;max-width:66ch;color:var(--mute)}
 .edsmt li{margin-bottom:6px}
 .edsmt li::marker{color:var(--signal)}
 .edsmt li b{color:var(--paper);font-weight:600}
+.edsmt b.w{color:var(--paper);font-weight:600}
 .edsmt code{font-family:var(--mono);font-size:.88em;color:var(--signal);background:rgba(255,122,24,.09);
   padding:1px 6px;border:1px solid var(--line-soft);overflow-wrap:anywhere}
+
+/* The keys, in the order the work is done. */
+.edsmt .keys{display:grid;grid-template-columns:max-content 1fr;gap:8px 18px;margin:6px 0 16px;max-width:66ch}
+.edsmt .keys kbd{font-family:var(--mono);font-size:.9rem;color:var(--signal);white-space:nowrap}
+.edsmt .keys span{color:var(--mute);font-size:.95rem}
 
 .edsmt .callout{border-left:2px solid var(--signal);padding:4px 0 4px 18px;margin:20px 0}
 .edsmt .callout .label{display:block;margin-bottom:6px;color:var(--signal)}
 .edsmt .callout.warn{border-left-color:var(--warn)}
 .edsmt .callout.warn .label{color:var(--warn)}
+
+.edsmt .chip{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;
+  padding:3px 9px;border:1px solid currentColor;white-space:nowrap;display:inline-block}
+.edsmt .chip.verified{color:var(--ok)}
+.edsmt .chip.reported{color:var(--mute)}
+
+.edsmt .readout{align-self:start}
+.edsmt .kv .v.ok{color:var(--ok)}
 
 .edsmt .faq{max-width:80ch}
 .edsmt .faq details{border-bottom:1px solid var(--line-soft);padding:12px 0}
@@ -107,8 +111,14 @@
 .edsmt .faq details[open] summary::before{content:"\2212"}
 .edsmt .faq details p{margin:8px 0 0 1.2em;color:var(--mute)}
 
+@media (max-width:900px){
+  .edsmt .hero,.edsmt .split{grid-template-columns:minmax(0,1fr)}
+  .edsmt .split.flip > :first-child{order:0}
+}
 @media (max-width:520px){
-  .edsmt .ctas .btn{flex:1 1 100%}
+  .edsmt .ctas .btn{flex:1 1 100%;text-align:center}
+  .edsmt .keys{grid-template-columns:minmax(0,1fr);gap:2px 0}
+  .edsmt .keys span{margin-bottom:8px}
   .edsmt .kv{flex-wrap:wrap}
   .edsmt .kv .v{text-align:left}
 }
@@ -143,282 +153,374 @@
 <main id="main" class="edsmt">
 <div class="wrap">
 
-  <header class="page-head">
-    <span class="label on">Vodel Rhino &middot; Surface Survey &middot; Test Build</span>
-    <h1>EDSMT</h1>
-    <p class="lede">Map surface mining for the Rhino <strong>without typing a
-    single coordinate</strong>. It reads your journal, so the system, the body,
-    your latitude and longitude and the commodity all come from the game.</p>
+  <header class="page-head hero">
+    <div>
+      <span class="label on">Radio Raxxla tools &middot; Rhino surface mining</span>
+      <h1>EDSMT</h1>
+      <p class="subtitle">Elite Dangerous Surface Mining Tool</p>
+      <p class="lede">A surface mining companion for the Rhino. It reads your
+      Elite Dangerous journal, so the system, the body, your position and what
+      you mined all come from the game &mdash; <strong>you never type a
+      coordinate</strong>.</p>
 
-    <div class="ctas">
-      <a class="btn" href="EDSMT-Setup.exe">Download &middot; Installer</a>
-      <a class="btn ghost" href="EDSMT.exe">Portable .exe</a>
-      <a class="btn ghost" href="EDSMT-source.zip">Source zip</a>
+      <div class="ctas">
+        <a class="btn" href="EDSMT-Setup.exe">Download &middot; Installer</a>
+        <a class="btn ghost" href="EDSMT.exe">Portable .exe</a>
+        <a class="btn ghost" href="EDSMT-source.zip">Source zip</a>
+      </div>
+      <p class="note">Free &middot; Windows &middot; No account &middot; GPL-3.0</p>
+      <p class="build">
+        <span>Build <b><!--VERSION-->1.10035<!--/VERSION--></b></span>
+        <span>Elite Dangerous <b>4.4.1.1</b></span>
+        <span><a href="#whatsnew">What changed</a></span>
+        <span>Source: <a href="https://github.com/TheAnnouncer/EDSMT">github.com/TheAnnouncer/EDSMT</a></span>
+      </p>
     </div>
-    <p class="note">Free &middot; No account &middot; Every find goes on the community map</p>
-    <p class="build">
-      <span>Build <b><!--VERSION-->1.10034<!--/VERSION--></b></span>
-      <span>Elite Dangerous <b>4.4.1.1</b></span>
-      <span>Windows</span>
-      <span>Source: <a href="https://github.com/TheAnnouncer/EDSMT">github.com/TheAnnouncer/EDSMT</a> (GPL-3.0)</span>
-    </p>
-    <figure class="hero-shot">
+    <figure class="shot">
       <img src="rhino-1600.jpg" srcset="rhino-800.jpg 800w, rhino-1600.jpg 1600w"
-           sizes="(max-width: 1140px) 100vw, 1100px" width="1600" height="1097"
+           sizes="(max-width: 900px) 100vw, 600px" width="1600" height="1097"
            alt="The Rhino SRV on a planet surface at night, lights on"
-           decoding="async">
+           decoding="async" fetchpriority="high">
       <figcaption>The Rhino &middot; screenshot by CMDR TheAnnouncer &middot; Elite Dangerous &copy; Frontier Developments plc</figcaption>
     </figure>
   </header>
 
-    <section class="section" id="keys">
-    <div class="sec-head"><div><span class="label on">Left Alt and the number row &middot; the same number with AltGr takes it back</span><h2>Keys, in the order you work.</h2></div></div>
-
-    <div class="keys">
-      <div class="key hud hud-pad">
-        <kbd>Alt+1</kbd>
-        <p><b>In the middle of the signal.</b> Logs the signal and sets the
-        centre of the survey. No commodities needed &mdash; they come with the
-        deposits.</p></div>
-      <div class="key hud hud-pad">
-        <kbd>Alt+2</kbd>
-        <p><b>At the location's edge line.</b> Hold the mineral scanner all the
-        way out and while you map. The border: the map and the scope shade the
-        ground you have swept inside it.</p></div>
-      <div class="key hud hud-pad">
-        <kbd>Alt+3</kbd>
-        <p><b>Stood on a deposit.</b> One press per deposit, with all four
-        boxes filled in &mdash; commodity, rigs, amount and density &mdash; so
-        what goes on the shared map can be trusted.</p></div>
-      <div class="key hud hud-pad">
-        <kbd>Alt+4 &ndash; 9</kbd>
-        <p><b>Rig 1 to rig 6 down.</b> Each rig its own key, drawn on the scope
-        and the compass in the colour of what it is mining. The first one down
-        starts your earnings session.</p></div>
-      <div class="key hud hud-pad">
-        <kbd>AltGr+4 &ndash; 9</kbd>
-        <p><b>That rig back up.</b> The last one up ends the session and stands
-        every rig warning down. On a keyboard without AltGr it is
-        Ctrl+Alt.</p></div>
-      <div class="key hud hud-pad">
-        <kbd>AltGr+3</kbd>
-        <p><b>Back at a deposit you marked.</b> Writes the Amount going down, or
-        the rig count you now know, onto it instead of adding a second
-        copy.</p></div>
-      <div class="key hud hud-pad">
-        <kbd>AltGr+0</kbd>
-        <p><b>Every rig up at once.</b> Clears them from the scope and the
-        compass, and every rig warning with them.</p></div>
-      <div class="key hud hud-pad">
-        <kbd>Alt+0</kbd>
-        <p><b>Overlay on and off.</b> It only comes up while you are driving
-        a Rhino &mdash; not in the ship, on foot or in the Nomad.</p></div>
-    </div>
-    <p class="note">None of these is used by any of the game's own
-    control schemes. Every one can be changed in Settings.</p>
-
-    <div class="cols2">
-      <div>
-        <div class="callout">
-          <span class="label">No centre to set. No bearing to work out.</span>
-          <p>A deposit records where it <em>is</em>. How far it is and which way
-          to turn are worked out live from wherever you happen to be standing
-          &mdash; which is the number you want with your hands on the wheel, and
-          it means nothing has to be pressed before a find can be recorded.</p>
-        </div>
-        <p>The keys are system-wide, so they work with the game in front,
-        and the position is taken the instant you press one. Every one can be
-        changed in Settings.</p>
-      </div>
-      <div class="hud readout"><div class="hud-head"><span class="label">Live &middot; SRV Telemetry</span></div>
-        <div class="hud-pad">
-        <div class="kv"><span class="k">System</span><span class="v">Ega</span></div>
-        <div class="kv"><span class="k">Body</span><span class="v">Ega 1</span></div>
-        <div class="kv"><span class="k">Class</span><span class="v">High metal content</span></div>
-        <div class="kv"><span class="k">Gravity</span><span class="v">0.25 g</span></div>
-        <div class="kv"><span class="k">Surface temp</span><span class="v">214 K</span></div>
-        <div class="kv"><span class="k">DSS signals</span><span class="v">6 mining locations</span></div>
-        <div class="kv"><span class="k">In signal</span><span class="v">3</span></div>
-        <div class="kv"><span class="k">Nearest</span><span class="v">Haematite &nbsp; 896 m</span></div>
-        <div class="kv"><span class="k">Turn</span><span class="v ok">Slightly left</span></div>
-        <div class="kv"><span class="k">Amount</span><span class="v warn">Low</span></div>
-      </div></div>
+  <section class="section" id="what">
+    <div class="sec-head"><div><span class="label on">From a made-up session &middot; the commander and every number are invented</span><h2>What it does</h2></div></div>
+    <div class="features">
+      <a class="feature" href="#map">
+        <div class="thumb"><img src="edsmt-map-800.jpg" width="800" height="500" loading="lazy" decoding="async"
+             alt="The EDSMT main window with the deposit map, a golden group ring and two rigs"></div>
+        <div class="body"><h3>Map and rigs</h3>
+          <p>Every deposit you mark, where it is, with the trail you drove and a ring round each rig.</p></div>
+      </a>
+      <a class="feature" href="#map">
+        <div class="thumb"><img src="edsmt-overlay-800.jpg" width="800" height="518" loading="lazy" decoding="async"
+             alt="The overlay boxes: compass tape, scope and nearest targets"></div>
+        <div class="body"><h3>Overlay</h3>
+          <p>A compass tape, a scope and a targets list over the game, so you can drive without leaving it.</p></div>
+      </a>
+      <a class="feature" href="#find">
+        <div class="thumb"><img src="edsmt-find-800.jpg" width="800" height="341" loading="lazy" decoding="async"
+             alt="Find showing sell prices for Iridium and Rhodplumsite, nearest first"></div>
+        <div class="body"><h3>Find and selling</h3>
+          <p>Shared sites from other commanders, and where what you mined sells, nearest first.</p></div>
+      </a>
+      <a class="feature" href="#find">
+        <div class="thumb"><img src="edsmt-where-to-land-800.jpg" width="800" height="307" loading="lazy" decoding="async"
+             alt="Where to land ranking the bodies of a system"></div>
+        <div class="body"><h3>Where to land</h3>
+          <p>The bodies in the system you are in, ranked by what they are likely to hold.</p></div>
+      </a>
+      <a class="feature" href="#powerplay">
+        <div class="thumb"><img src="edsmt-powerplay-800.jpg" width="800" height="437" loading="lazy" decoding="async"
+             alt="The Powerplay window listing nearby systems and what selling there does"></div>
+        <div class="body"><h3>Powerplay</h3>
+          <p>Whether selling in each system would count for your Power, from your own journal.</p></div>
+      </a>
+      <a class="feature" href="#earnings">
+        <div class="thumb"><img src="edsmt-earnings-800.jpg" width="800" height="379" loading="lazy" decoding="async"
+             alt="The Earnings window with the current session and earlier sessions"></div>
+        <div class="body"><h3>Earnings and Discord</h3>
+          <p>The session you are on, with Cr/hr and merits/hr, and a summary for your own Discord channel.</p></div>
+      </a>
     </div>
   </section>
 
-  <section class="section" id="overlay">
-    <div class="sec-head"><div><span class="label on">Drive by the strip, not by alt-tab</span><h2>The overlay</h2></div></div>
-    <div class="cols2">
+  <section class="section" id="map">
+    <div class="sec-head"><div><span class="label on">Left Alt and the number row &middot; the same number with AltGr takes it back</span><h2>Map and rigs</h2></div></div>
+    <div class="split">
       <div>
-        <p>A compass tape across the top of your screen showing which way every
-        recorded deposit is, how far, and how many rigs it takes.</p>
-        <p>Anything behind you pins to the near edge with a turn arrow rather
-        than silently vanishing &mdash; which is the failure that makes an
-        overlay useless the moment you drive past something. Labels that would
-        collide stack onto separate rows, because deposits cluster, and a
-        cluster is exactly when there is most to read.</p>
-        <p>It is one of six boxes &mdash; compass, scope, targets, status,
-        the deposit you are on, and a guide that shows the next step and its
-        key &mdash; each switched on or off on its own. Unlock to drag them
-        where you want, lock again and clicks pass straight through to the
-        game.</p>
+        <p>Drive into a mining location and press a key. EDSMT takes your
+        position from the game the moment you press it, so a deposit records
+        where it <em>is</em>; how far it is and which way to turn are worked
+        out live from wherever you are.</p>
+        <div class="keys">
+          <kbd>Alt+1</kbd><span>In the middle of the signal: logs it and sets the centre.</span>
+          <kbd>Alt+2</kbd><span>At the location's edge line: sets the border.</span>
+          <kbd>Alt+3</kbd><span>On a deposit: marks it, with commodity, rigs, amount and density.</span>
+          <kbd>Alt+4&ndash;9</kbd><span>Rig 1 to rig 6 down. The first one starts the earnings session.</span>
+          <kbd>AltGr+4&ndash;9</kbd><span>That rig back up. On a keyboard without AltGr it is Ctrl+Alt.</span>
+          <kbd>AltGr+3</kbd><span>Back at a deposit: updates what is left instead of adding a copy.</span>
+          <kbd>AltGr+0</kbd><span>Every rig up at once.</span>
+          <kbd>Alt+0</kbd><span>Overlay on and off. It shows only while you drive a Rhino.</span>
+        </div>
+        <p class="note">None of these is used by the game's own control schemes. Every one can be changed in Settings.</p>
+        <h3>On the map</h3>
+        <ul>
+          <li><b>The trail you drove</b>, so you can see the ground you have covered.</li>
+          <li><b>Golden groups</b>: deposits close enough to work in one stop, ringed, with an estimate of what they are worth an hour.</li>
+          <li><b>Rig radar</b>: a ring the rig spacing round every rig you put down, and where the next one fits.</li>
+          <li><b>Density and amount</b> kept apart: how rich a deposit is, and how much of it is left.</li>
+        </ul>
+      </div>
+      <figure class="shot">
+        <a href="edsmt-map-full.jpg"><img src="edsmt-map-800.jpg"
+           srcset="edsmt-map-800.jpg 800w, edsmt-map-full.jpg 1600w"
+           sizes="(max-width: 900px) 100vw, 700px" width="1600" height="1000"
+           loading="lazy" decoding="async"
+           alt="The main window. The map shows Iridium, Rhodplumsite and Sapphire deposits round the commander, a yellow golden group ring, two rigs with green rings, and the driven trail."></a>
+        <figcaption>The main window &middot; deposits, trail, golden group and rig rings</figcaption>
+      </figure>
+    </div>
+    <div class="split flip">
+      <div>
+        <h3>The overlay</h3>
+        <p>Boxes over the game, each switched on or off on its own: a compass
+        tape with every recorded deposit, its distance and how many rigs it
+        takes; a scope that zooms 1x, 2x and 4x on a key; the nearest targets;
+        a status line; and a guide that shows the next step and its key.
+        Anything behind you stays pinned to the edge of the tape with a turn
+        arrow rather than dropping off it.</p>
+        <p>Unlock to drag the boxes where you want them and set the text size
+        of each; lock again and clicks go straight through to the game.</p>
         <div class="callout warn">
           <span class="label">Borderless or windowed, not fullscreen</span>
-          <p>No overlay of any kind can draw over a game in exclusive
-          fullscreen. That is DirectX, not this app.</p>
+          <p>No overlay can draw over a game in exclusive fullscreen. That is
+          DirectX, not EDSMT.</p>
         </div>
       </div>
-      <div class="hud readout"><div class="hud-head"><span class="label">Overlay &middot; Compass Tape</span></div>
+      <figure class="shot">
+        <a href="edsmt-overlay-full.jpg"><img src="edsmt-overlay-800.jpg"
+           srcset="edsmt-overlay-800.jpg 800w, edsmt-overlay-full.jpg 990w"
+           sizes="(max-width: 900px) 100vw, 700px" width="990" height="641"
+           loading="lazy" decoding="async"
+           alt="The overlay boxes on their own: the compass tape across the top, the scope with numbered deposits and a golden group ring, and the nearest targets list."></a>
+        <figcaption>The overlay &middot; compass, scope and targets, shown without the game behind them</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" id="find">
+    <div class="sec-head"><div><span class="label on">Other commanders' finds, and where to sell yours</span><h2>Find and selling</h2></div></div>
+    <div class="split">
+      <div>
+        <p><b class="w">Find</b> searches the community map: sites ranked by
+        rigs, by how many commodities share a patch, and by how recently
+        somebody stood on them, with the distance in light years on every
+        row.</p>
+        <p><b class="w">Best sell prices</b> answers where it sells, nearest
+        first, for every commodity you tick. Each price says how old it is and
+        where it came from &mdash; your own read of a market, another EDSMT
+        user's, or market data &mdash; and a price more than a day old is
+        marked stale rather than shown as current.</p>
+        <p>Filters for pad size, price age, demand, minimum price, station
+        type, fleet carriers and Powerplay state, and saved searches. The
+        count line says how many rows each filter hid, and why.</p>
+      </div>
+      <figure class="shot">
+        <a href="edsmt-find-full.jpg"><img src="edsmt-find-800.jpg"
+           srcset="edsmt-find-800.jpg 800w, edsmt-find-full.jpg 1500w"
+           sizes="(max-width: 900px) 100vw, 700px" width="1500" height="640"
+           loading="lazy" decoding="async"
+           alt="Find with Iridium and Rhodplumsite ticked, large pads only, prices up to three days old and fleet carriers left out. Seven stations are listed with distance, sell price, demand, source and Powerplay state."></a>
+        <figcaption>Find &middot; best sell prices, filtered</figcaption>
+      </figure>
+    </div>
+    <div class="split flip">
+      <div>
+        <h3>Where to land</h3>
+        <p>Every body in the system you are in, ranked: the known sites still
+        intact, the mining locations your DSS found that nobody has shared, and
+        what that kind of ground usually carries. Bodies you map while it is
+        open appear without a click, and your older journals are read once so
+        a system you scanned last month is remembered.</p>
+        <p>The estimated value is an estimate, not a promise, and the window
+        says what it is based on.</p>
+      </div>
+      <figure class="shot">
+        <a href="edsmt-where-to-land-full.jpg"><img src="edsmt-where-to-land-800.jpg"
+           srcset="edsmt-where-to-land-800.jpg 800w, edsmt-where-to-land-full.jpg 1720w"
+           sizes="(max-width: 900px) 100vw, 700px" width="1720" height="660"
+           loading="lazy" decoding="async"
+           alt="Where to land for one system: four landable bodies ranked by estimated value, with the reason, distance from the arrival star, mining locations, likely commodities and known sites."></a>
+        <figcaption>Where to land &middot; the bodies of one system, best bet first</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" id="powerplay">
+    <div class="sec-head"><div><span class="label on">From your own journal &middot; no server asked</span><h2>Powerplay</h2></div></div>
+    <div class="split">
+      <div>
+        <p>EDSMT reads your pledge and the Powerplay state of every system your
+        journal has been in. For the cargo you mined, it shows what selling in
+        each system would do &mdash; Expand, Reinforce, Undermine or nothing
+        &mdash; and why, with the ranges measured from your own record.</p>
+        <p>It warns when part of the hold will not count, such as cargo that
+        was bought or went through a fleet carrier, and gives an estimate of
+        the merits the hold should earn. A second page lists the best payers
+        and nearest buyers for what is aboard, with what selling there does
+        for your Power.</p>
+      </div>
+      <figure class="shot">
+        <a href="edsmt-powerplay-full.jpg"><img src="edsmt-powerplay-800.jpg"
+           srcset="edsmt-powerplay-800.jpg 800w, edsmt-powerplay-full.jpg 1500w"
+           sizes="(max-width: 900px) 100vw, 700px" width="1500" height="820"
+           loading="lazy" decoding="async"
+           alt="The Powerplay window for a pledged commander: eight nearby systems with their Power and state, and whether selling there would Reinforce, Expand or count for nothing."></a>
+        <figcaption>Powerplay &middot; where selling counts</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" id="earnings">
+    <div class="sec-head"><div><span class="label on">The session you are on comes first</span><h2>Earnings and the Discord summary</h2></div></div>
+    <div class="split">
+      <div>
+        <p>A session starts with your first rig down or the first tonne the
+        Rhino refines, and ends when the last rig is up or the Rhino is back
+        aboard. Pause stops the clock for a break or the drive to a station.</p>
+        <p>The current session shows its time, tonnes, t/hr, what it is worth
+        at the best credible price, Cr/hr and an estimate of Powerplay merits
+        an hour. Both holds are priced, and the table under it keeps every
+        session before, with what was mined, sold and where.</p>
+        <p>Only what the Rhino dug up is counted. Cargo you bought or hauled is
+        left out.</p>
+      </div>
+      <figure class="shot">
+        <a href="edsmt-earnings-full.jpg"><img src="edsmt-earnings-800.jpg"
+           srcset="edsmt-earnings-800.jpg 800w, edsmt-earnings-full.jpg 1900w"
+           sizes="(max-width: 900px) 100vw, 700px" width="1900" height="900"
+           loading="lazy" decoding="async"
+           alt="The Earnings window: the current session of 1 hour 13 minutes with 47 tonnes mined, an estimated value and Cr/hr, merits per hour, where to sell what is aboard, and six sessions in the table below."></a>
+        <figcaption>Earnings &middot; the current session first</figcaption>
+      </figure>
+    </div>
+    <div class="split flip">
+      <div>
+        <h3>Your own Discord channel</h3>
+        <p>Paste a channel's webhook in Settings and EDSMT posts a summary of
+        each Rhino session there &mdash; tonnes of each commodity, time, t/hr,
+        credits, Cr/hr and where you sold &mdash; with the map picture it saves
+        when the Rhino docks. Finds can go there too, if you want them.
+        <b class="w">Send a test message</b> checks the address first.</p>
+        <p>The picture is also saved on your PC, and Copy map puts it on the
+        clipboard to paste anywhere.</p>
+      </div>
+      <figure class="shot">
+        <a href="edsmt-session-map-full.jpg"><img src="edsmt-session-map-800.jpg"
+           srcset="edsmt-session-map-800.jpg 800w, edsmt-session-map-full.jpg 1280w"
+           sizes="(max-width: 900px) 100vw, 700px" width="1280" height="900"
+           loading="lazy" decoding="async"
+           alt="The session map picture: the signal with nine deposits, the best patch ringed, two numbered rigs, the trail, a legend by commodity and a list of finds with amount, density, distance and direction."></a>
+        <figcaption>The session map picture EDSMT makes for Discord</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" id="community">
+    <div class="sec-head"><div><span class="label on">Every find goes on one map</span><h2>Community sites</h2></div></div>
+    <div class="cols2">
+      <div>
+        <p>Every deposit you mark goes on the community map, and everyone
+        else's comes back to you under Find and on your own map. A map only
+        some people can see never gets filled in.</p>
+        <p>Surface deposits do not last the way ring hotspots do &mdash;
+        Frontier have said they regenerate at a very slow rate &mdash; so age
+        is part of the ranking. A site nobody has seen for two months ranks
+        below a smaller one confirmed last week.</p>
+      </div>
+      <div>
+        <p><span class="chip verified">Verified</span> means somebody from
+        Radio Raxxla has driven to it and confirmed it.
+        <span class="chip reported">Reported</span> is any commander's find
+        &mdash; just as welcome, and most of the map. The app cannot mark its
+        own finds verified, and a verified site still ages like any other.</p>
+        <p>When your rigs come up, how you laid them out is shared too, and on
+        a deposit with no plan of your own the layout other commanders used
+        shows as pins on the scope.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="privacy">
+    <div class="sec-head"><div><span class="label on">What leaves your PC, and what never does</span><h2>Privacy</h2></div></div>
+    <div class="cols2">
+      <div>
+        <ul>
+          <li><b>Your journal is read on your own PC.</b> EDSMT reads the files the game writes for tools like this one. It never reads the game's memory and never presses a key in the game.</li>
+          <li><b>No account, no sign-up, no Frontier login.</b></li>
+          <li><b>Your notes, sessions and settings stay on your PC</b>, in <code>%LOCALAPPDATA%\RadioRaxxla\EDSMT</code>.</li>
+        </ul>
+      </div>
+      <div>
+        <ul>
+          <li><b>What goes on the community map</b>: the deposits you mark &mdash; system, body, commodity, position, rigs and how rich &mdash; and the prices at markets you open.</li>
+          <li><b>Your CMDR name is your choice.</b> Share anonymously if you prefer.</li>
+          <li><b>Inara and Discord send nothing</b> until you switch them on and add your own key or webhook.</li>
+          <li><b>It is GPL-3.0.</b> The source is on <a href="https://github.com/TheAnnouncer/EDSMT">GitHub</a>, so you can read what it sends and when.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="install">
+    <div class="sec-head"><div><span class="label on">Download, run, done</span><h2>Install and system requirements</h2></div></div>
+    <div class="cols2">
+      <div>
+        <p><b class="w">EDSMT-Setup.exe</b> is a normal installer: a Start menu
+        entry under Radio Raxxla, an optional desktop shortcut and an entry in
+        Add/Remove Programs. It installs for you only, so it never asks for
+        admin. <b class="w">EDSMT.exe</b> is the same program as one portable
+        file.</p>
+        <p>EDSMT tells you when there is a new version and installs it on one
+        click, after making a backup of your finds and settings.</p>
+        <div class="callout warn">
+          <span class="label">Windows will warn you the first time</span>
+          <p>"Windows protected your PC" &mdash; the build is not code signed.
+          <b class="w">More info &rarr; Run anyway.</b> The source is here if
+          you would rather read it first.</p>
+        </div>
+        <div class="ctas">
+          <a class="btn" href="EDSMT-Setup.exe">Download &middot; Installer</a>
+          <a class="btn ghost" href="EDSMT.exe">Portable .exe</a>
+        </div>
+      </div>
+      <div class="hud readout"><div class="hud-head"><span class="label">System requirements</span></div>
         <div class="hud-pad">
-        <svg viewBox="0 0 352 112" width="100%" height="auto" role="img"
-             aria-label="Compass tape showing north-west, north and north-east, a heading pointer, and three haematite deposits at 896 metres, 1.26 kilometres and 1.47 kilometres, the last one behind you.">
-          <rect x="0" y="0" width="352" height="112" fill="#0a0908"></rect>
-          <line x1="0" y1="34" x2="352" y2="34" stroke="#7a4518" stroke-width="1"></line>
-          <g stroke="#7a4518">
-            <line x1="40" y1="28" x2="40" y2="34"></line>
-            <line x1="100" y1="28" x2="100" y2="34"></line>
-            <line x1="220" y1="28" x2="220" y2="34"></line>
-            <line x1="280" y1="28" x2="280" y2="34"></line>
-          </g>
-          <g stroke="#ff7a18" stroke-width="1.5">
-            <line x1="70" y1="21" x2="70" y2="34"></line>
-            <line x1="170" y1="21" x2="170" y2="34"></line>
-            <line x1="250" y1="21" x2="250" y2="34"></line>
-          </g>
-          <g fill="#ff7a18" font-family="Share Tech Mono,monospace" font-size="10">
-            <text x="62" y="15">NW</text><text x="166" y="15">N</text><text x="244" y="15">NE</text>
-          </g>
-          <polygon points="170,44 163,36 177,36" fill="#4ad991"></polygon>
-          <g font-family="Share Tech Mono,monospace" font-size="10.5">
-            <line x1="150" y1="36" x2="150" y2="52" stroke="#ffb56a"></line>
-            <text x="150" y="62" text-anchor="end" fill="#ffb56a">&lt; HAEMATITE 896m 6R</text>
-            <line x1="214" y1="36" x2="214" y2="72" stroke="#ffb56a"></line>
-            <text x="214" y="82" text-anchor="start" fill="#ffb56a">&gt; HAEMATITE 1.26km 4R</text>
-            <text x="8" y="103" fill="#7a4518">v HAEMATITE 1.47km &mdash; behind you</text>
-          </g>
-        </svg>
+        <div class="kv"><span class="k">Windows</span><span class="v">10 or 11</span></div>
+        <div class="kv"><span class="k">Game</span><span class="v">Elite Dangerous on PC, 4.4.1.1</span></div>
+        <div class="kv"><span class="k">Display</span><span class="v">Borderless or windowed, for the overlay</span></div>
+        <div class="kv"><span class="k">Download</span><span class="v">About 15 MB</span></div>
+        <div class="kv"><span class="k">Admin rights</span><span class="v ok">Not needed</span></div>
+        <div class="kv"><span class="k">Internet</span><span class="v">For the community map, prices and updates</span></div>
+        <div class="kv"><span class="k">Account</span><span class="v ok">None</span></div>
       </div></div>
-    </div>
-  </section>
-
-  <section class="section" id="density">
-    <div class="sec-head"><div><span class="label on">And conflating them throws away what the game tells you</span><h2>Density and amount are different questions</h2></div></div>
-    <div class="cols2">
-      <div>
-        <p>A site can be <b style="color:var(--paper)">high density</b> and
-        <b style="color:var(--paper)">depleted</b> at the same time: rich, empty
-        today, worth coming back to. One number cannot say that.</p>
-        <p>Press <b style="color:var(--signal)">MINED OUT</b> and the deposit
-        drops to Depleted with the note stamped
-        <code>Mined 10/09/2026 01:05</code>. Press it again next month and it
-        adds a line, so the site keeps its history.</p>
-        <p>It is not a delete. The deposit stays on the map, because "empty as
-        of the tenth" is worth more to the next commander than nothing at all.</p>
-      </div>
-      <div class="tiers">
-        <div class="tier"><span class="n">Density</span>
-          <p>How rich it is. Low / Medium / High. Does not change.</p></div>
-        <div class="tier"><span class="n">Amount</span>
-          <p>How much is left. Depleted / Low / Medium / High. Walks down as you
-          work it.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" id="shared">
-    <div class="sec-head"><div><span class="label on">A hotspot list never goes stale. This one does.</span><h2>The shared survey</h2></div></div>
-    <div class="cols2">
-      <div>
-        <p>Ring hotspots are permanent, so a hotspot database is written once
-        and stays true. Surface deposits are not. Frontier were explicit: once
-        collected, they <b style="color:var(--paper)">regenerate at a very slow
-        rate</b>.</p>
-        <p>So age is not a column here that you are left to interpret &mdash; it
-        is part of the ranking. Every site is scored on rigs, on overlap and on
-        density, then decayed by how long ago somebody actually stood on it.</p>
-        <p>The alternative is a list that looks authoritative and sends people
-        on a two-hour trip to an empty crater.</p>
-      </div>
-      <div>
-        <p><span class="chip verified">Verified</span> means somebody from Radio
-        Raxxla has driven to it and confirmed it. <span class="chip reported">Reported</span>
-        is any commander's find &mdash; just as welcome, and most of the
-        database.</p>
-        <div class="callout">
-          <span class="label">Verification cannot be self-awarded</span>
-          <p>The app cannot mark its own rows verified. The badge is granted by
-          the server to a named person holding a staff key, and the database
-          records who. An unaccountable badge is worth less than no badge.</p>
-        </div>
-        <p>It does not stop the clock either. A site verified in March is still
-        an empty crater in September, so freshness decay applies to verified
-        rows exactly as it does to any other.</p>
-      </div>
-    </div>
-
-    <div class="tablewrap">
-      <table>
-        <caption style="text-align:left;padding:10px 15px;font-size:10.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase">Example results &mdash; illustrative, not live data</caption>
-        <thead><tr><th>System</th><th>Body</th><th>Rigs</th><th>Types in patch</th><th>Last confirmed</th><th>Status</th><th>Score</th></tr></thead>
-        <tbody>
-          <tr><td>Col 285 AB-C d1-23</td><td>A 3</td><td>12</td><td>Magnesite, Olivine, Ruby</td><td>1 day ago</td><td><span class="chip verified">Verified</span></td><td>28.4</td></tr>
-          <tr><td>Deciat</td><td>6</td><td>18</td><td>Diamond</td><td>6 days ago</td><td><span class="chip reported">Reported</span></td><td>20.4</td></tr>
-          <tr><td class="dim">Shinrarta Dezhra</td><td class="dim">A 1</td><td class="dim">14</td><td class="dim">Sapphire, Iridium</td><td class="dim">64 days ago</td><td><span class="chip stale">Stale</span></td><td class="dim">2.9</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="note" style="margin-top:14px">The third row is the point. On
-    raw numbers it is a good site. Nobody has seen it in two months, so it ranks
-    below a smaller one confirmed last week.</p>
-  </section>
-
-  <section class="section" id="data">
-    <div class="sec-head"><div><span class="label on">Three gaps in the community's data, and why they exist</span><h2>What nobody else is collecting</h2></div></div>
-    <div class="cols3">
-      <div>
-        <h3>Which worlds hold what</h3>
-        <p>Planet class, gravity, atmosphere and volcanism ride with every
-        deposit. Nobody has published which surface deposits favour which
-        bodies, because nobody has been collecting both halves at once.</p>
-      </div>
-      <div>
-        <h3>Where it actually sells</h3>
-        <p>Find answers it from a verified upstream &mdash; nearest first, with
-        the distance in light years on every row, and a station in a system
-        nobody has placed reads "-" rather than sorting to the top as the
-        closest thing in the galaxy. Earnings looks up any system by name and
-        lists the last known price of each commodity at every market there,
-        with when it was seen. Your own journal fills the gap those
-        services leave: the game writes <code>Market.json</code> every time you
-        open a market.</p>
-      </div>
-      <div>
-        <h3>The journal schema itself</h3>
-        <p>Frontier have not published the surface-mining events. Rather than
-        guess names, EDSMT captures the first example of each to
-        <code>journal-mining-events.log</code>. Posting that to the forums is
-        how the schema gets written down for every tool that follows.</p>
-      </div>
     </div>
   </section>
 
   <section class="section" id="whatsnew">
-    <div class="sec-head"><div><span class="label on">Latest build &middot; <!--VERSION-->1.10034<!--/VERSION--></span><h2>What changed</h2></div></div>
+    <div class="sec-head"><div><span class="label on">Latest build &middot; <!--VERSION-->1.10035<!--/VERSION--></span><h2>What changed</h2></div></div>
     <!--WHATSNEW-->
-    <h3>Fixed — settings lost when you built or updated</h3>
-    <p>Every time the build was made on a PC with EDSMT&#x27;s data on it, one of the checks wrote its test settings over the real ones: overlay placement, layout, theme and keys went back to the defaults. Every check now runs in a folder of its own, and settings can no longer be lost for good:</p>
-    <ul><li><b>Earlier settings</b> (Settings → Your data): EDSMT keeps a dated copy of your settings whenever something that matters changes &mdash; the last thirty. Pick one and press <b>Put these back</b>: overlay placement, layout, theme, keys, the lot, at once.</li><li><b>Restore from a backup</b> now puts the settings in the zip back as well, straight away, instead of leaving the old ones in charge until a restart.</li><li>A backup now carries the ground you have swept and the survey border of every body, and the dated settings copies, as well as your finds.</li></ul>
-    <h3>New — Where to land remembers every system</h3>
-    <p>A system honked in an earlier session showed &quot;0 bodies scanned&quot;. EDSMT now reads all your older journals once, in the background, and remembers every body they describe; asks the public body database, through the community server, for systems your own journals have not covered; and keeps every new scan as it happens. Where to land says how many came from the public database, and while it is still reading your older journals. Your own journal always wins over the public database.</p>
-    <h3>New — your own Discord channel</h3>
-    <p>Settings → Sharing → <b>Discord</b>: paste a channel&#x27;s webhook and every find you mark, and a summary of every Rhino session &mdash; tonnes, time, credits, Cr/hr, t/hr, where you sold &mdash; is posted there as you play. <b>Send a test message</b> checks it. The webhook stays behind dots, and nobody in the channel is ever pinged by anything typed.</p>
-    <h3>New — rigs</h3>
-    <ul><li><b>Rigs survive a restart.</b> They used to be held in memory: close EDSMT and every rig was gone. They are written down as they change.</li><li><b>TOO CLOSE TO RIG n</b> on the boxes inside the rig spacing of one of your own rigs, so you know before you drop the next one; dropping one there anyway is marked and warned about. <b>COLLECT RIG n</b>, in cyan, when you are back at a rig that has been working.</li><li><b>A rig is marked where it lands</b>: 7 m behind the cockpit (a setting), not where you are sitting.</li><li>A Rhino <b>docking in the ship takes its own rigs off the scope</b> (a setting); the other Rhino&#x27;s stay.</li><li><b>Double-click a rig on the map</b> to put right what it is mining, or to pick it up on its own.</li><li><b>A rig dropped on somebody else&#x27;s shared find</b> &mdash; or on the one you picked &mdash; is on their commodity, not on whatever the box last said.</li><li><b>Past 6 km the rigs are forgotten</b>, and every warning with them. Out of the Rhino &mdash; in the ship, on foot &mdash; no rig warning goes up at all: the distance from there is not the Rhino&#x27;s.</li><li><b>Shared rig layouts</b>: when your rigs come up, how they were laid out on the deposit &mdash; and the edge and pins, if you used the rig planner &mdash; goes on the community map. On a deposit with no plan of your own, the best layout other commanders used shows as <b>SHARED PIN</b> pins on the scope.</li></ul>
-    <h3>New — and the rest</h3>
-    <ul><li><b>Find has a Distance column</b>: how many light years each site and deposit is from where you are, whether or not you picked a radius.</li><li><b>A note on every control</b>: rest the mouse on anything for what it does. Settings → Basics turns them off.</li><li><b>A first-run tour</b> of the main window, once; Settings → Basics runs it again. Never over the game.</li><li><b>Settings in tabs</b>: Basics, Overlay, Keys, Rigs, Sharing, Your data, About.</li><li><b>SRV FUEL LOW</b> on the boxes when the game says the SRV is low.</li><li><b>t/hr</b> in Earnings: tonnes an hour, beside Cr/hr.</li><li><b>In the Rhino with the overlay off</b>, EDSMT says how to turn it on &mdash; on your first three sessions only.</li><li><b>Installed to C:\EDTools\RadioRaxxla\EDSMT</b>, with a Radio Raxxla folder in the Start menu. An older install is moved there by the update: only its own program files are taken out of the old folder, and your finds and settings, which live elsewhere, are not touched.</li></ul>
-    <h3>Fixed</h3>
-    <ul><li>Finishing the guide left its box on the overlay, frozen on the last card. It goes as the guide does.</li><li>A box&#x27;s suggestion list stayed open after a click on the map or a panel. A click anywhere else, or a second click in the box, shuts it.</li><li>Radio Raxxla staff can take a wrong find, or a wrong site, off the community map from Find. What is removed is kept, with who removed it.</li></ul>
+    <p>The biggest EDSMT release so far. It is built around three questions a Rhino miner asks every session &mdash; <i>where do I sell this, where do I drive next, and was it worth it</i> &mdash; and answers them from your own journal, the community map and the markets other commanders have read.</p>
+    <h3>Selling: one answer for the whole hold</h3>
+    <ul><li><b>One stop for the whole hold.</b> Earnings &gt; Where to sell now names the station that pays the most for <i>everything</i> aboard &mdash; ship and SRV together &mdash; with what it takes of each commodity, what its demand caps, what it does not buy, how old its prices are and how many jumps away it is. Three stations, best first. Fleet carriers and prices older than a day are left out.</li><li><b>Sell within 1, 2, 4 or 8 jumps</b>, as well as in light years. The jump range comes from your ship&#x27;s own Loadout, or from Settings &gt; Basics.</li><li><b>Which way the market is moving.</b> When a station has been read twice, each commodity says so: *demand 16,234 → 15,352, price 845,417 → 824,191 in 1 h 28 min*.</li><li><b>Where to sell, per commodity</b>: the five best payers (most expensive first) or the five nearest buyers, never a market with Demand 0, every price aged and marked stale past a day.</li><li><b>Powerplay, worked out per tonne.</b> The Powerplay window reads your pledge, rank and merits from your journal and says, for every system you have been in, whether selling there Expands, Reinforces or Undermines - judged by where each tonne was mined. Bought goods and anything that went through carrier storage are named as earning nothing. Once you have sold a few loads while pledged it estimates the merits the hold will earn, from your own sales, not a guess.</li></ul>
+    <h3>Finding: search like a database</h3>
+    <ul><li><b>Find filters</b>: a distance window (at least / no further than), landing pad, station type, no carriers, price age, a demand window, a minimum price, Powerplay state and side, and best five per commodity. Every row a filter hides is counted, with the reason.</li><li><b>Body and signal search</b> in Where to land and My sites: body type, volcanism, gravity, temperature, signals by kind and count, landable, mapped &mdash; in this system, near you, or anywhere your journals have seen.</li><li><b>Saved searches</b> by name in Find, Where to land and My sites.</li><li><b>Bring your finds with you.</b> My sites &gt; Import reads bookmark databases, share lines, survey CSVs and map JSON exported by other mining tools. It shows what is new and what is already known before it changes anything, and makes a dated backup first.</li></ul>
+    <h3>On the ground: the map knows where you have been</h3>
+    <ul><li><b>Guided survey.</b> Numbered waypoints from the signal centre outward that skip the ground you have already swept: <i>WP 4/12: 640 m, bearing 212</i> on the compass, scope and map. Next, back, skip and pause on keys you choose. Resumes after a restart.</li><li><b>Your trail</b>, <b>lines to the nearest same and cheaper deposit</b>, and <b>scope zoom 1x / 2x / 4x</b>.</li><li><b>Top patches.</b> The three best knots of intact deposits circled, each with its rigs, an estimated Cr/h including the drive between them, and its spread. The radius is yours to set.</li><li><b>Spacing rings round every rig</b> &mdash; red while you are too close to one, green when you are clear of all of them &mdash; and **NEXT RIG: 39 m, bearing 168** to the nearest spot a rig can legally go.</li><li><b>Mark from range</b>: a bearing and a distance from the Rhino, worked out across the body&#x27;s own curve. It stays on your machine until you drive to it and confirm it.</li><li><b>Pointers home</b>: <i>RHINO: 1.2 km, bearing 044</i> on foot or in the ship, <i>SHIP</i> from the Rhino, and from orbit the line to the deposit you picked.</li><li><b>The rig planner is out of beta</b>: an exact packing pass, and the plan is saved with the deposit. Each deposit also remembers how many rigs fit.</li><li><b>Depletion with a memory.</b> A worked-out deposit keeps the date it was first emptied. When it is due a recheck the card says so; confirm it and the next recheck is set, or mark it REGROWN. Depleted deposits draw as hollow rings.</li><li><b>Refined with nothing marked?</b> One prompt, once per spot, to mark it.</li><li><b>Arriving in a system</b> says how many of your sites, and how many shared ones, are there.</li><li><b>Map and scope filters</b> by commodity, amount and density, and labels on or off.</li><li><b>Favourites and a bin</b> in My sites: star a site; removing one moves it to a bin you can restore from.</li></ul>
+    <h3>Hands on the stick</h3>
+    <ul><li><b>Joystick and HOTAS buttons</b> for every EDSMT action, beside each key in Settings &gt; Keys.</li><li><b>Chat commands</b> (off by default; local chat is public): mark a deposit, mark from range, rigs down and up, centre here, undo &mdash; typed in the game&#x27;s own chat with your prefix.</li><li><b>A long mouse press can count as a rig placed</b> (off by default), for commanders who would rather not press a key at all.</li></ul>
+    <h3>After the session</h3>
+    <ul><li><b>The ship&#x27;s hold while you are in the Rhino</b>: what is in it, room left in tonnes and in Rhino loads, HOLD FULL, and what this trip unloaded.</li><li><b>Map pictures</b> saved each time the Rhino docks, with Save, Copy and Share.</li><li><b>One Discord post per session</b>, edited in place after the sale with gross, net after crew, merits paid against the estimate, materials and the map.</li><li><b>Settings &gt; About &gt; Make a support bundle</b>: one zip, keys and webhook removed.</li></ul>
+    <h3>Under the hood</h3>
+    <ul><li>New modules: <code>finder.py</code>, <code>powerplay.py</code>, <code>sellplan.py</code>, <code>mapimage.py</code>, <code>shiphold.py</code>, <code>sessionledger.py</code>, <code>supportbundle.py</code>, <code>waypoints.py</code>, <code>guidance.py</code>, <code>chattags.py</code>, <code>inputdev.py</code>, <code>inputmix.py</code>, <code>importers.py</code>, <code>regrowth.py</code>, <code>sitebook.py</code>, <code>markerfilter.py</code>. Pillow is now required.</li><li>New data files: <code>searches.json</code>, <code>powerplay.json</code>, <code>price-trends.json</code>, <code>ship_capacity.json</code>, <code>session_extras.json</code>, <code>discord_posts.json</code>, <code>waypoints.json</code>, <code>rig_plans.json</code>, <code>sitebook.json</code>, <code>app.log</code>. Two new deposit columns, <code>depleted_at</code> and <code>rechecks</code>; older files read fine.</li><li>README: screenshots.</li></ul>
+    <h3>Fixed — Where to sell gave the wrong answer</h3>
+    <p>Out on the body with 89 t of Iridium aboard &mdash; 23 in the SRV, 66 in the ship &mdash; Session earnings said <b>Aboard 33t</b>, <b>No market prices seen yet</b>, and put a four-day-old price 88 Ly away beside &quot;Best within 100 Ly&quot; as if it were current. Three things were wrong:</p>
+    <ul><li><b>Aboard</b> was the smaller of what is in the hold and what the session books said was mined and unsold, so whenever the books had missed some tonnes the hold was undercounted. It is now the hold as it is: SRV and ship together. <b>Worth there</b> uses it.</li><li><b>Only the last market you read was kept.</b> That was a fleet carrier two systems away, which buys no Iridium, so the hold had no price &mdash; and your own earlier reads of the station in the system you were mining had been thrown away. EDSMT now keeps every market you read, and every sale you make, by station. Docked, the hold is priced at the station you are docked at; if you have not opened its board yet, it says so. Out on the surface it is priced at your own read of a market in that system &mdash; the one that pays most for what is aboard &mdash; and says how old that read is. When no market you have read buys it, the line names the last one you read and points you to Where to sell.</li><li><b>Prices did not say how old they were.</b> Every price now shows its age and whose it is: <i>your market read</i>, <i>community</i> (other EDSMT users) or <i>market data</i>. Your own read comes first, then community, then market data. Older than a day is marked <b>stale</b> and is never shown as what a system pays now. A higher price that is stale is mentioned under the table, not used. Demand 0 is not a market. A lone price far above every other in range is marked <b>unconfirmed</b>.</li></ul>
+    <h3>Fixed — System prices</h3>
+    <ul><li>The Source column showed the name the price server was configured with. It now says <i>your market read</i>, <i>community</i> or <i>market data</i>, and so does Find&#x27;s sell table. The server no longer sends that name at all.</li><li>The commodity that pays most comes first, not alphabetical order.</li><li>A market with Demand 0 is not listed &mdash; with or without **Best market only**.</li><li>Every price says how old it is, and <b>stale</b> past a day.</li></ul>
+    <h3>Changed — the commodity picker ticks with a tick</h3>
+    <p>The <b>for</b> list showed <code>[ ] Alexandrite</code> beside <code>[x] Monazite</code>. A ticked commodity now has a ✓ and its row is lit; the rest are plain names.</p>
+    <h3>Changed — Discord: one summary a session</h3>
+    <p>A post for every find filled the channel. Now one <b>Mining Summary</b> goes when a session ends &mdash; by End session or the automatic end &mdash; and only once: where, how long, tonnes and t/hr, the ship&#x27;s hold, each commodity&#x27;s tonnes, t/hr and estimated worth at the best price known and where, the total, Cr/hr, rigs placed, finds logged, deposits worked and Powerplay merits an hour. If a post fails, the message says why and names Discord &mdash; never your webhook.</p>
+    <p>Posting every find is now a setting of its own, <b>off</b>. If 1.10034 had it on, it is turned off once; tick it again and it stays ticked.</p>
+    <h3>New — the current session leads Session earnings</h3>
+    <p>The top of the window is now the session you are on: time, tonnes mined, t/hr, sold so far, what it is worth at the best credible price, Cr/hr, and <b>Powerplay merits an hour</b>. It keeps moving while the window is open, every few seconds. With no session running it shows the last one and says so. Your earlier sessions are the table under it, and the all-time totals are under that.</p>
+    <p>Frontier publish no formula for merits. EDSMT learns it from your own journals: seconds after a sale the game awards its merits, and EDSMT pairs the two &mdash; older journals once, in the background, and every sale as you play. Each commodity gets its own rate once it has two such sales; until then the rate over all of them is used. Sales that paid no merits are not counted. Until it has seen two, it shows <b>—</b>.</p>
     <!--/WHATSNEW-->
+    <p class="note" style="margin-top:18px">Every earlier build: <a href="https://github.com/TheAnnouncer/EDSMT/blob/HEAD/CHANGELOG.md">the full changelog</a></p>
   </section>
 
   <section class="section" id="faq">
@@ -429,68 +531,27 @@
       <details><summary>Does it touch the game?</summary>
         <p>No. It reads the game's journal and status files and draws its boxes over the top. It never reads the game's memory, never injects anything and never presses a key in the game for you.</p></details>
       <details><summary>The boxes do not show over the game.</summary>
-        <p>Set Elite to borderless or windowed. Nothing can draw over exclusive fullscreen &mdash; that is DirectX, not EDSMT.</p></details>
+        <p>Set Elite to borderless or windowed. Nothing can draw over exclusive fullscreen &mdash; that is DirectX, not EDSMT. The boxes also show only while you are driving a Rhino.</p></details>
       <details><summary>A key does nothing.</summary>
         <p>Another program got it first &mdash; graphics-card overlays, Discord and Steam all grab keys. Pick another in Settings; EDSMT tells you when a key is taken. On UK and European keyboards AltGr is Ctrl+Alt to Windows, which is why the pick-up keys read AltGr there and Ctrl+Alt on a US keyboard.</p></details>
       <details><summary>Alt+3 will not mark the deposit.</summary>
-        <p>All four boxes have to be filled in: commodity, rigs, amount and density. The scanner's density counts when the game names one. Half-filled finds were reaching the shared map without the two things somebody deciding whether to fly there needs most.</p></details>
+        <p>All four boxes have to be filled in: commodity, rigs, amount and density. The scanner's density counts when the game names one. A find on the shared map needs the two things somebody deciding whether to fly there wants most.</p></details>
       <details><summary>Can I keep my finds to myself, or share them only with my squadron?</summary>
-        <p>No. Every find goes on the community map for everybody, and everybody's comes back to you under Find. That is the whole point of it: there are around 400 billion systems, and a map only some people can see never gets filled in. Your CMDR name on your finds is your choice.</p></details>
-      <details><summary>What is shared, and what stays on my PC?</summary>
-        <p>The deposits you mark and the prices at markets you open go on the community map, with your commander name only if you choose. Your notes, sessions, settings and everything else stay in your own AppData folder.</p></details>
+        <p>No. Every find goes on the community map for everybody, and everybody's comes back to you under Find. A map only some people can see never gets filled in. Your CMDR name on your finds is your choice.</p></details>
       <details><summary>When does an earnings session start and stop?</summary>
-        <p>It starts with your first rig down, or your first tonne refined in the Rhino, or Start session. It ends when every rig is back up, when the Rhino comes back aboard, or on End session. Pause stops the clock for a break or the drive to a station. Only what the Rhino dug up is counted &mdash; cargo you bought or hauled is left out.</p></details>
+        <p>It starts with your first rig down, or your first tonne refined in the Rhino, or Start session. It ends when every rig is back up, when the Rhino comes back aboard, or on End session. Pause stops the clock for a break or the drive to a station.</p></details>
       <details><summary>Where do the sell prices come from?</summary>
-        <p>Three places, side by side: the game's own galactic average, read off any commodity market you open (an estimate until you do); prices EDSMT users have read at stations; and a public market index, for the best price within the distance you pick and the price in the system you are in.</p></details>
+        <p>Your own reads of the markets you open, prices other EDSMT users have read, and market data for the best price within the distance you pick. Each says which it is and how old it is; the game's galactic average is shown as an estimate until you open a market.</p></details>
       <details><summary>What are the rig planner and the wing link?</summary>
-        <p>Two betas, both off until you switch them on in Settings. The rig planner: press AltGr+2, drive the deposit's edge back to where you started, and a pin goes on the scope for each rig that fits, 78 m apart by default &mdash; the community's working figure, which you can change. The wing link: everyone types the same six-character code and sees each other's Rhinos and rigs on the scope &mdash; friends on one body, or crew off one ship with more than one Rhino. The server forgets you two minutes after you stop.</p></details>
+        <p>Two betas, both off until you switch them on in Settings. The rig planner: press AltGr+2, drive the deposit's edge back to where you started, and a pin goes on the scope for each rig that fits. The wing link: everyone types the same six-character code and sees each other's Rhinos and rigs on the scope. The server forgets you two minutes after you stop.</p></details>
       <details><summary>The words in the boxes are too small.</summary>
         <p>Settings has a text size for each box on its own, from 80% to 200%, without making the box itself any bigger. Unlock to drag a box or resize it by its corner.</p></details>
       <details><summary>How do I update, and do I back up first?</summary>
-        <p>EDSMT tells you when there is a new version and installs it on one click. Your deposits, sessions and settings are kept. Back up anyway, every time: from 1.10033 EDSMT does it for you before it installs, to Documents &rsaquo; EDSMT backups, and Settings &rsaquo; <b>Back up now</b> makes a copy whenever you like.</p></details>
+        <p>EDSMT tells you when there is a new version and installs it on one click. Your deposits, sessions and settings are kept, and a backup goes to Documents &rsaquo; EDSMT backups before it installs. Settings &rsaquo; <b>Back up now</b> makes a copy whenever you like.</p></details>
       <details><summary>Does it work on GeForce NOW?</summary>
         <p>Not the live parts. On GeForce NOW the game runs on NVIDIA's machine, so the journal and status files EDSMT reads are written there and never reach your PC. That is true of every tool that reads the journal.</p></details>
       <details><summary>Windows says it protected my PC.</summary>
         <p>A new download trips SmartScreen until enough people have run it. More info, then Run anyway. The source is here too if you would rather read it first.</p></details>
-    </div>
-  </section>
-
-  <section class="section" id="install">
-    <div class="sec-head"><div><span class="label on">Download, run, done</span><h2>Install</h2></div></div>
-    <div class="cols2">
-      <div>
-        <p><b style="color:var(--paper)">EDSMT-Setup.exe</b> is a normal
-        installer wizard &mdash; Start menu entry, optional desktop shortcut, a
-        proper line in Add/Remove Programs. <b style="color:var(--paper)">It
-        installs for you only, so it never asks for admin.</b></p>
-        <p>If you would rather not install anything,
-        <b style="color:var(--paper)">EDSMT.exe</b> is the same program as one
-        portable file. Save it anywhere and double-click it.</p>
-        <div class="callout warn">
-          <span class="label">Windows will warn you the first time</span>
-          <p>"Windows protected your PC" &mdash; the build is not code signed,
-          because a certificate costs several hundred a year and this is free.
-          <b style="color:var(--paper)">More info &rarr; Run anyway.</b></p>
-        </div>
-        <p>Your finds live in
-        <code>%LOCALAPPDATA%\RadioRaxxla\EDSMT</code>, not the program folder,
-        so updating never touches them. There is a backup button in Settings
-        that writes one dated zip.</p>
-        <div class="ctas">
-          <a class="btn" href="EDSMT-Setup.exe">Download &middot; Installer</a>
-          <a class="btn ghost" href="EDSMT.exe">Portable .exe</a>
-        </div>
-      </div>
-      <div>
-        <h3 style="font-size:14px;color:var(--signal);letter-spacing:.14em;margin-bottom:12px">What leaves your machine, and what never does</h3>
-        <ul>
-          <li><b>Every find goes on the community map.</b> Position, commodity, how rich, and market prices &mdash; that is what the map is made of.</li>
-          <li><b>Your CMDR name is optional.</b> Share anonymously if you prefer.</li>
-          <li><b>There is no account and no sign-up.</b></li>
-          <li><b>No personal data is stored</b> &mdash; a deposit is a position, a commodity and a date.</li>
-          <li><b>It is GPL-3.0.</b> The source is on this page and on <a href="https://github.com/TheAnnouncer/EDSMT">GitHub</a>, so you can read exactly what it sends and when.</li>
-        </ul>
-      </div>
     </div>
   </section>
 

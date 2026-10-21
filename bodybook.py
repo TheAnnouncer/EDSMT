@@ -83,6 +83,14 @@ class BodyBook:
             conn.execute("""CREATE TABLE IF NOT EXISTS files (
                 name TEXT PRIMARY KEY, size INTEGER NOT NULL,
                 done REAL NOT NULL)""")
+            # 1.10035: where each system is, so "within 100 Ly of here" can be
+            # asked of every remembered system offline. An older file gets the
+            # columns, and its journals are read once more to fill them in.
+            have = {row[1] for row in conn.execute("PRAGMA table_info(systems)")}
+            if "x" not in have:
+                for axis in ("x", "y", "z"):
+                    conn.execute("ALTER TABLE systems ADD COLUMN %s REAL" % axis)
+                conn.execute("DELETE FROM files")
             conn.commit()
             self._conn = conn
         return self._conn
@@ -158,31 +166,53 @@ class BodyBook:
             return True
 
     def _touch_system(self, db, system, address=None, body_count=None,
-                      public_at=None, when=None):
+                      public_at=None, when=None, pos=None):
         when = time.time() if when is None else when
+        x, y, z = _triple(pos)
         db.execute("""INSERT INTO systems (system_key, system, address,
-                          body_count, public_at, updated)
-                      VALUES (?, ?, ?, ?, ?, ?)
+                          body_count, public_at, updated, x, y, z)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                       ON CONFLICT(system_key) DO UPDATE SET
                           system = excluded.system,
                           address = COALESCE(excluded.address, systems.address),
                           body_count = COALESCE(excluded.body_count, systems.body_count),
                           public_at = COALESCE(excluded.public_at, systems.public_at),
-                          updated = excluded.updated""",
-                   (system_key(system), system, address, body_count, public_at, when))
+                          updated = excluded.updated,
+                          x = COALESCE(excluded.x, systems.x),
+                          y = COALESCE(excluded.y, systems.y),
+                          z = COALESCE(excluded.z, systems.z)""",
+                   (system_key(system), system, address, body_count, public_at,
+                    when, x, y, z))
 
     def note_system(self, system, address=None, body_count=None,
-                    public_at=None, when=None):
+                    public_at=None, when=None, pos=None, commit=True):
         """What is known about a system as a whole: its address, how many
-        bodies the honk counted, when the public database was last asked."""
+        bodies the honk counted, when the public database was last asked,
+        and where it is."""
         if not str(system or "").strip():
             return
         with self._lock:
             db = self._db()
             self._touch_system(db, str(system).strip(), address, body_count,
-                               public_at, when)
-            db.commit()
+                               public_at, when, pos)
+            if commit:
+                db.commit()
             self.revision += 1
+
+    def set_position(self, system, pos):
+        """Remember where a system is. True when that was news."""
+        x, y, z = _triple(pos)
+        if x is None or not str(system or "").strip():
+            return False
+        with self._lock:
+            db = self._db()
+            row = db.execute("SELECT x, y, z FROM systems WHERE system_key = ?",
+                             (system_key(system),)).fetchone()
+            if row is not None and tuple(row) == (x, y, z):
+                return False
+            self._touch_system(db, str(system).strip(), pos=(x, y, z))
+            db.commit()
+            return True
 
     def commit(self):
         with self._lock:
@@ -214,6 +244,43 @@ class BodyBook:
             return None
         return {"address": row[0], "body_count": row[1], "public_at": row[2]}
 
+    def position(self, system):
+        """(x, y, z) in light years, or None."""
+        with self._lock:
+            row = self._db().execute(
+                "SELECT x, y, z FROM systems WHERE system_key = ?",
+                (system_key(system),)).fetchone()
+        if row is None or None in tuple(row):
+            return None
+        return (row[0], row[1], row[2])
+
+    def rows(self, near=None, within_ly=0):
+        """Every remembered body, as dicts: system, body, facts, signals,
+        mapped, source, and the system's position. With `near` (x, y, z) and
+        a radius, only systems inside that cube - the caller trims the
+        corners. Systems whose position is not known are left out of a
+        radius search and kept in one without."""
+        sql = ("SELECT b.system, b.body, b.facts, b.signals, b.mapped, "
+               "b.source, s.x, s.y, s.z FROM bodies b LEFT JOIN systems s "
+               "ON s.system_key = b.system_key")
+        args = []
+        centre = _triple(near)
+        if centre[0] is not None and within_ly:
+            sql += (" WHERE s.x BETWEEN ? AND ? AND s.y BETWEEN ? AND ? "
+                    "AND s.z BETWEEN ? AND ?")
+            for value in centre:
+                args += [value - within_ly, value + within_ly]
+        with self._lock:
+            found = self._db().execute(sql, args).fetchall()
+        out = []
+        for system, body, facts, signals, mapped, source, x, y, z in found:
+            out.append({"system": system, "body": body,
+                        "facts": _loads(facts, {}),
+                        "signals": _loads(signals, None),
+                        "mapped": bool(mapped), "source": source,
+                        "pos": None if x is None else (x, y, z)})
+        return out
+
     def counts(self):
         """(systems, bodies) remembered."""
         with self._lock:
@@ -239,6 +306,16 @@ class BodyBook:
                        (name, size, time.time() if when is None else when))
             if commit:
                 db.commit()
+
+
+def _triple(pos):
+    """(x, y, z) as floats, or (None, None, None)."""
+    try:
+        if pos is not None and len(pos) == 3:
+            return tuple(float(v) for v in pos)
+    except (TypeError, ValueError):
+        pass
+    return (None, None, None)
 
 
 def _loads(text, default):
@@ -291,6 +368,10 @@ def read_journal_file(book, path, name=None, size=None, when=None, commit=True):
             kind = event.get("event")
             if kind in SYSTEM_EVENTS:
                 system = str(event.get("StarSystem") or system)
+                if event.get("StarPos") and system:
+                    book.note_system(system, address=event.get("SystemAddress"),
+                                     pos=event["StarPos"], when=when,
+                                     commit=False)
                 continue
             if kind == "FSSDiscoveryScan":
                 where = str(event.get("SystemName") or system)
@@ -385,6 +466,8 @@ def remember_watcher(watcher, book, system, seen=None):
         return 0
     seen = {} if seen is None else seen
     wrote = 0
+    if system_key(getattr(watcher, "system", "")) == system_key(system):
+        book.set_position(system, getattr(watcher, "star_pos", None))
     for body, facts in list(watcher.body_facts.items()):
         if system_key(facts.get("system")) != system_key(system):
             continue

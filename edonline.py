@@ -43,7 +43,7 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10034"
+APP_VERSION = "1.10035"
 # The worker tag the bodies of a system come back under.
 BODIES_TAG = "bodies"
 # How a deposit was rigged (#218): sent, and the best ones read back.
@@ -297,27 +297,126 @@ def discord_find_message(deposit: dict, cmdr: str = "", when=None) -> dict:
         ("CMDR", cmdr)], when=when)
 
 
-def discord_session_message(row: dict, cmdr: str = "", when=None) -> dict:
-    """A Rhino session that has just ended, for your channel."""
+def discord_session_message(row: dict, cmdr: str = "", when=None,
+                            summary: dict | None = None) -> dict:
+    """A Rhino session that has just ended - one summary, for your channel.
+
+    1.10035, modelled on the mining summary the owner likes: whose and
+    where, how long and how much at what rate, the hold, each commodity's
+    tonnes, t/hr and estimated worth at the best price known and where, the
+    total, rigs, finds, deposits worked, Cr/hr. summary is what the app
+    knows beyond the
+    row (EDSMT.discord_summary); without it the row alone still reads."""
     from survey import (unpack_counts, earned, session_hours, credits_per_hour,
                         tonnes_per_hour)
+    summary = summary or {}
     mined = unpack_counts(row.get("mined") or "")
     tonnes = sum(mined.values())
-    lines = ["%s: %d t" % (name, count) for name, count in
-             sorted(mined.items(), key=lambda kv: (-kv[1], kv[0]))]
     hours = session_hours(row)
     spent = "%dh %02dm" % (int(hours), int(round((hours % 1) * 60))) if hours else ""
+    rate = tonnes_per_hour(row)
+    worth = {str(line.get("commodity")): line for line in summary.get("lines") or ()}
+    lines = []
+    for name, count in sorted(mined.items(), key=lambda kv: (-kv[1], kv[0])):
+        text = "%s: %d t" % (name, count)
+        if hours:
+            text += " (%.1f t/hr)" % (count / hours)
+        line = worth.get(name) or {}
+        if line.get("worth"):
+            text += " - est. {:,} Cr".format(int(line["worth"]))
+            if line.get("where"):
+                text += " at %s" % line["where"]
+        lines.append(text)
     credits = earned(row)
-    return discord_message(
-        "Rhino session: %d t mined" % tonnes,
-        [("Where", " / ".join(p for p in (row.get("system"), row.get("body")) if p)),
-         ("Time", spent),
-         ("t/hr", "%.1f" % tonnes_per_hour(row) if tonnes_per_hour(row) else ""),
-         ("Credits", "{:,} Cr".format(int(credits)) if credits else ""),
-         ("Cr/hr", "{:,}".format(int(credits_per_hour(row))) if credits else ""),
-         ("Sold at", " / ".join(p for p in (row.get("station"), row.get("sold_in")) if p)),
-         ("CMDR", cmdr)],
-        description="\n".join(lines), when=when)
+    value = float(summary.get("value") or 0)
+    if credits:
+        per_hour = "{:,}".format(int(credits_per_hour(row)))
+    elif value and summary.get("cr_hr"):
+        per_hour = "est. {:,}".format(int(summary["cr_hr"]))
+    else:
+        per_hour = ""
+    used, capacity = (tuple(summary.get("hold") or ()) + (None, None))[:2]
+    hold = ""
+    if used is not None:
+        hold = ("%d / %d t" % (int(used), int(capacity)) if capacity
+                else "%d t" % int(used))
+    merits = summary.get("merits_hr")
+    wages = summary.get("wages")
+    fields = [
+        ("Location", " / ".join(p for p in (row.get("system"), row.get("body")) if p)),
+        ("Session", "%s - %d t @ %.1f t/hr" % (spent, tonnes, rate) if spent
+         else "%d t" % tonnes),
+        # 1.10035 v2: when the patch was worked, gross and net of the crew's
+        # wages, merits as paid against merits as estimated, materials.
+        ("Patch worked", session_span(row)),
+        ("Hold", hold),
+        ("Est. value", "{:,} Cr".format(int(value))
+         + (" (estimated)" if summary.get("estimated") else "") if value else ""),
+        ("Sold (gross)" if wages is not None else "Sold",
+         "{:,} Cr".format(int(credits)) if credits else ""),
+        ("Net (after crew)", "{:,} Cr (crew {:,})".format(int(credits) - int(wages), int(wages))
+         if credits and wages is not None else ""),
+        ("Cr/hr", per_hour),
+        ("Rigs placed", str(summary["rigs"]) if "rigs" in summary else ""),
+        ("Finds logged", str(summary["finds"]) if "finds" in summary else ""),
+        # Marked deposits the Rhino refined from; left out when none was seen.
+        ("Deposits worked", str(summary["worked"]) if summary.get("worked") else ""),
+        ("Merits", merits_text(summary.get("merits"), summary.get("merits_est"))),
+        ("Merits/hr", "est. {:,}".format(int(round(merits))) if merits else ""),
+        ("Materials", materials_text(summary.get("materials"))),
+        ("Sold at", " / ".join(p for p in (row.get("station"), row.get("sold_in")) if p)
+         if credits else ""),
+        ("Status", "Sold - figures updated" if credits else "Not sold yet - estimates"),
+    ]
+    title = ("CMDR %s \u2014 Mining Summary" % cmdr) if str(cmdr or "").strip() \
+        else "Mining Summary"
+    payload = discord_message(title, fields, description="\n".join(lines), when=when)
+    if summary.get("image"):
+        # The picture is sent with the message, and the embed shows it.
+        payload["embeds"][0]["image"] = {"url": "attachment://%s" % summary["image"]}
+    return payload
+
+
+def session_span(row) -> str:
+    """"02:48 to 05:22 UTC", with the dates when it ran past midnight."""
+    from survey import _epoch
+    first, last = _epoch(row.get("started")), _epoch(row.get("ended") or row.get("closed"))
+    if not first or not last or last < first:
+        return ""
+    a, b = time.gmtime(first), time.gmtime(last)
+    if (a.tm_year, a.tm_yday) == (b.tm_year, b.tm_yday):
+        return "%02d:%02d to %02d:%02d UTC" % (a.tm_hour, a.tm_min, b.tm_hour, b.tm_min)
+    return "%s to %s UTC" % (time.strftime("%d %b %H:%M", a), time.strftime("%d %b %H:%M", b))
+
+
+def merits_text(actual, estimate) -> str:
+    """Merits as the game paid them against the estimate, either alone when
+    that is all there is."""
+    try:
+        actual = int(actual or 0)
+    except (TypeError, ValueError):
+        actual = 0
+    try:
+        estimate = int(round(float(estimate or 0)))
+    except (TypeError, ValueError):
+        estimate = 0
+    if actual and estimate:
+        return "{:,} (estimated {:,})".format(actual, estimate)
+    if actual:
+        return "{:,}".format(actual)
+    return "est. {:,}".format(estimate) if estimate else ""
+
+
+def materials_text(materials, limit=8) -> str:
+    """"Iron 12, Carbon 7 (19 in all)" from {name: count}."""
+    items = sorted(((str(k), int(v)) for k, v in dict(materials or {}).items() if v),
+                   key=lambda kv: (-kv[1], kv[0]))
+    if not items:
+        return ""
+    text = ", ".join("%s %d" % kv for kv in items[:limit])
+    if len(items) > limit:
+        text += " and %d more" % (len(items) - limit)
+    return "%s (%d in all)" % (text, sum(v for _k, v in items))
 
 
 def discord_post(url: str, payload: dict, timeout: float = 15.0) -> dict:
@@ -328,6 +427,88 @@ def discord_post(url: str, payload: dict, timeout: float = 15.0) -> dict:
         raise ValueError("That is not a Discord webhook address - copy it from "
                          "the channel's Integrations > Webhooks.")
     return post_json(url.rstrip("/") + "?wait=true", payload, timeout=timeout)
+
+
+def patch_json(url: str, payload: dict, timeout: float = 20.0) -> dict:
+    """PATCH one JSON body; raises with a sentence that never holds the address."""
+    request = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                     method="PATCH")
+    request.add_header("Content-Type", "application/json")
+    request.add_header("User-Agent", USER_AGENT)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        raise _read_error(exc, url) from None
+    except urllib.error.URLError as exc:
+        raise RuntimeError("could not reach %s: %s"
+                           % (_host_of(url), exc.reason)) from None
+    return _decode(raw, url)
+
+
+def multipart_body(payload: dict, files) -> tuple[bytes, str]:
+    """(body, content type) for a Discord upload: payload_json, then each
+    file as files[n]. `files` is [(filename, bytes, content type)]."""
+    boundary = "EDSMT" + hashlib.sha1(os.urandom(16)).hexdigest()
+    out = [b"--" + boundary.encode() + b"\r\n"
+           b'Content-Disposition: form-data; name="payload_json"\r\n'
+           b"Content-Type: application/json\r\n\r\n",
+           json.dumps(payload).encode("utf-8"), b"\r\n"]
+    for number, (name, data, kind) in enumerate(files):
+        safe = re.sub(r'[^A-Za-z0-9._-]', "_", str(name))
+        out += [b"--" + boundary.encode() + b"\r\n",
+                ('Content-Disposition: form-data; name="files[%d]"; filename="%s"\r\n'
+                 "Content-Type: %s\r\n\r\n" % (number, safe, kind)).encode("ascii"),
+                data, b"\r\n"]
+    out.append(b"--" + boundary.encode() + b"--\r\n")
+    return b"".join(out), "multipart/form-data; boundary=" + boundary
+
+
+def post_multipart(url: str, payload: dict, files, timeout: float = 40.0,
+                   method: str = "POST") -> dict:
+    body, kind = multipart_body(payload, files)
+    request = urllib.request.Request(url, data=body, method=method)
+    request.add_header("Content-Type", kind)
+    request.add_header("User-Agent", USER_AGENT)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        raise _read_error(exc, url) from None
+    except urllib.error.URLError as exc:
+        raise RuntimeError("could not reach %s: %s"
+                           % (_host_of(url), exc.reason)) from None
+    return _decode(raw, url)
+
+
+def discord_post_file(url: str, payload: dict, filename: str, data: bytes,
+                      timeout: float = 40.0) -> dict:
+    """The message with one picture attached. Discord answers with the
+    message (?wait=true), whose id and attachment ids are kept for the edit."""
+    url = str(url or "").strip()
+    if not discord_hook_ok(url):
+        raise ValueError("That is not a Discord webhook address - copy it from "
+                         "the channel's Integrations > Webhooks.")
+    body = dict(payload, attachments=[{"id": 0, "filename": filename}])
+    return post_multipart(url.rstrip("/") + "?wait=true", body,
+                          [(filename, data, "image/png")], timeout=timeout)
+
+
+def discord_edit(url: str, message_id, payload: dict, keep=(),
+                 timeout: float = 20.0) -> dict:
+    """Edit a message this webhook posted. `keep` is the ids of the
+    attachments to leave on it: an edit that names none of them removes them."""
+    url = str(url or "").strip()
+    if not discord_hook_ok(url):
+        raise ValueError("That is not a Discord webhook address - copy it from "
+                         "the channel's Integrations > Webhooks.")
+    message_id = str(message_id or "").strip()
+    if not re.fullmatch(r"\d{5,25}", message_id):
+        raise ValueError("Discord gave no message to edit.")
+    body = dict(payload)
+    if keep:
+        body["attachments"] = [{"id": a} for a in keep]
+    return patch_json(url.rstrip("/") + "/messages/" + message_id, body, timeout=timeout)
 
 
 def utc_stamp(when: float | None = None) -> str:

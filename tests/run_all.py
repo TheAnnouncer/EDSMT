@@ -39,6 +39,14 @@ CHECKS = [
     ("what 1.10032 adds", "test_110032.py"),
     ("what 1.10033 adds", "test_110033.py"),
     ("what 1.10034 adds", "test_110034.py"),
+    ("what 1.10035 fixes", "test_110035.py"),
+    ("1.10035: the map, the scope and the rig radar", "test_110035_map.py"),
+    ("1.10035: hold, session ledger, map picture and Discord", "test_110035_output.py"),
+    ("1.10035: Find filters, body search and Powerplay", "test_110035_search.py"),
+    ("1.10035: guided survey, pointers, orbit line, rig radar band and planner", "test_110035_survey.py"),
+    ("1.10035: one stop for the whole hold, within N jumps, price trends", "test_110035_sell.py"),
+    ("1.10035: marking from range, chat commands, joystick buttons and the long press", "test_110035_input.py"),
+    ("1.10035: imports, regrowth, My sites bin and stars, map filters, prompts", "test_110035_sites.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
 # The checks on the API and on the documents that describe the live server

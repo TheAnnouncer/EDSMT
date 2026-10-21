@@ -83,7 +83,8 @@ CHECKS = [
  (44, "repo scaffolding present",            lambda: all(os.path.exists(f) for f in
         (".gitignore","CONTRIBUTING.md","SECURITY.md",".github/ISSUE_TEMPLATE/bug_report.yml"))),
  (45, "VirusTotal position stated",          lambda: "VirusTotal" in src("SECURITY.md")),
- (48, "EDCD writeup exists",                 lambda: os.path.exists("docs/SURFACE-MINING-JOURNAL.md")),
+ (48, "journal specification kept out of the public repo", lambda: not os.path.exists("docs/SURFACE-MINING-JOURNAL.md")
+        and not os.path.exists("JOURNAL-NOTES.md")),
  (49, "landing page exists",                 lambda: os.path.exists("site/edsmt.html")),
  (50, "where to land, ranked and live",     lambda: wired("open_land") and "SV.rank_bodies" in APP
         and wired("follow_land") and "def system_bodies" in JN and "/v1/grounds" in EDO),

@@ -7,19 +7,17 @@ body:
   - type: markdown
     attributes:
       value: |
-        Search the open and closed issues first, and the patch notes in
-        `CHANGELOG.md` - it may already be asked for, and it may already be
-        built.
+        Please search the open and closed issues and `CHANGELOG.md` first; the
+        request may already exist or be built.
 
   - type: textarea
     id: problem
     attributes:
       label: What you are trying to do
       description: >-
-        The thing in front of you, not the feature. "I cannot tell which of
-        six signals I have already stripped without opening the map" is
-        worth more than "add a column", because the second one fixes one
-        case and the first one gets thought about properly.
+        Describe the situation rather than the feature, for example "I cannot
+        tell which of six signals I have already worked out without opening
+        the map".
     validations:
       required: true
 
@@ -27,7 +25,7 @@ body:
     id: idea
     attributes:
       label: What you think would fix it
-      description: Optional. Say it if you have one; the question above is the important one.
+      description: Optional.
     validations:
       required: false
 
@@ -42,7 +40,7 @@ body:
         - Recording deposits and signals
         - Settings
         - Installer, updates, packaging
-        - The community API
+        - The community map
         - Something else
     validations:
       required: true
@@ -52,8 +50,7 @@ body:
     attributes:
       label: Version, from the title bar
       description: >-
-        So the answer can be "that shipped in an earlier build" rather than a
-        conversation about what you already have.
+        Shown in the app's title bar.
       placeholder: "1.100xx"
     validations:
       required: true
@@ -61,9 +58,8 @@ body:
   - type: textarea
     id: elsewhere
     attributes:
-      label: Does another tool do this
+      label: Is this done elsewhere
       description: >-
-        Optional, and genuinely useful. Name it and say what it gets right.
-        Nothing here is precious about being first.
+        Optional. If another tool does this well, say how.
     validations:
       required: false

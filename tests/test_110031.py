@@ -106,20 +106,13 @@ def plan_app():
     return papp
 
 
-check("the planner ships switched off - it is a beta",
-      A.DEFAULT_SETTINGS["rig_planner"] is False)
-check("its key is not even registered while it is off",
-      "trace" not in A.EDSMT.wanted_hotkeys(A.DEFAULT_SETTINGS))
-check("switched on, it is", A.EDSMT.wanted_hotkeys(
-    dict(A.DEFAULT_SETTINGS, rig_planner=True)).get("trace") == "CTRL+ALT+2")
+check("the planner is out of beta: no switch for it in the settings",
+      "rig_planner" not in A.DEFAULT_SETTINGS)
+check("and its key is registered like the others",
+      A.EDSMT.wanted_hotkeys(A.DEFAULT_SETTINGS).get("trace") == "CTRL+ALT+2")
 papp = plan_app()
 papp.planner_trace()
-check("pressed while it is off, it says how to switch it on, and starts nothing",
-      papp.said and "Settings" in papp.said[-1]
-      and papp.__dict__.get("_trace") is None, papp.said[-1:])
-papp.settings["rig_planner"] = True
-papp.planner_trace()
-check("switched on, the key starts a trace", getattr(papp, "_trace", None)
+check("the key starts a trace", getattr(papp, "_trace", None)
       is not None and "TRACING" in papp.flashed[-1], papp.flashed[-1:])
 marks = papp.plan_marks()
 check("and the scope is told a trace is running",

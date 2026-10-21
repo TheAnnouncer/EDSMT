@@ -41,7 +41,9 @@ import json
 import ctypes
 from pathlib import Path
 
+import chattags as CT
 import edonline as EDO
+import powerplay as PW
 import survey as SV
 
 # Frontier's own list, owned by edonline so the app, the uploader and the
@@ -155,7 +157,8 @@ SYSTEM_EVENTS = {"Location", "FSDJump", "CarrierJump", "SupercruiseExit",
 # ship on the ground or the commander in the SRV and there is no Touchdown at
 # all, and a run that waits for one never starts.
 RUN_EVENTS = {"MarketSell", "Docked", "Undocked", "Shutdown", "CargoTransfer",
-              "Touchdown", "Liftoff", "Location"}
+              "Touchdown", "Liftoff", "Location", "PowerplayMerits",
+              "MissionCompleted", "MaterialCollected", "NpcCrewPaidWage"}
 
 # The Rhino leaving the ship, coming back, and being lost - and the name each
 # goes to the books under.
@@ -174,6 +177,7 @@ def is_rhino(kind, localised=None):
 # session, so the oldest fall off the front rather than the newest being
 # refused - eight hours in, what matters is the sale, not the landing.
 RUN_QUEUE_MAX = 500
+CHAT_QUEUE_MAX = 100
 
 # Surface mining shipped on 2 Sep 2026 and Frontier has not yet published the
 # journal schema for it. Rather than guess event names, anything that looks
@@ -426,6 +430,12 @@ class JournalWatcher:
         self.cmdr = ""                 # from Commander / LoadGame, never typed
         self.fid = ""                  # Frontier ID, needed by Inara
         self.pending_land = None       # a Touchdown waiting to be reported
+        # Where the Rhino was left, and where the ship came down: the places
+        # the overlay points back to. Each is {"lat", "lon", "body"} or None.
+        self.rhino_parked = None
+        self.ship_down = None
+        self.srv_last = None           # the last place the Rhino was driven
+        self._park_wait = False        # a Disembark seen before any position
         self.detected_type = None      # deposit type the game named, if any
         self.detected_density = None   # deposit density the game named, if any
         self.last_event = ""           # newest mining-ish event name seen
@@ -438,10 +448,36 @@ class JournalWatcher:
         self.cargo = {}                # what the current vessel is carrying
         self.cargo_vessel = ""         # "Ship" or "SRV" - which hold that is
         self.holds = {}                # vessel -> {name: count}, both holds
+        # Powerplay, read from the journal alone (1.10035): the pledge, the
+        # Powerplay fields of the system you are in, and what the book of
+        # systems and mined goods is told. Its own queue - the books never
+        # see these - and capped, so a reader nobody drains cannot grow.
+        self.power = ""                # the pledged Power, or ""
+        self.power_rank = None
+        self.power_merits = None
+        self.power_here = {}           # this system's Powerplay fields
+        self.station_type = ""         # what you are docked at
+        self.pending_power = []
+        self._pp_stamp, self._pp_seq = "", 0
         self.pending_runs = []         # earnings notes waiting to be taken
+        self.pending_chat = []         # the commander's own SendText lines
         # The ship's cargo capacity, from Loadout. The overlay shows the hold
         # against it after every transfer from the Rhino.
         self.cargo_capacity = None
+        # 1.10035, the ship's hold while the commander is out in the Rhino
+        # (shiphold.py). The journal states the ship's hold only when the
+        # Rhino docks (Cargo, Vessel Ship, 5-6 s after DockSRV) and the
+        # Rhino's on every change (Cargo, Vessel SRV); in between the ship's
+        # total is that figure plus what CargoTransfer has moved since.
+        self.ship_id = None            # the ship's own ID, LoadGame / Loadout
+        self.ship_type = ""
+        self.capacities = {}           # ship ID -> (CargoCapacity, when)
+        self.max_jump_ly = None        # Loadout MaxJumpRange, the ship's own
+        self.ship_total = None         # tonnes in the ship; None = not seen
+        self.ship_total_at = ""
+        self.srv_total = None          # tonnes in the Rhino, from the journal
+        self.rhino_out = False         # a Rhino launched and not yet docked
+        self.trip_unloaded = 0         # Rhino to ship since the last launch
         # Systems the discovery scanner has been fired in, this session and
         # replayed - the guide's first step is "jump in and honk".
         self.honked = set()
@@ -625,7 +661,10 @@ class JournalWatcher:
         self._hold_labels = {}
         self._hold_told = False
         self.holds = {}
+        self.ship_total = self.srv_total = None
+        self.rhino_out, self.trip_unloaded = False, 0
         self.pending_runs = []
+        self.pending_chat = []
         self.cargo = {}
         self.cargo_vessel = ""
         self.docked = False
@@ -758,6 +797,54 @@ class JournalWatcher:
         if not self.has_position:
             self.detected_type = None
             self.detected_density = None
+        self._note_places()
+
+    def _note_places(self):
+        """Remember where the Rhino was last driven and where the ship sits,
+        from Status.json, so that a Disembark or a Launch can say where they
+        happened without carrying a position of their own."""
+        if not (self.has_position and self.body):
+            return
+        here = {"lat": self.lat, "lon": self.lon, "body": self.body}
+        if self.in_srv:
+            self.srv_last = here
+        elif self.in_ship and self.landed and not self.on_foot:
+            self.ship_down = here
+        if self._park_wait and not self.in_srv:
+            # The Disembark was read before there was a position to give it;
+            # the first one on foot, beside the Rhino, stands in.
+            self.rhino_parked = here
+            self._park_wait = False
+
+    def _note_parked(self, name, event):
+        """The Rhino left on the ground, and the ship's touchdown point.
+
+        Disembark with SRV true is the commander leaving the Rhino on foot:
+        it stays where it was last driven. Embark with SRV true, DockSRV and
+        SRVDestroyed end that. Touchdown carries its own position; a Launch
+        with none known takes the one Status.json has."""
+        if name == "Disembark" and event.get("SRV"):
+            if self.srv_last is not None:
+                self.rhino_parked = dict(self.srv_last)
+                self._park_wait = False
+            else:
+                self._park_wait = True
+        elif (name == "Embark" and event.get("SRV")) or name in ("DockSRV", "SRVDestroyed"):
+            self.rhino_parked = None
+            self._park_wait = False
+        elif name == "LaunchSRV":
+            self.rhino_parked = None
+            self._park_wait = False
+            if self.ship_down is None and self.has_position and self.body:
+                self.ship_down = {"lat": self.lat, "lon": self.lon, "body": self.body}
+        elif name == "Touchdown" and event.get("Latitude") is not None \
+                and event.get("Longitude") is not None:
+            self.ship_down = {"lat": event.get("Latitude"), "lon": event.get("Longitude"),
+                              "body": str(event.get("Body") or self.body)}
+        elif name == "Liftoff":
+            self.ship_down = None
+            self.rhino_parked = None
+            self._park_wait = False
 
     def _read_destination(self, destination):
         """The number of the mining location targeted in the game, if any.
@@ -884,6 +971,8 @@ class JournalWatcher:
             except ValueError:
                 continue
             name = event.get("event")
+            if name in PW.POWER_EVENTS:
+                self._power_note(name, event)
 
             # Inara requires the in-game CMDR name, taken from the journal
             # rather than typed, so it always matches exactly.
@@ -895,10 +984,18 @@ class JournalWatcher:
                 if event.get("FID"):
                     self.fid = str(event["FID"])
                 if name == "LoadGame":
+                    self._note_ship(event)
                     self.game_started = SV._epoch(event.get("timestamp")) or None
                     # A new game session: nobody is in any vehicle until the
                     # journal or Status.json says so again.
                     self.vehicle_id = None
+                continue
+
+            # What the commander typed in the game's chat (1.10035). Only
+            # SendText - the commander's own - is ever kept; what other
+            # commanders say arrives as ReceiveText and is never read.
+            if name == "SendText":
+                self._chat_note(event)
                 continue
 
             if name == "Fileheader":
@@ -949,6 +1046,8 @@ class JournalWatcher:
                     elif self.vehicle_id == vid:
                         # Docked or destroyed with the commander in it.
                         self.vehicle_id = None
+                self._note_parked(name, event)
+                self._trip(name, note)
                 self._queue_run(note)
                 continue
 
@@ -962,6 +1061,24 @@ class JournalWatcher:
                 capacity = event.get("CargoCapacity")
                 if capacity is not None:
                     self.cargo_capacity = whole(capacity)
+                try:
+                    reach = float(event.get("MaxJumpRange") or 0)
+                except (TypeError, ValueError):
+                    reach = 0.0
+                if reach > 0:
+                    self.max_jump_ly = round(reach, 2)
+                self._note_ship(event)
+                continue
+
+            if name == "ShipyardSwap":
+                self._note_ship(event)
+                continue
+
+            # Cargo thrown out of the ship: a tonne short of full at the end
+            # of a long night (EjectCargo, Count, Abandoned) is the hold's
+            # business, and only the ship's.
+            if name == "EjectCargo":
+                self._ship_leaves(event.get("Count"))
                 continue
 
             if name in ("FSSDiscoveryScan", "FSSAllBodiesFound"):
@@ -1051,6 +1168,8 @@ class JournalWatcher:
             if name == "SupercruiseExit" and body and \
                     str(event.get("BodyType") or "") == "Planet":
                 self.approached = (self.system, str(body))
+            if name in ("Embark", "Disembark", "Touchdown", "Liftoff"):
+                self._note_parked(name, event)
             if name in ("Embark", "Disembark"):
                 swapped = self._vehicle(name, event)
                 if swapped:
@@ -1202,6 +1321,107 @@ class JournalWatcher:
 
     # -- what a run is worth -------------------------------------------------
 
+    # -- Powerplay and where mined goods came from (1.10035) -----------------
+
+    POWER_QUEUE_MAX = 3000
+
+    def drain_power(self):
+        """Hand over the Powerplay notes, once. The book of systems, the
+        pledge and the ledger of mined goods are fed from here."""
+        notes, self.pending_power = self.pending_power, []
+        return notes
+
+    def _power_seq(self, when):
+        """Which of the ledger's events in one second this is - the same on
+        every read of the same file, so a replay can be told from news."""
+        if when == self._pp_stamp:
+            self._pp_seq += 1
+        else:
+            self._pp_stamp, self._pp_seq = when, 1
+        return self._pp_seq
+
+    def _queue_power(self, note):
+        self.pending_power.append(note)
+        if len(self.pending_power) > self.POWER_QUEUE_MAX:
+            del self.pending_power[:-self.POWER_QUEUE_MAX]
+
+    def _power_note(self, name, event):
+        """One journal event as far as Powerplay cares about it.
+
+        The pledge from Powerplay, PowerplayJoin / Leave / Defect and the
+        Power on every PowerplayMerits; the Powerplay fields and position of
+        every system jumped to or logged in at; and the trail of the goods -
+        mined, moved through a carrier, bought, sold - that decides whether
+        merits are paid. Never raises: a Powerplay field the game changes
+        must not stop the position being read.
+        """
+        try:
+            when = str(event.get("timestamp") or "")
+            if name in PW.PLEDGE_EVENTS:
+                note = PW.pledge_note(event)
+                if note.get("left"):
+                    self.power, self.power_rank, self.power_merits = "", None, None
+                elif note.get("power"):
+                    if note["power"] != self.power:
+                        self.power_rank = self.power_merits = None
+                    self.power = note["power"]
+                    if note.get("rank") is not None:
+                        self.power_rank = note["rank"]
+                    if note.get("merits") is not None:
+                        self.power_merits = note["merits"]
+                self._queue_power(note)
+            elif name in PW.SYSTEM_EVENTS:
+                note = PW.system_note(event, self.system)
+                self.power_here = dict(note) if note else {}
+                if name == "Location":
+                    self.station_type = str(event.get("StationType") or "") \
+                        if event.get("Docked") else ""
+                if note:
+                    self._queue_power(note)
+            elif name == "Docked":
+                self.station_type = str(event.get("StationType") or "")
+            elif name == "Undocked":
+                self.station_type = ""
+            elif name == "MiningRefined":
+                self._queue_power({
+                    "kind": "mined", "when": when, "system": self.system,
+                    "commodity": hold_label(event.get("Type"),
+                                            event.get("Type_Localised")),
+                    "seq": self._power_seq(when)})
+            elif name == "CargoTransfer":
+                for item in event.get("Transfers") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    self._queue_power({
+                        "kind": "transfer", "when": when, "docked": self.docked,
+                        "commodity": hold_label(item.get("Type"),
+                                                item.get("Type_Localised")),
+                        "count": whole(item.get("Count")),
+                        "direction": str(item.get("Direction") or "").lower(),
+                        "seq": self._power_seq(when)})
+            elif name == "MarketBuy":
+                self._queue_power({
+                    "kind": "buy", "when": when,
+                    "commodity": hold_label(event.get("Type"),
+                                            event.get("Type_Localised")),
+                    "count": whole(event.get("Count")),
+                    "price": whole(event.get("BuyPrice")),
+                    "seq": self._power_seq(when)})
+            elif name == "MarketSell":
+                self._queue_power({
+                    "kind": "sale", "when": when, "system": self.system,
+                    "station": self.station,
+                    "commodity": hold_label(event.get("Type"),
+                                            event.get("Type_Localised")),
+                    "name": hold_label(event.get("Type"),
+                                       event.get("Type_Localised")),
+                    "count": whole(event.get("Count")),
+                    "total": whole(event.get("TotalSale")),
+                    "avg_paid": whole(event.get("AvgPricePaid")),
+                    "seq": self._power_seq(when)})
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return
+
     def drain_runs(self):
         """Hand over everything a run's takings depend on, once.
 
@@ -1211,6 +1431,21 @@ class JournalWatcher:
         """
         notes, self.pending_runs = self.pending_runs, []
         return notes
+
+    def drain_chat(self):
+        """The commander's own chat lines since last asked, once."""
+        notes, self.pending_chat = self.pending_chat, []
+        return notes
+
+    def _chat_note(self, event):
+        """Queue one SendText for the chat tags (chattags.py). Capped, so a
+        reader nobody drains cannot grow."""
+        note = CT.note_from_event(event)
+        if note is None:
+            return
+        self.pending_chat.append(note)
+        if len(self.pending_chat) > CHAT_QUEUE_MAX:
+            del self.pending_chat[:-CHAT_QUEUE_MAX]
 
     def _nth(self, event, when, what):
         """How many times this exact event has been seen at this second.
@@ -1263,6 +1498,26 @@ class JournalWatcher:
                 "avg_paid": whole(event.get("AvgPricePaid")),
                 "station": self.station,
             })
+            self._ship_leaves(count)
+        elif name == "MaterialCollected":
+            # 1.10035: by-products picked up by the Rhino - counted per
+            # session for the Discord summary, never by the books.
+            note.update({"category": str(event.get("Category") or ""),
+                         "name": str(event.get("Name_Localised")
+                                     or event.get("Name") or ""),
+                         "count": whole(event.get("Count")) or 1})
+            note["n"] = self._nth(name, note["when"], note["name"])
+        elif name == "NpcCrewPaidWage":
+            # 1.10035: the crew's cut, paid in the second a sale is made.
+            note.update({"amount": whole(event.get("Amount")),
+                         "crew": str(event.get("NpcCrewName") or ""),
+                         "crew_id": str(event.get("NpcCrewId") or "")})
+            note["n"] = self._nth(name, note["when"], note["crew_id"] or note["crew"])
+        elif name == "PowerplayMerits":
+            # 1.10035: merits for a sale. The books never see this one.
+            note["merits"] = whole(event.get("MeritsGained"))
+            if event.get("TotalMerits") is not None:
+                note["total"] = whole(event.get("TotalMerits"))
         elif name == "Docked":
             self.docked = True
             self.station = str(event.get("StationName") or "")
@@ -1292,6 +1547,7 @@ class JournalWatcher:
         elif name == "CargoTransfer":
             self._credit_transfer(event)
             self._move_between_holds(event)
+            self._count_trip(event)
             moved = {}
             for item in event.get("Transfers") or []:
                 if not isinstance(item, dict):
@@ -1353,6 +1609,7 @@ class JournalWatcher:
 
     def _journal_cargo(self, event):
         """Take a hold from the journal's Cargo event, when it lists one."""
+        self._cargo_count(event)
         inventory = event.get("Inventory")
         if not isinstance(inventory, list):
             return
@@ -1398,6 +1655,84 @@ class JournalWatcher:
                 hold = dict(self._hold_keys.get(vessel) or {})
                 hold[key] = max(0, hold.get(key, 0) + sign * count)
                 self._set_hold(vessel, hold)
+
+    def _note_ship(self, event):
+        """Which ship this is, and what its hold was rated at when last
+        fitted. CargoCapacity changes every time the racks do, so it is kept
+        per ship ID and per Loadout, never per hull."""
+        try:
+            ship_id = int(event.get("ShipID"))
+        except (TypeError, ValueError):
+            return
+        if ship_id != self.ship_id:
+            # Another ship: the hold being counted is not this one's.
+            self.ship_total = None
+        self.ship_id = ship_id
+        self.ship_type = str(event.get("Ship") or self.ship_type or "")
+        if event.get("event") == "Loadout" and event.get("CargoCapacity") is not None:
+            self.capacities[ship_id] = (whole(event.get("CargoCapacity")),
+                                        str(event.get("timestamp") or ""))
+
+    def _cargo_count(self, event):
+        """The tonnage the journal itself states for a hold: Count on every
+        Cargo event, with or without an Inventory."""
+        vessel = str(event.get("Vessel") or "Ship")
+        count = event.get("Count")
+        if count is None and isinstance(event.get("Inventory"), list):
+            count = sum(whole(i.get("Count")) for i in event["Inventory"]
+                        if isinstance(i, dict))
+        if count is None:
+            return
+        tonnes = max(0, whole(count))
+        if vessel == "SRV":
+            self.srv_total = tonnes
+        elif vessel == "Ship":
+            self.ship_total = tonnes
+            self.ship_total_at = str(event.get("timestamp") or "")
+
+    def _file_total(self, vessel, counts):
+        """Cargo.json changed: it states the hold of the vessel it describes."""
+        tonnes = sum(int(v) for v in counts.values())
+        if vessel == "SRV":
+            self.srv_total = tonnes
+        elif vessel == "Ship":
+            self.ship_total = tonnes
+
+    def _ship_leaves(self, count):
+        """Tonnes sold or thrown out of the ship's hold."""
+        if self.ship_total is not None:
+            self.ship_total = max(0, self.ship_total - max(0, whole(count)))
+
+    def _trip(self, name, note):
+        """A Rhino going out starts a trip; coming back, or being lost,
+        ends it. Only the commander's own Rhino."""
+        if not (note.get("rhino") and note.get("player")):
+            return
+        if name == "LaunchSRV":
+            self.rhino_out = True
+            self.trip_unloaded = 0
+        else:
+            self.rhino_out = False
+
+    def _count_trip(self, event):
+        """Keep the ship's total in step with what CargoTransfer moved, and
+        count what the Rhino has unloaded on this trip. Carrier to ship uses
+        the same Direction as Rhino to ship, so it counts only while a Rhino
+        is out."""
+        for move in event.get("Transfers") or []:
+            if not isinstance(move, dict):
+                continue
+            where = str(move.get("Direction") or "").strip().lower()
+            count = whole(move.get("Count"))
+            if count <= 0:
+                continue
+            if where == "toship":
+                if self.ship_total is not None:
+                    self.ship_total += count
+                if self.rhino_out:
+                    self.trip_unloaded += count
+            elif where in ("tosrv", "tocarrier") and self.ship_total is not None:
+                self.ship_total = max(0, self.ship_total - count)
 
     def _set_hold(self, vessel, counts):
         counts = {key: count for key, count in counts.items() if count > 0}
@@ -1457,6 +1792,8 @@ class JournalWatcher:
         self.cargo_vessel = vessel
         self._hold_labels.update(labels)
         self._set_hold(vessel, counts)
+        if previous != counts:
+            self._file_total(vessel, counts)
         if previous is None:
             # First sight of a vessel's hold is the baseline, not a haul -
             # a rise is only a rise against something seen before it. Any

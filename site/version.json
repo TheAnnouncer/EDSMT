@@ -1,15 +1,15 @@
 {
-  "version": "1.10034",
+  "version": "1.10035",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "Fixed \u2014 settings lost when you built or updated",
+  "headline": "Selling: one answer for the whole hold",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10034",
-    "sha256": "855e9cf343217a9bcfad9ca2e770ff2c27e0bb3640dece29758202660c6955ea",
-    "bytes": 14333041
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10035",
+    "sha256": "a79164f91b980316d3d8577e7c4f63f176638b96d5468c70523626737e6fbc7a",
+    "bytes": 18709366
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10034",
-    "sha256": "af32aacbb42374dda1c3c5821220b5e9f4c0cab18b067a19a3ae4d3338a18ddc",
-    "bytes": 16187336
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10035",
+    "sha256": "44ddd402f9933012239542545404d2c3219b862809a0d00d9e58223e29a197d2",
+    "bytes": 24003140
   }
 }

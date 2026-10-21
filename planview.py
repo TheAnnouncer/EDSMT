@@ -805,3 +805,350 @@ def arrow_points(x, y, heading_deg, size=12.0):
         return (x + distance * math.sin(angle), y - distance * math.cos(angle))
     return [at(size, 0.0), at(size * 0.72, math.radians(140)),
             (x, y), at(size * 0.72, math.radians(-140))]
+
+
+# ---------------------------------------------------------------------------
+# 1.10035: lines to the nearest deposit, golden groups, the trail on a scope
+# ---------------------------------------------------------------------------
+# Pure geometry on the items `layout` returns, like everything above: the
+# main map and the scope both draw from these, so they cannot disagree.
+
+# A deposit this close is the one you are standing on, not somewhere to go.
+LINE_SKIP_M = 20.0
+
+# A golden group: a knot of deposits close enough together to work from one
+# parked ship. The radius is a setting; it is only ever held to this range.
+GOLDEN_RADIUS_M = 1250.0
+GOLDEN_RADIUS_MIN_M = 500.0
+GOLDEN_RADIUS_MAX_M = 2500.0
+# Rigs a group has to hold to count, and the lower bar used when no group on
+# the picture reaches the first one.
+GOLDEN_RIGS = 5
+GOLDEN_RIGS_FALLBACK = 4
+# How many are shown, and how Cr/h is worked out: this long at each spot,
+# and the driving between them at this speed. The speed is an assumption
+# until one is measured; nothing in the journal says how fast the Rhino went.
+GOLDEN_SHOWN = 3
+GOLDEN_SPOT_S = 300.0
+GOLDEN_DRIVE_KMH = 25.0
+# A deposit's rigs are counted up to this many: a Rhino carries six.
+RIGS_PER_RHINO = 6
+# More sites than this and only the nearest are grouped, so a body with a
+# thousand shared finds cannot make the map stall.
+GOLDEN_MAX_SITES = 600
+
+
+def golden_radius(value=None):
+    """The group radius in metres, held to 500-2,500. Junk is the default."""
+    try:
+        radius = float(value)
+    except (TypeError, ValueError):
+        return GOLDEN_RADIUS_M
+    if not math.isfinite(radius):
+        return GOLDEN_RADIUS_M
+    return max(GOLDEN_RADIUS_MIN_M, min(GOLDEN_RADIUS_MAX_M, radius))
+
+
+def _is_spent(item):
+    return str((item.get("deposit") or {}).get("amount")
+               or "").strip().lower() == "depleted"
+
+
+def _is_live(item):
+    return (item.get("east_m") is not None and item.get("north_m") is not None
+            and not _is_spent(item))
+
+
+def _rigs_of(item):
+    """A site's rigs, 0 to six. Blank and junk are none."""
+    try:
+        return max(0, min(RIGS_PER_RHINO,
+                          int(float((item.get("deposit") or {}).get("rigs") or 0))))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _price_book(prices):
+    """{flattened name: price} for every price that is a positive number."""
+    book = {}
+    for name, value in (prices or {}).items():
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+        if value > 0 and math.isfinite(value):
+            book.setdefault(_flatten(name), value)
+    return book
+
+
+def nearest_lines(items, prices, focus="", skip_m=LINE_SKIP_M):
+    """The two lines drawn from you: to the nearest deposit of the same
+    commodity as `focus` (solid), and to the nearest deposit of the next
+    cheaper commodity in view (dotted).
+
+    `focus` is the commodity of the deposit being driven to, or the one
+    marked last; blank means the best-paying commodity in view. "Cheaper" is
+    by `prices`, the live table the app already prices everything with: the
+    commodity paying the most that is still below the focus. With no price
+    for the focus there is no way to say what is cheaper, so no dotted line.
+    A deposit closer than `skip_m` is the one you are on and is passed over.
+
+    Returns {"commodity", "same", "cheaper"}; each of the two is None or
+    {"item", "range_m", "commodity"}.
+    """
+    out = {"commodity": "", "same": None, "cheaper": None}
+    live = [i for i in items or [] if _is_live(i)
+            and str(i.get("commodity") or "").strip()]
+    if not live:
+        return out
+    book = _price_book(prices)
+    names = {}
+    for item in live:
+        names.setdefault(_flatten(item["commodity"]), str(item["commodity"]).strip())
+    wanted = _flatten(focus)
+    if not wanted:
+        best = max(names, key=lambda flat: (book.get(flat, 0.0), flat))
+        wanted = best if book.get(best) else ""
+    if not wanted:
+        return out
+    out["commodity"] = names.get(wanted) or str(focus).strip()
+
+    def nearest_of(flat):
+        pool = [i for i in live if _flatten(i["commodity"]) == flat
+                and float(i.get("range_m") or 0.0) >= skip_m]
+        return min(pool, key=lambda i: float(i.get("range_m") or 0.0)) if pool else None
+
+    def entry(item, flat):
+        return {"item": item, "range_m": float(item.get("range_m") or 0.0),
+                "commodity": names[flat]}
+
+    same = nearest_of(wanted)
+    if same is not None:
+        out["same"] = entry(same, wanted)
+    base = book.get(wanted)
+    if base:
+        cheaper = sorted(((book[flat], flat) for flat in names
+                          if flat != wanted and 0 < book.get(flat, 0.0) < base),
+                         reverse=True)
+        for _price, flat in cheaper:
+            item = nearest_of(flat)
+            if item is not None:
+                out["cheaper"] = entry(item, flat)
+                break
+    return out
+
+
+def _partition(sites, radius, floor):
+    """Greedy golden groups. `sites` is [(east, north, rigs)]. Returns
+    [(centre index, [member indexes])], richest first: each round takes the
+    site with the most rigs within `radius` of it among the sites not yet
+    taken (the tighter one on a tie), and its neighbours leave the pool.
+    Stops when the best left holds fewer than `floor` rigs, because every
+    later one can only hold fewer."""
+    count = len(sites)
+    near = [[(i, 0.0)] for i in range(count)]
+    for i in range(count):
+        xi, yi = sites[i][0], sites[i][1]
+        for j in range(i + 1, count):
+            apart = math.hypot(sites[j][0] - xi, sites[j][1] - yi)
+            if apart <= radius:
+                near[i].append((j, apart))
+                near[j].append((i, apart))
+    left = set(range(count))
+    groups = []
+    while left:
+        best = None
+        for i in sorted(left):
+            members = [(j, apart) for j, apart in near[i] if j in left]
+            rigs = sum(sites[j][2] for j, _apart in members)
+            key = (-rigs, max(apart for _j, apart in members), i)
+            if best is None or key < best[0]:
+                best = (key, i, members, rigs)
+        if best[3] < floor:
+            break
+        groups.append((best[1], [j for j, _apart in best[2]]))
+        left -= {j for j, _apart in best[2]}
+    return groups
+
+
+_GOLDEN_MEMO = {"key": None, "groups": None}
+
+
+def _site_key(item):
+    deposit = item.get("deposit") or {}
+    ident = str(deposit.get("id") or "").strip()
+    if ident:
+        return ident
+    lat, lon = deposit.get("lat"), deposit.get("lon")
+    if lat not in (None, "") and lon not in (None, ""):
+        return "%s,%s" % (lat, lon)
+    return ""
+
+
+def golden_groups(items, prices, radius_m=GOLDEN_RADIUS_M, start=(0.0, 0.0),
+                  limit=GOLDEN_SHOWN, speed_kmh=GOLDEN_DRIVE_KMH,
+                  spot_s=GOLDEN_SPOT_S):
+    """The best golden groups on the picture: up to `limit` knots of intact
+    deposits with at least five rigs' worth within `radius_m` of one of
+    them (four, when no group reaches five), listed most rigs first.
+
+    Only live deposits count, a site's rigs are capped at six, and a site
+    belongs to one group. Each group says what it is worth at `prices`
+    (rigs x 1 t x price, an estimate) and what that comes to an hour:
+    `spot_s` at every deposit plus the drive from `start` through them all
+    at `speed_kmh`. Of the groups that qualify the `limit` with the best
+    Cr/h are kept (the most rigs, where nothing is priced), then listed most
+    rigs first.
+
+    The grouping is remembered while the same deposits are on the picture,
+    because the scope asks ten times a second; the values and times, which
+    move with you, are worked out each time.
+    """
+    radius = golden_radius(radius_m)
+    live = [i for i in items or [] if _is_live(i) and _rigs_of(i) > 0]
+    if len(live) > GOLDEN_MAX_SITES:
+        live = sorted(live, key=lambda i: float(i.get("range_m") or 0.0))[:GOLDEN_MAX_SITES]
+    if not live:
+        return []
+    keys = [_site_key(i) for i in live]
+    named = all(keys) and len(set(keys)) == len(keys)
+    ids = keys if named else list(range(len(live)))
+    by_id = dict(zip(ids, live))
+    # What the grouping depends on: who is there, their rigs, and where they
+    # are to each other. Not where they are to you - that moves every tick -
+    # so positions are taken from one site and rounded to the metre.
+    signature = None
+    if named:
+        anchor = min(zip(keys, live), key=lambda pair: pair[0])[1]
+        ae, an = anchor["east_m"], anchor["north_m"]
+        signature = (round(radius, 1), tuple(sorted(
+            (k, _rigs_of(i), round(i["east_m"] - ae), round(i["north_m"] - an))
+            for k, i in zip(keys, live))))
+    groups = _GOLDEN_MEMO["groups"] if (
+        signature is not None and _GOLDEN_MEMO["key"] == signature) else None
+    if groups is None:
+        sites = [(i["east_m"], i["north_m"], _rigs_of(i)) for i in live]
+        groups = [(ids[c], [ids[m] for m in members])
+                  for c, members in _partition(sites, radius, GOLDEN_RIGS_FALLBACK)]
+        if signature is not None:
+            _GOLDEN_MEMO["key"], _GOLDEN_MEMO["groups"] = signature, groups
+
+    totals = [sum(_rigs_of(by_id[m]) for m in members) for _c, members in groups]
+    floor = GOLDEN_RIGS if any(t >= GOLDEN_RIGS for t in totals) else GOLDEN_RIGS_FALLBACK
+    per_second = max(0.1, float(speed_kmh) / 3.6)
+    start = (float(start[0]), float(start[1]))
+    found = []
+    for (centre_id, member_ids), rigs in zip(groups, totals):
+        if rigs < floor:
+            continue
+        members = [by_id[m] for m in member_ids]
+        centre = by_id[centre_id]
+        worth = value_of(members, prices)
+        route = drive_route(members, prices, start=start)
+        seconds = float(spot_s) * len(members) + route["total_m"] / per_second
+        rate = (worth["credits"] * 3600.0 / seconds
+                if worth["credits"] > 0 and seconds > 0 else None)
+        away, bearing = to_polar(centre["east_m"] - start[0],
+                                 centre["north_m"] - start[1])
+        found.append({
+            "centre": centre, "east_m": centre["east_m"], "north_m": centre["north_m"],
+            "radius_m": radius, "items": members, "rigs": rigs,
+            "count": len(members), "credits": worth["credits"],
+            "unpriced": worth["unpriced"], "drive_m": route["total_m"],
+            "seconds": seconds, "cr_per_h": rate,
+            "range_m": away, "bearing": bearing,
+            "commodities": sorted({str(m["commodity"]).strip() for m in members
+                                   if str(m.get("commodity") or "").strip()}),
+        })
+    if any(g["cr_per_h"] for g in found):
+        found.sort(key=lambda g: (-(g["cr_per_h"] or 0.0), -g["rigs"], g["range_m"]))
+    else:
+        found.sort(key=lambda g: (-g["rigs"], g["range_m"]))
+    found = found[:max(0, int(limit))]
+    found.sort(key=lambda g: (-g["rigs"], -(g["cr_per_h"] or 0.0), g["range_m"]))
+    for number, group in enumerate(found, 1):
+        group["n"] = number
+    return found
+
+
+# -- drawing helpers for a round scope -----------------------------------------
+
+def circle_points(east, north, radius, sides=72):
+    """A closed ring of points round (east, north)."""
+    return [(east + radius * math.sin(2.0 * math.pi * k / sides),
+             north + radius * math.cos(2.0 * math.pi * k / sides))
+            for k in range(sides + 1)]
+
+
+def _circle_cross(a, b, centre, radius):
+    """Where the segment a-b crosses the circle, or None."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    fx, fy = a[0] - centre[0], a[1] - centre[1]
+    quad = dx * dx + dy * dy
+    if quad == 0:
+        return None
+    half = fx * dx + fy * dy
+    disc = half * half - quad * (fx * fx + fy * fy - radius * radius)
+    if disc < 0:
+        return None
+    root = math.sqrt(disc)
+    for t in ((-half - root) / quad, (-half + root) / quad):
+        if 0.0 <= t <= 1.0:
+            return (a[0] + t * dx, a[1] + t * dy)
+    return None
+
+
+def clip_polyline(points, centre, radius):
+    """The parts of a polyline that lie inside a circle, as a list of runs
+    of points. A segment that crosses the rim is cut at it. For a scope,
+    which is round: a line past its rim is not on it."""
+    runs, run = [], []
+    inside_before = None
+    previous = None
+    r2 = float(radius) ** 2
+    for point in points or []:
+        inside = (point[0] - centre[0]) ** 2 + (point[1] - centre[1]) ** 2 <= r2
+        if previous is not None and inside != inside_before:
+            cross = _circle_cross(previous, point, centre, radius)
+            if inside:
+                run = [cross] if cross else []
+                run.append(point)
+            else:
+                if cross:
+                    run.append(cross)
+                if len(run) >= 2:
+                    runs.append(run)
+                run = []
+        elif inside:
+            run.append(point)
+        previous, inside_before = point, inside
+    if len(run) >= 2:
+        runs.append(run)
+    return runs
+
+
+def thin_points(points, gap_m):
+    """Keep the first point, then each one at least `gap_m` from the last
+    kept, and the final point. How many discs a scope paints for a trail."""
+    points = list(points or [])
+    if len(points) <= 2 or gap_m <= 0:
+        return points
+    kept = [points[0]]
+    for point in points[1:-1]:
+        if math.hypot(point[0] - kept[-1][0], point[1] - kept[-1][1]) >= gap_m:
+            kept.append(point)
+    kept.append(points[-1])
+    return kept
+
+
+def focus_commodity(items, target_id="", last=""):
+    """The commodity the map's lines are for: that of the deposit being
+    driven to when it is on the picture, otherwise the one marked last,
+    otherwise "" (nearest_lines then takes the best paying in view)."""
+    wanted = str(target_id or "").strip()
+    if wanted:
+        for item in items or []:
+            if str((item.get("deposit") or {}).get("id") or "") == wanted \
+                    and str(item.get("commodity") or "").strip():
+                return str(item["commodity"]).strip()
+    return str(last or "").strip()

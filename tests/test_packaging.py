@@ -28,7 +28,7 @@ def read(*parts):
                    errors="replace").read()
 
 SHIPPED = ["edsmt.py", "survey.py", "planview.py", "journal.py", "overlay.py",
-           "edonline.py"]
+           "edonline.py", "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py"]
 
 print("== the batch files run on Windows ==")
 for name in ("BUILD.bat", "RUN.bat"):
@@ -175,8 +175,7 @@ def prose_only(text):
     return "\n".join(out)
 
 
-for doc in ("README.md", "JOURNAL-NOTES.md", "CONTRIBUTING.md", "SECURITY.md",
-            "docs/SURFACE-MINING-JOURNAL.md"):
+for doc in ("README.md", "CONTRIBUTING.md", "SECURITY.md"):
     text = prose_only(read(*doc.split("/")))
     # The leading dot matters: ".github/workflows/build.yml" is a real path
     # and dropping the dot makes a present file look missing.
@@ -208,9 +207,9 @@ check("the workpath the specs are built into is the one that gets cleared",
       "--workpath build\\work" in bat)
 check("the build workflow is offered as source, since the README names it",
       "'.github'" not in bat[zip_at:zip_at + 400], "still excluded from the zip")
-# BUILD.bat zips whatever is at the top of this folder on his own PC, and
-# the zip is public. Settings carry the Inara key, the staff token and the
-# Discord webhook; portable.txt sends all of it into data\ beside the code.
+# BUILD.bat zips whatever is at the top of this folder on the build machine,
+# and the zip is public. Settings carry credentials such as the Inara key and
+# the Discord webhook; portable.txt sends all of it into data\ beside the code.
 _zip_filter = re.search(r"-notin @\(([^)]*)\)(.*?)\}; Compress-Archive", bat)
 _zip_names = set(re.findall(r"'([^']+)'", _zip_filter.group(1))) if _zip_filter else set()
 _zip_like = set(re.findall(r"-notlike '([^']+)'", _zip_filter.group(2))) if _zip_filter else set()
@@ -418,8 +417,7 @@ _INFRA = ("nginx", "docker",
 _INSIDE_BASEBALL = ("assertion", "mutation test", "compacted", "transcript",
                     "subagent", "on the record", "i wrote", "runbook",
                     "devlog", "test suite")
-_PLAYER = ["CHANGELOG.md", "README.md", "site/index.html", "site/edsmt.html",
-           "JOURNAL-NOTES.md"]
+_PLAYER = ["CHANGELOG.md", "README.md", "site/index.html", "site/edsmt.html"]
 _leaky, _cringe = [], []
 for _f in _PLAYER:
     _path = os.path.join(REPO, _f)
@@ -464,9 +462,8 @@ check("the installer carries only the player's documents",
                        "DEPLOY") if d in read("build", "installer.iss")])
 
 print("== the API is ours to run, and nobody else's ==")
-# 1 October 2026: "we dont want people hosting their own thing". The API's
-# source, its deploy guide and its container files left this project for
-# good. Nothing public may bring them back or say how to stand one up.
+# The API's source, its deploy guide and its container files are not part of
+# this project. Nothing public may bring them back or say how to stand one up.
 check("there is no server folder in the public project",
       not os.path.exists(os.path.join(REPO, "server")))
 check("and git is told to keep one out", "/server/" in read(".gitignore"))
@@ -478,12 +475,26 @@ _INVITES = ("host your own", "hosting their own", "hosting your own", "run your 
             "own copy of the database", "server/requirements")
 _asked = []
 for _f in ("README.md", "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md",
-           "JOURNAL-NOTES.md", "site/index.html", "site/edsmt.html",
-           "docs/SURFACE-MINING-JOURNAL.md", "edsmt.py", "edonline.py",
+           "site/index.html", "site/edsmt.html", "edsmt.py", "edonline.py",
            ".github/workflows/build.yml", "BUILD.bat"):
     _low = read(*_f.split("/")).lower()
     _asked += ["%s: %s" % (_f, w) for w in _INVITES if w in _low]
 check("nothing public invites anyone to run their own copy", not _asked, _asked)
+
+print("== how the journal is read is kept out of the public project ==")
+# The journal notes and the surface-mining event specification record how
+# EDSMT finds what it finds. They live in the private folder; the public
+# documents neither ship them nor point at them.
+check("the journal notes and the event specification are not in the repository",
+      not [f for f in ("JOURNAL-NOTES.md", "docs/SURFACE-MINING-JOURNAL.md")
+           if os.path.exists(os.path.join(REPO, *f.split("/")))])
+_pointers = []
+for _f in ("README.md", "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md",
+           "site/index.html", "site/edsmt.html"):
+    _low = read(*_f.split("/")).lower()
+    _pointers += ["%s: %s" % (_f, w) for w in ("journal-notes", "surface-mining-journal")
+                  if w in _low]
+check("and no public document points at either", not _pointers, _pointers)
 
 print()
 print("FAILURES:", len(fails))

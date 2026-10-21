@@ -76,6 +76,69 @@ _HALF_ROW = _ROW // 2
 _REPLACE_TRIES = 5
 _REPLACE_WAIT_S = 0.05
 
+# The driven trail (1.10035): a stored fix is dropped from the drawn line when
+# it lies within this many metres of the straight line between its
+# neighbours, and the line never holds more than TRAIL_CAP points.
+TRAIL_TOLERANCE_M = 10.0
+TRAIL_CAP = 2000
+
+
+def _local_of(origin, point, radius_m):
+    """(east, north) metres of `point` from `origin`, both (lat, lon)."""
+    return SV.local_offset(origin[0], origin[1], point[0], point[1], radius_m)
+
+
+def _douglas_peucker(xy, tolerance):
+    """Indices of the points of `xy` to keep: the ends, and every point
+    that sticks out more than `tolerance` from the line its neighbours
+    make. Iterative, so a trail of any length cannot reach the recursion
+    limit."""
+    count = len(xy)
+    keep = [False] * count
+    if not count:
+        return []
+    keep[0] = keep[-1] = True
+    stack = [(0, count - 1)]
+    while stack:
+        first, last = stack.pop()
+        if last <= first + 1:
+            continue
+        ax, ay = xy[first]
+        dx, dy = xy[last][0] - ax, xy[last][1] - ay
+        length2 = dx * dx + dy * dy
+        worst, at = 0.0, -1
+        for i in range(first + 1, last):
+            px, py = xy[i]
+            if length2 == 0:
+                apart = math.hypot(px - ax, py - ay)
+            else:
+                t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length2))
+                apart = math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+            if apart > worst:
+                worst, at = apart, i
+        if at != -1 and worst > tolerance:
+            keep[at] = True
+            stack.append((first, at))
+            stack.append((at, last))
+    return [i for i, kept in enumerate(keep) if kept]
+
+
+def trail_indices(xy, tolerance_m=TRAIL_TOLERANCE_M, cap=TRAIL_CAP):
+    """Which of the points `xy` ((east, north) metres, in driving order) to
+    draw as the trail: Douglas-Peucker at `tolerance_m`, and if that still
+    leaves more than `cap` the tolerance is doubled until it does not. The
+    first and last point are always in it."""
+    cap = max(2, int(cap))
+    tolerance = max(0.0, float(tolerance_m))
+    kept = _douglas_peucker(xy, tolerance)
+    # A trail looping back over itself can keep many points at any small
+    # tolerance; doubling it always ends, because a tolerance wider than the
+    # trail keeps only its two ends.
+    while len(kept) > cap:
+        tolerance = max(1.0, tolerance * 2.0)
+        kept = _douglas_peucker(xy, tolerance)
+    return kept
+
 
 # ---------------------------------------------------------------------------
 # Reading values that may be junk
@@ -523,6 +586,52 @@ class CoverageMap:
                 outside.update(range(base + hi + 1, base + b + 1))
         if len(inside) + len(outside) != before:
             self._version += 1
+
+    def swept_at(self, lat, lon, margin_m=0.0):
+        """True when the scanner has swept the ground at this spot - and,
+        with a margin, the ground round it to that distance as well. False
+        when there is nothing to measure against yet. What the guided survey
+        asks before it sends the commander to a waypoint."""
+        fix = _fix(lat, lon)
+        if fix is None or not self._ensure_raster():
+            return False
+        east, north = SV.local_offset(self._ref[0], self._ref[1], fix[0], fix[1],
+                                      self.radius_m)
+        cell, taken = self._cell, (self._inside, self._outside)
+        spots = [(east, north)]
+        reach = max(0.0, float(margin_m or 0.0))
+        if reach:
+            spots += [(east + reach * math.sin(a * math.pi / 4.0),
+                       north + reach * math.cos(a * math.pi / 4.0)) for a in range(8)]
+        for x, y in spots:
+            key = int(round(y / cell)) * _ROW + int(round(x / cell))
+            if key not in taken[0] and key not in taken[1]:
+                return False
+        return True
+
+    # -- the trail ------------------------------------------------------------
+
+    def trail(self, tolerance_m=TRAIL_TOLERANCE_M, cap=TRAIL_CAP):
+        """Where the SRV has driven, as (lat, lon) points to draw a line
+        through: the stored fixes with every point that lies within
+        `tolerance_m` of a straight line between its neighbours taken out
+        (Douglas-Peucker), and no more than `cap` points. The first and last
+        fix are always kept. The answer is remembered until a fix is added
+        or removed, because the map and the scope ask for it ten times a
+        second."""
+        points = self.points
+        key = (len(points), points[0] if points else None,
+               points[-1] if points else None, round(float(tolerance_m), 3),
+               int(cap), self.radius_m)
+        memo = getattr(self, "_trail_memo", None)
+        if isinstance(memo, tuple) and memo[0] == key:
+            return list(memo[1])
+        kept = trail_indices([_local_of(points[0], p, self.radius_m) for p in points],
+                             tolerance_m, cap) if points and self.radius_m \
+            else list(range(len(points)))[-int(cap):]
+        out = [points[i] for i in kept]
+        self._trail_memo = (key, out)
+        return list(out)
 
     # -- saving ---------------------------------------------------------------
 
