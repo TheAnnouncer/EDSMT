@@ -1,6 +1,6 @@
 """The ship's hold while the commander is out in the Rhino (1.10035, #240).
 
-What the journal says, checked against the owner's own files:
+What the journal says, checked against real sessions:
 
   * The ship's hold is stated only when the Rhino docks: Cargo, Vessel Ship,
     Count N, five or six seconds after DockSRV. In between it is that figure
@@ -9,8 +9,8 @@ What the journal says, checked against the owner's own files:
   * Loadout.CargoCapacity changes every time the racks do - five values in
     five days on one hull - so it is kept per ship ID, from the newest
     Loadout, and not per hull type.
-  * The Rhino's hold is not in the journal at all. Its peak Cargo tick on the
-    owner's sessions was 72 t, so a "load" is counted at 72 t.
+  * The Rhino's hold is not in the journal at all. Its peak Cargo tick in
+    real sessions is 72 t, so a "load" is counted at 72 t.
 
 Nothing here draws or touches a widget: the app and the overlay ask for a
 card and show what is in it.

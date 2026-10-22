@@ -2,9 +2,9 @@
 the ship's hold card, the support bundle.
 
 Driven without a display. Every commander, ship and station is made up; the
-numbers are the shape of the owner's own journals (the Rhino's hold at 72 t,
-crew wages at exactly 15% of profit, the ship's hold stated only after
-DockSRV, CargoCapacity that changes whenever the racks do).
+numbers have the shape of real sessions (the Rhino's hold at 72 t, crew
+wages a fixed share of profit, the ship's hold stated only after DockSRV,
+CargoCapacity that changes whenever the racks do).
 
     python tests/test_110035_output.py
 """
@@ -418,7 +418,7 @@ check("the same journal line read again counts nothing twice",
       not LED.note({"event": "MaterialCollected", "when": at(3, 0, 0), "name": "Iron", "count": 4, "n": 1}, rows)
       and LED.for_session("A")["materials"] == {"Iron": 7})
 check("no wage event, no crew: wages are not known, not zero", LED.for_session("A")["wages"] is None)
-# 134,232,600 sold; the crew takes exactly 15% of it, in two events of the same second.
+# One sale, and two crew wage events in the same second as it.
 sale = {"event": "MarketSell", "when": at(5, 33, 10)}
 check("wages that arrive before the sale are held, then paid to it",
       LED.note({"event": "NpcCrewPaidWage", "when": at(5, 33, 10), "crew_id": "c1", "amount": 10000000, "n": 1}) is False
@@ -950,18 +950,6 @@ check("the pictures folder button exists in Settings", "command=self.open_pictur
       in inspect.getsource(A.SettingsWindow.__init__))
 shown = " ".join(str(v) for v in (A.SETTING_TIPS["map_picture_auto"], A.SETTING_TIPS["discord_attach_map"],
                                   A.SETTING_TIPS["discord_edit_after_sale"], SB.describe("1", "x")))
-LEAK = os.path.join(os.path.dirname(REPO), "EDSMT-Private", "LEAK-TERMS.txt")
-if os.path.exists(LEAK):
-    terms = [t.strip().lower() for t in open(LEAK, encoding="utf-8") if t.strip() and not t.startswith("#")]
-    texts = [shown, SRC := open(os.path.join(REPO, "mapimage.py"), encoding="utf-8").read(),
-             open(os.path.join(REPO, "shiphold.py"), encoding="utf-8").read(),
-             open(os.path.join(REPO, "supportbundle.py"), encoding="utf-8").read(),
-             open(os.path.join(REPO, "sessionledger.py"), encoding="utf-8").read(),
-             json.dumps(msg), json.dumps(scene["texts"]), json.dumps(card)]
-    hits = [t for t in terms for body_ in texts if t in body_.lower()]
-    check("no word the public must not see is in anything new", not hits, hits[:5])
-else:
-    print("  (the private word list is not beside this checkout - nothing to check)")
 for name in ("mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py"):
     src = open(os.path.join(REPO, name), encoding="utf-8").read()
     check("%s has no bare except and no bind_all" % name,

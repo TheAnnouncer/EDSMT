@@ -727,7 +727,7 @@ def _session():
           and getattr(app.btn_range, "_edsmt_tip", "") == A.TIPS["range_mark"])
     check("chat commands are off, the prefix is !rr, a long press is off",
           A.DEFAULT_SETTINGS["chat_tags"] is False and A.DEFAULT_SETTINGS["chat_prefix"] == "!rr"
-          and A.DEFAULT_SETTINGS["long_press_rig"] is False and A.DEFAULT_SETTINGS["long_press_button"] == "left")
+          and A.DEFAULT_SETTINGS["long_press_rig"] is False and A.DEFAULT_SETTINGS["long_press_button"] == "primary")
     check("every key has a joystick setting, blank",
           all(A.DEFAULT_SETTINGS.get(IND.joy_key(a)) == "" for a in IND.JOY_ACTIONS))
     keys = {k[len("hotkey_"):] for k in A.DEFAULT_SETTINGS if k.startswith("hotkey_") and k != "hotkey_defaults"}
@@ -1201,16 +1201,34 @@ def _joy_app():
         del app.after
 
 
-@on_screen("a long press of the mouse is a rig")
+@on_screen("a long press of the fire button is a rig")
 def _mouse_app():
+    # 1.10036: the button is the game's own SRV fire binding (gamebinds.py),
+    # here the game's defaults - Primary fire the left mouse button,
+    # Secondary fire the right - read through a stand-in for Windows.
     st = IM.state(app)
     mouse = FakeMouse()
     st.mouse = mouse
+
+    class Keys:
+        def key_down(self, vk):
+            return (vk == 0x01 and mouse.left) or (vk == 0x02 and mouse.right)
+
+        def joy_mask(self, index):
+            return None
+
+        def joy_ids(self, index):
+            return None
+    st.reader = IM.GB.BindReader(Keys())
+    st.binds = {"file": "Custom.4.2.binds", "preset": "Custom", "why": "",
+                "primary": [{"device": "Mouse", "key": "Mouse_1", "modifiers": []}],
+                "secondary": [{"device": "Mouse", "key": "Mouse_2", "modifiers": []}]}
     clock = [1000.0]
     st.clock = lambda: clock[0]
+    st.binds_at = clock[0] + 10 ** 6       # read once; not again during the test
     scheduled = []
     app.after = lambda ms, fn=None, *rest: scheduled.append((ms, fn)) or "id%d" % len(scheduled)
-    app.settings.update(long_press_rig=False, long_press_button="left", long_press_learned="")
+    app.settings.update(long_press_rig=False, long_press_button="primary", long_press_learned="")
 
     def look():
         IM.mouse_tick(app)
@@ -1242,11 +1260,11 @@ def _mouse_app():
         mouse.left = True
         app.follow_input()
         look()
-        held_in = st.longpress._ignore["left"] and st.longpress._since["left"] is None
+        held_in = st.hold._ignore and st.hold._since is None
         mouse.left = False
         look()
-        check("a button already down on the way into the Rhino is not the start of a press", held_in,
-              (st.longpress._ignore, st.longpress._since))
+        check("fire already held on the way into the Rhino is not the start of a press", held_in,
+              (st.hold._ignore, st.hold._since))
         st.mouse_after = None
         del scheduled[:]
         app.follow_input()
@@ -1254,7 +1272,7 @@ def _mouse_app():
               len(scheduled) == 1 and scheduled[0][0] == IND.POLL_MS, scheduled)
         app.follow_input()
         check("only one", len(scheduled) == 1)
-        check("a scan click does not place a rig", press_for(0.2) == [])
+        check("a click does not place a rig", press_for(0.2) == [])
         check("0.4 s does not", press_for(0.4) == [])
         check("1 s is neither", press_for(1.0) == [])
         check("1.9 s is not a rig", press_for(1.9) == [])
@@ -1269,7 +1287,8 @@ def _mouse_app():
         clock[0] += 0.05
         look()
         check("held for five seconds it is one rig and does not repeat", events == ["rigs"], events)
-        check("the other button, with Left chosen, is not the rig button", press_for(2.5, left=False, right=True) == [])
+        check("Secondary fire, with Primary chosen, is not the rig button",
+              press_for(2.5, left=False, right=True) == [])
         mouse.front = False
         check("with the game not in front, a long press is nothing", press_for(3.0) == [])
         mouse.front = True
@@ -1290,18 +1309,17 @@ def _mouse_app():
         clock[0] += 0.05
         look()
         check("a press that began behind another window does not count when the game comes back", out == [], out)
-        app.settings["long_press_button"] = "right"
-        check("Right chosen: the right button places a rig", press_for(2.1, left=False, right=True) == ["rigs"]
+        app.settings["long_press_button"] = "secondary"
+        check("Secondary fire chosen: its binding places a rig", press_for(2.1, left=False, right=True) == ["rigs"]
               and press_for(2.1) == [])
-        app.settings.update(long_press_button="learn", long_press_learned="")
-        saved = []
-        app.keep_settings = lambda: saved.append(dict(app.settings))
-        check("Learn: the first long press places the rig and teaches EDSMT the button",
-              press_for(2.1, left=False, right=True) == ["rigs"] and app.settings["long_press_learned"] == "right"
-              and saved and "Rig button learned" in last_said(), (app.settings["long_press_learned"], last_said()))
-        check("after that the other button is not the rig button", press_for(2.5) == []
-              and press_for(2.1, left=False, right=True) == ["rigs"])
-        del app.keep_settings
+        app.settings["long_press_button"] = "right"
+        check("an older 'right' reads as Secondary fire", press_for(2.1, left=False, right=True) == ["rigs"])
+        app.settings["long_press_button"] = "primary"
+        st.binds = dict(st.binds, primary=[{"device": "Keyboard", "key": "Key_K", "modifiers": []}])
+        check("bound to a key in the game, the mouse is not the rig button", press_for(2.1) == [])
+        st.binds = {"file": "", "preset": "", "why": "The game's binds were not found on this PC.",
+                    "primary": [], "secondary": []}
+        check("no binds on this PC: the game's default, the left button", press_for(2.1) == ["rigs"])
         # Nothing is written down.
         written = []
         real_open = builtins.open
@@ -1323,14 +1341,15 @@ def _mouse_app():
         app.settings["long_press_rig"] = True
         app.game.in_srv = False
         look()
-        app.game.in_srv = game_flag
         check("leave the Rhino and it stops", st.mouse_after is None)
         placed = press_for(2.1)
+        app.game.in_srv = game_flag
         check("a press after that, out of the Rhino, is nothing", placed == [])
     finally:
         del app.after
         app.settings["long_press_rig"] = False
-        app.settings.update(long_press_button="left", long_press_learned="")
+        app.settings.update(long_press_button="primary", long_press_learned="")
+        st.binds = None
 
 
 @on_screen("Settings: the chat switch, the prefix, the long press and a Joystick button on every key")
@@ -1346,9 +1365,11 @@ def _settings():
             check("a switch for %s, with its note" % key, key in win.toggles and key in A.SETTING_TIPS, key)
         check("a box for the prefix, holding !rr", "chat_prefix" in win.fields
               and win.fields["chat_prefix"].get() == "!rr", win.fields.get("chat_prefix"))
-        check("and a choice of rig button with three answers",
+        check("and a choice of rig button: the game's Primary or Secondary fire, nothing else",
               "long_press_button" in win.choices and [n for n, _v in win.choices["long_press_button"][1]]
-              == ["Left", "Right", "Learn from first long press"])
+              == ["Primary fire", "Secondary fire"])
+        check("with a line saying what the binds make it", win.binds_line.cget("text").startswith(
+            ("From your binds", "The game's binds")), win.binds_line.cget("text"))
         check("a Joystick button beside every key, for every action",
               set(win.joy_binders) == {IND.joy_key(a) for a in IND.JOY_ACTIONS}
               and set(win.joy_binders) == {IND.joy_setting(k) for k in win.binders if IND.joy_setting(k)},
@@ -1420,20 +1441,13 @@ def _settings():
             check("a prefix of %r is %s" % (typed, "saved as %r" % kept if ok else "refused"),
                   (len(saved) > n) == ok and (not ok or saved[-1]["chat_prefix"] == kept)
                   and (ok or "2 to 12 characters" in said[-1]), (typed, said[-1], saved[-1]["chat_prefix"]))
-        # The rig button learned is kept until the choice changes.
-        app.settings.update(long_press_button="learn", long_press_learned="right")
-        win.load()
+        win.choices["long_press_button"][0].set("Secondary fire")
         win.save()
-        check("Learn with a button learned keeps it across a Save", saved[-1]["long_press_learned"] == "right",
-              saved[-1]["long_press_learned"])
-        win.choices["long_press_button"][0].set("Left")
+        check("Secondary fire is saved as such, and nothing is learned",
+              saved[-1]["long_press_button"] == "secondary" and saved[-1]["long_press_learned"] == "")
+        win.choices["long_press_button"][0].set("Primary fire")
         win.save()
-        check("choosing Left forgets it", saved[-1]["long_press_button"] == "left" and saved[-1]["long_press_learned"] == "")
-        app.settings.update(long_press_button="left", long_press_learned="right")
-        win.choices["long_press_button"][0].set("Learn from first long press")
-        win.save()
-        check("and choosing Learn again starts the learning over", saved[-1]["long_press_button"] == "learn"
-              and saved[-1]["long_press_learned"] == "")
+        check("and Primary fire", saved[-1]["long_press_button"] == "primary")
         win.toggles["chat_tags"].set(True)
         win.toggles["long_press_rig"].set(True)
         win.save()

@@ -32,8 +32,9 @@ Free and open source (GPL-3.0). Not affiliated with Frontier Developments.
 - **Earnings** — Rhino sessions only, with Cr/hr, t/hr and merits.
 - **Search** — Find, Where to land and My sites with full filters and saved
   searches.
-- **Community map** — every find is shared, so everyone sees what has been
-  mapped; your commander name only if you choose.
+- **Community map** — every find is shared with your commander name, so
+  everyone sees what has been mapped, and a weekly and monthly leaderboard
+  with Powerplay merits.
 - **Controls** — keys, joystick and HOTAS buttons, or chat commands.
 
 ## Get it

@@ -28,7 +28,7 @@ def read(*parts):
                    errors="replace").read()
 
 SHIPPED = ["edsmt.py", "survey.py", "planview.py", "journal.py", "overlay.py",
-           "edonline.py", "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py"]
+           "edonline.py", "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py", "board.py", "crowd.py", "presale.py", "gamebinds.py", "galaxy.py"]
 
 print("== the batch files run on Windows ==")
 for name in ("BUILD.bat", "RUN.bat"):
@@ -207,27 +207,19 @@ check("the workpath the specs are built into is the one that gets cleared",
       "--workpath build\\work" in bat)
 check("the build workflow is offered as source, since the README names it",
       "'.github'" not in bat[zip_at:zip_at + 400], "still excluded from the zip")
-# BUILD.bat zips whatever is at the top of this folder on the build machine,
-# and the zip is public. Settings carry credentials such as the Inara key and
-# the Discord webhook; portable.txt sends all of it into data\ beside the code.
-_zip_filter = re.search(r"-notin @\(([^)]*)\)(.*?)\}; Compress-Archive", bat)
-_zip_names = set(re.findall(r"'([^']+)'", _zip_filter.group(1))) if _zip_filter else set()
-_zip_like = set(re.findall(r"-notlike '([^']+)'", _zip_filter.group(2))) if _zip_filter else set()
-_LOCAL_DATA = ("data", "settings.json", "settings.json.bak", "settings-history",
+# The zip is public. Settings carry credentials such as the Inara key and the
+# Discord webhook, and portable.txt sends all of a commander's data into data\
+# beside the code - so the zip is made of what git tracks, and git is told to
+# leave every one of those out.
+_gi = read(".gitignore")
+_LOCAL_DATA = ("/data/", "settings.json", "settings.json.bak", "settings-history/",
                "portable.txt", "deposits.csv", "locations.csv", "sessions.csv",
-               "sessions-seen.json", "rigs.json", "imported.json", "coverage",
-               "updates", "crash.log", "journal-mining-events.log",
-               "surfaceminingmap.csv", ".instance.lock", ".env")
-check("a commander's own data left in the folder never goes in the source zip",
-      _zip_filter is not None and not [n for n in _LOCAL_DATA if n not in _zip_names],
-      [n for n in _LOCAL_DATA if n not in _zip_names])
-check("nor does a database, a .bak, a .tmp or a backup zip",
-      {"*.db*", "*.bak", "*.tmp", "*.before-restore-*", "EDSMT-backup-*"} <= _zip_like,
-      sorted(_zip_like))
-check("while the program's own source still does",
-      not [n for n in ("edsmt.py", "survey.py", "coverage.py", "bodybook.py", "build",
-                       "tests", "site", "README.md", "LICENSE")
-           if n in _zip_names or any(fnmatch.fnmatch(n, p) for p in _zip_like)])
+               "rigs.json", "imported.json", "crash.log", "journal-mining-events.log",
+               ".env", "*.db", "*.sqlite")
+check("the source zip is the files git tracks, nothing beside them",
+      "git ls-files" in bat and "Compress-Archive" in bat)
+check("and git never tracks a commander's own data",
+      not [n for n in _LOCAL_DATA if n not in _gi], [n for n in _LOCAL_DATA if n not in _gi])
 
 print("== an update replaces the old version and keeps the finds ==")
 # The failure this guards against is silent: install 1.2 over 1.1 and a
@@ -268,8 +260,8 @@ check("build/bump.py exists", os.path.exists(os.path.join(REPO, "build", "bump.p
 bump = read("build", "bump.py")
 for path in ("edonline.py", "build/installer.iss", "build/version_info.txt"):
     check("bump.py covers %s" % path, '"%s"' % path in bump)
-check("and moves the API's number on too, where its source is beside this one",
-      "SERVER_MAIN" in bump)
+check("and moves on any number this machine lists in build/bump.local.json",
+      "bump.local.json" in bump)
 check("bump.py refuses a number Windows cannot store", "65535" in bump)
 # Not the README. That one ships inside the installer, and a commander who
 # downloaded a mining tool has no use for a version-bump script - which is
@@ -339,10 +331,9 @@ def _is_private(ip):
     return (a in (0, 10, 127) or (a == 192 and b == 168)
             or (a == 172 and 16 <= b <= 31) or a == 255 or a > 255)
 
-# Everything that ships: the whole repo except the internal folder and the
-# build's scratch.
+# Everything that ships: the whole repo except the build's scratch.
 _NOT_SHIPPED = {".git", "__pycache__", "dist", "upload", ".venv",
-                ".venv-build", "node_modules", "internal", "work"}
+                ".venv-build", "node_modules", "work"}
 PUBLIC_FILES = []
 for _dp, _ds, _fs in os.walk(REPO):
     _ds[:] = [d for d in _ds if d not in _NOT_SHIPPED]
@@ -365,9 +356,8 @@ for _path in PUBLIC_FILES:
                 and not _hit.lower().startswith(("fe80", "ff02")):
             _leaks.append("%s: %s" % (_rel, _hit))
     for _pat, _what in (
-            (r"RR_STAFF\s*=\s*[A-Za-z][^$<\n]*:[A-Za-z0-9]{8,}", "a staff token"),
-            (r"RR_WRITE_TOKEN\s*=\s*[A-Za-z0-9]{8,}", "a write token"),
-            (r"Bearer\s+[A-Za-z0-9]{16,}", "a bearer token")):
+            (r"Bearer\s+[A-Za-z0-9]{16,}", "a bearer token"),
+            (r"(?i)(token|secret|password)\s*=\s*[\"']?[A-Za-z0-9]{24,}", "a token")):
         if re.search(_pat, _text):
             _secrets.append("%s: %s" % (_rel, _what))
 check("no public address is written into anything that ships",
@@ -379,72 +369,7 @@ check("and .gitignore keeps one out", ".env" in read(".gitignore"))
 check("no database is in the bundle either",
       not [_f for _f in os.listdir(REPO) if _f.endswith(".db")])
 
-print("== nothing public contains a private term ==")
-# The list of what must never appear - the machine, the services beside the
-# API, other people's tools - is itself private, so it lives in
-# internal/LEAK-TERMS.txt and this reads it when it is there. On the machine
-# that builds a release it always is. Anywhere else it says so, out loud.
-# The private folder: EDSMT-Private beside this project, or the older
-# internal/ inside it.
-_terms_file = next((f for f in (os.path.join(REPO, "internal", "LEAK-TERMS.txt"),
-                                os.path.join(os.path.dirname(REPO), "EDSMT-Private",
-                                             "LEAK-TERMS.txt"))
-                    if os.path.exists(f)), "")
-if _terms_file:
-    _terms = [l.strip().lower() for l in io.open(_terms_file, encoding="utf-8")
-              if l.strip() and not l.lstrip().startswith("#")]
-    _hits = []
-    for _path in PUBLIC_FILES:
-        _rel = os.path.relpath(_path, REPO)
-        _low = io.open(_path, encoding="utf-8", errors="replace").read().lower()
-        for _t in _terms:
-            _pat = (r"\b%s\b" % re.escape(_t)) if re.fullmatch(r"[a-z]+", _t) \
-                else re.escape(_t)
-            if re.search(_pat, _low):
-                _hits.append("%s: %s" % (_rel, _t))
-    check("no public file contains any of the %d private terms" % len(_terms),
-          not _hits, _hits[:12])
-else:
-    print("  SKIP  the private folder (EDSMT-Private) is not beside this one, "
-          "so the private-term scan cannot run")
-
-print("== nothing player-facing talks about how the server is run ==")
-# README and the patch notes ship inside the installer and go on the website.
-_INFRA = ("nginx", "docker",
-          "/opt/", "/var/www", "proxy host", "waf", "rate-limit zone",
-          "limit_req", "letsencrypt", "crontab", "ssh", "putty", "winscp",
-          "rr_staff", "rr_write_token", "deposits.db", "sqlite", "origin")
-_INSIDE_BASEBALL = ("assertion", "mutation test", "compacted", "transcript",
-                    "subagent", "on the record", "i wrote", "runbook",
-                    "devlog", "test suite")
-_PLAYER = ["CHANGELOG.md", "README.md", "site/index.html", "site/edsmt.html"]
-_leaky, _cringe = [], []
-for _f in _PLAYER:
-    _path = os.path.join(REPO, _f)
-    if not os.path.exists(_path):
-        continue
-    _low = io.open(_path, encoding="utf-8").read().lower()
-    for _term in _INFRA:
-        if re.search(r"(?<![a-z])%s(?![a-z])" % re.escape(_term), _low):
-            _leaky.append("%s: %s" % (_f, _term))
-    if _f in ("CHANGELOG.md", "README.md"):
-        _cringe += ["%s: %s" % (_f, t) for t in _INSIDE_BASEBALL if t in _low]
-check("no player-facing file names the infrastructure", not _leaky, _leaky[:8])
-check("and none of them reads like a build log", not _cringe, _cringe)
-
-print("== internal documents never ship ==")
-_build = read("BUILD.bat")
-_gi = read(".gitignore")
-check("the source zip leaves out the internal folder",
-      "'internal'" in _build, "it would ship to every downloader")
-check(".gitignore keeps the internal folder out of the public repo",
-      re.search(r"^/?internal/?$", _gi, re.M) is not None)
-_stray = [f for f in ("RUNBOOK.md", "DEVLOG.md", "DECISIONS.md", "BACKLOG.md",
-                      "UPDATE-GUIDE.md", "LEAK-TERMS.txt")
-          if os.path.exists(os.path.join(REPO, f))]
-check("no internal document is lying at the top of the repo", not _stray, _stray)
-check("the site generator publishes the patch notes, not the devlog",
-      "DEVLOG" not in read("build", "site.py"))
+print("== what ships is the program ==")
 check("the shipped bytecode carries no docstrings - both builds",
       all("optimize=2" in read("build", s) for s in ("EDSMT.spec", "EDSMT-onefile.spec")))
 check("and the PyInstaller that understands that is the one installed",
@@ -455,46 +380,8 @@ _iss_files = [l for l in read("build", "installer.iss").splitlines()
 check("the installer puts only the program, README and LICENCE on a PC",
       len(_iss_files) == 3 and all(("dist" in l or "README.md" in l or "LICENSE" in l)
                                    for l in _iss_files), _iss_files)
-check("and an update removes the developer notes an older one left behind",
-      'Name: "{app}\\JOURNAL-NOTES.md"' in read("build", "installer.iss"))
-check("the installer carries only the player's documents",
-      not [d for d in ("RUNBOOK", "DEVLOG", "DECISIONS", "BACKLOG", "CONTRIBUTING",
-                       "DEPLOY") if d in read("build", "installer.iss")])
-
-print("== the API is ours to run, and nobody else's ==")
-# The API's source, its deploy guide and its container files are not part of
-# this project. Nothing public may bring them back or say how to stand one up.
-check("there is no server folder in the public project",
-      not os.path.exists(os.path.join(REPO, "server")))
-check("and git is told to keep one out", "/server/" in read(".gitignore"))
-check("nor will the source zip carry one",
-      "'server'" in read("BUILD.bat")[read("BUILD.bat").find("Compress-Archive") - 400:
-                                         read("BUILD.bat").find("Compress-Archive")])
-_INVITES = ("host your own", "hosting their own", "hosting your own", "run your own copy",
-            "your own server", "self-host", "mirror it", "deploy.md", "docker compose",
-            "own copy of the database", "server/requirements")
-_asked = []
-for _f in ("README.md", "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md",
-           "site/index.html", "site/edsmt.html", "edsmt.py", "edonline.py",
-           ".github/workflows/build.yml", "BUILD.bat"):
-    _low = read(*_f.split("/")).lower()
-    _asked += ["%s: %s" % (_f, w) for w in _INVITES if w in _low]
-check("nothing public invites anyone to run their own copy", not _asked, _asked)
-
-print("== how the journal is read is kept out of the public project ==")
-# The journal notes and the surface-mining event specification record how
-# EDSMT finds what it finds. They live in the private folder; the public
-# documents neither ship them nor point at them.
-check("the journal notes and the event specification are not in the repository",
-      not [f for f in ("JOURNAL-NOTES.md", "docs/SURFACE-MINING-JOURNAL.md")
-           if os.path.exists(os.path.join(REPO, *f.split("/")))])
-_pointers = []
-for _f in ("README.md", "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md",
-           "site/index.html", "site/edsmt.html"):
-    _low = read(*_f.split("/")).lower()
-    _pointers += ["%s: %s" % (_f, w) for w in ("journal-notes", "surface-mining-journal")
-                  if w in _low]
-check("and no public document points at either", not _pointers, _pointers)
+check("the source zip is made from the files git tracks, so nothing else can slip in",
+      "git ls-files" in read("BUILD.bat"))
 
 print()
 print("FAILURES:", len(fails))

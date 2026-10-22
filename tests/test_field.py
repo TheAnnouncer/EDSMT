@@ -537,8 +537,10 @@ print("== the top bar: where things are on the left, the overlay on the right ==
 _top = SRC.split("    def _telemetry(self):")[1].split("\n    def ")[0]
 _nav, _side = _top.split("nav = ctk.CTkFrame")[1], _top.split("side = ctk.CTkFrame")[1]
 check("Find, My sites, Where to land and Earnings are in the left group",
-      all('ctk.CTkButton(nav, text="%s"' % t in _top
-          for t in ("Find", "My sites", "Where to land", "Earnings")))
+      # 1.10036: the left group is the tabs, made from one list.
+      "ctk.CTkButton(nav, text=text" in _top
+      and all('"%s",' % t in _top
+              for t in ("Find", "My sites", "Where to land", "Earnings")))
 check("Overlay, Unlock and Settings in the right one",
       "ctk.CTkButton(side, text=\"Overlay\"" in _top
       and "ctk.CTkButton(side, text=\"Unlock\"" in _top

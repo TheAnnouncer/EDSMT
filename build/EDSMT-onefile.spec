@@ -49,7 +49,7 @@ excludes = [
 ]
 
 # 1.10035: the Find filters and the Powerplay record.
-hiddenimports += ["finder", "powerplay", "sellplan"]
+hiddenimports += ["finder", "powerplay", "sellplan", "board", "crowd", "presale", "gamebinds", "galaxy"]
 
 # 1.10035: importing from other tools, depleted marks and regrowth, the bin
 # and favourites, and the map filters.

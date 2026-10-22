@@ -472,6 +472,8 @@ def signal_kind(text):
     low = str(text or "").lower()
     if re.search(r"mining|deposit|resource", low):
         return "mining"
+    if "saa_signaltype_" in low:
+        low = low.split("saa_signaltype_", 1)[1]
     for word in ("geological", "biological", "human", "guardian", "thargoid"):
         if word in low:
             return word
@@ -484,7 +486,11 @@ def signal_counts(signals):
     for sig in signals or ():
         if not isinstance(sig, dict):
             continue
-        kind = signal_kind(sig.get("type"))
+        # The language-free symbol first (#263): a French or German client
+        # writes the words in its own language.
+        kind = signal_kind(sig.get("symbol")) if sig.get("symbol") else "other"
+        if kind == "other":
+            kind = signal_kind(sig.get("type"))
         try:
             out[kind] = out.get(kind, 0) + int(sig.get("count") or 0)
         except (TypeError, ValueError):

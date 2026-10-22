@@ -39,13 +39,15 @@ settings-history/
 sessions.csv
 rigs.json
 imported.json
+sessions-seen.json
+surfaceminingmap.csv
+.instance.lock
+/coverage/
+/updates/
 # With portable.txt beside the code, the data goes in data\ instead.
 /data/
 
 # ---- databases and secrets ----------------------------------------------
-# The community API is run by Radio Raxxla and its source is not part of
-# this project. None of these belong in it either.
-/server/
 *.db
 *.db-journal
 *.db-wal
@@ -54,6 +56,10 @@ imported.json
 *.sqlite3
 .env
 .env.*
+
+# ---- this machine only --------------------------------------------------
+build/local.cmd
+build/bump.local.json
 
 # ---- anything captured from the game ------------------------------------
 # Handy to have locally while chasing a reader bug, never to be committed:
@@ -71,13 +77,3 @@ Journal.*.log
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Maintainer notes kept beside the project. Never committed; the names are
-# listed so a copy left here by mistake cannot slip in.
-internal/
-RUNBOOK.md
-DEVLOG.md
-DECISIONS.md
-BACKLOG.md
-UPDATE-GUIDE.md
-LEAK-TERMS.txt

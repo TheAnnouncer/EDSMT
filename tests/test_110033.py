@@ -456,7 +456,9 @@ class _Ov:
 def _ov_app(**settings):
     app = A.EDSMT.__new__(A.EDSMT)
     app.settings = dict(A.DEFAULT_SETTINGS)
-    app.settings.update(dict({"overlay_enabled": True}, **settings))
+    # The Rhino-only switch is what these checks are about, so it is on here
+    # whatever the default (off since 21 Oct 2026).
+    app.settings.update(dict({"overlay_enabled": True, "overlay_rhino_only": True}, **settings))
     app.overlay = _Ov()
     app.redraw = lambda *a, **k: None
     app.said = []
@@ -467,7 +469,8 @@ def _ov_app(**settings):
 
 
 ova = _ov_app()
-check("only in the Rhino is the default", A.DEFAULT_SETTINGS["overlay_rhino_only"] is True)
+check("only in the Rhino is a switch, off by default (21 Oct 2026)",
+      A.DEFAULT_SETTINGS["overlay_rhino_only"] is False)
 check("in the ship the boxes stay down", not ova.follow_vehicle_overlay()
       and not ova.overlay.showing)
 ova.game.in_rhino = True
@@ -550,8 +553,8 @@ check("and the ground swept before the trip is still swept",
 print("== #186: every find is shared, and Find is everybody's ==")
 check("sharing, uploading each find and prices are always on",
       all(A.DEFAULT_SETTINGS[k] is True for k in A.ALWAYS_SHARED)
-      and set(A.ALWAYS_SHARED) == {"community_enabled", "community_auto_share",
-                                   "share_market_prices"})
+      and {"community_enabled", "community_auto_share",
+           "share_market_prices"} <= set(A.ALWAYS_SHARED))
 _off = os.path.join(os.environ["LOCALAPPDATA"], "RadioRaxxla", "EDSMT")
 os.makedirs(_off, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _fh:
@@ -563,22 +566,25 @@ _loaded = A.load_settings()
 check("an older file with sharing off is shared from now on",
       all(_loaded[k] is True for k in A.ALWAYS_SHARED), _loaded)
 check("and is told so, once, on the status line",
-      any("Sharing is always on" in n for n in A.SETTINGS_NOTICE), A.SETTINGS_NOTICE)
-check("but a commander who kept their name off keeps it off",
-      _loaded["community_share_cmdr_name"] is False)
+      any("with the CMDR name" in n for n in A.SETTINGS_NOTICE), A.SETTINGS_NOTICE)
+# 1.10036: the name goes on every find, and the map shows everybody's. A file that said otherwise is put right on the way in.
+check("and from 1.10036 the name goes on too, and everybody's finds are shown",
+      _loaded["community_share_cmdr_name"] is True and _loaded["show_shared_finds"] is True)
 del A.SETTINGS_NOTICE[:]
 _sw = SRC.split("class SettingsWindow")[1].split("\nclass ")[0]
 check("Settings has no switch to stop sharing any more",
       '"community_enabled", "Share' not in _sw and '"community_auto_share"' not in _sw
       and '"share_market_prices"' not in _sw
-      and '"community_share_cmdr_name", "Credit finds to my CMDR name"' in _sw)
+      and '"community_share_cmdr_name"' not in _sw and '"show_shared_finds"' not in _sw
+      and "The community map\"" not in _sw)
 _of = SRC.split("    def open_find(self):")[1].split("\n    def ")[0]
 check("Find opens for everybody, no find of your own needed",
       "find_unlocked" not in _of and "FindWindow(self)" in _of)
 _wel = SRC.split("class WelcomeWindow")[1].split("\nclass ")[0]
-check("the first-run window says every find is shared and asks only about the name",
+check("the first-run window says every find is shared with the name, and asks nothing",
       "Every deposit you mark goes on the community map" in _wel
-      and "Stay anonymous" in _wel and "Not now" not in _wel)
+      and "with your CMDR name on it" in _wel
+      and "Stay anonymous" not in _wel and "Not now" not in _wel)
 
 print("== #188: tick several commodities in every search ==")
 _K = ["Bastnäsite", "Helium", "Helium-3", "Monazite", "Ruby", "Sapphire"]

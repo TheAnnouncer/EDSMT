@@ -77,31 +77,10 @@ set "BPY=.venv-build\Scripts\python.exe"
 "%BPY%" -m pip install --upgrade pip --quiet --disable-pip-version-check
 "%BPY%" -m pip install -r requirements.txt "pyinstaller>=6.0,<7" --quiet --disable-pip-version-check
 if errorlevel 1 goto FAIL
-rem The API's source is kept in the private folder beside this one. Where it
-rem is, install its libraries too, so the API is tested before a release
-rem rather than skipped. Best effort - a failure must not stop the build.
-if exist "..\EDSMT-Private\server\requirements.txt" "%BPY%" -m pip install -r "..\EDSMT-Private\server\requirements.txt" --quiet --disable-pip-version-check >nul 2>&1
+rem  Anything this machine needs on top - more checks, more libraries - is
+rem  in build\local.cmd, which only this machine has.
+if exist "build\local.cmd" call "build\local.cmd"
 echo         OK.
-
-rem  Bundles before 1.10028 put the internal documents at the top of this
-rem  folder. Unzipping a newer one over them leaves the old copies behind,
-rem  where they would go into the source zip and trip the private-term
-rem  check. Move any that are still here into the private folder's
-rem  old-copies - moved, not deleted, so nothing of yours is lost.
-set "OLDCOPIES=internal\old-copies"
-if exist "..\EDSMT-Private\" set "OLDCOPIES=..\EDSMT-Private\old\copies"
-set "STALE="
-for %%F in (BACKLOG.md DECISIONS.md DEVLOG.md RUNBOOK.md UPDATE-GUIDE.md DEPLOY-LIVE.md LEAK-TERMS.txt DISCORD-beta-1.10027.md) do if exist "%%F" set "STALE=1"
-rem  The API's source left this folder in 1.10033. A copy still here would be
-rem  zipped into the public source and could be uploaded by mistake.
-if exist "server\" set "STALE=1"
-if defined STALE (
-    echo         Moving internal documents an older bundle left at the top
-    echo         into the private folder's old\copies ...
-    if not exist "%OLDCOPIES%" mkdir "%OLDCOPIES%"
-    for %%F in (BACKLOG.md DECISIONS.md DEVLOG.md RUNBOOK.md UPDATE-GUIDE.md DEPLOY-LIVE.md LEAK-TERMS.txt DISCORD-beta-1.10027.md) do if exist "%%F" move /y "%%F" "%OLDCOPIES%\%%F" >nul
-    if exist "server\" move "server" "%OLDCOPIES%\server-from-EDSMT-GitHub-%RANDOM%" >nul
-)
 
 rem ---------------------------------------------------------------------
 rem  4. Tests. Nothing ships that has not passed.
@@ -168,20 +147,16 @@ if exist "radioraxxla.ico" copy /y "radioraxxla.ico" "upload\favicon.ico" >nul
 if errorlevel 1 goto FAIL
 
 rem  PyInstaller leaves its scratch tree in build\work - 20-odd MB of
-rem  unpacked libraries that are not source and must not be in the source
-rem  zip. The exclusion list below only sees top-level names, so build\work
-rem  and the __pycache__ folders further down have to go before the zip runs.
+rem  unpacked libraries. Tidied away with the __pycache__ folders.
 if exist "build\work" rmdir /s /q "build\work"
 for /d /r %%D in (__pycache__) do if exist "%%D" rmdir /s /q "%%D"
 
-rem  The internal folder is excluded, and so is any internal document
-rem  left at the top by mistake. They describe one server, and GPL-3.0
-rem  asks for the source of the PROGRAM - not the notes on where it runs.
-rem  A commander's own data is left out too - settings, finds, rigs, the
-rem  data folder portable.txt sends them to - should any be sitting here.
+rem  The source zip is exactly the files git tracks - nothing a commander
+rem  or this machine keeps beside them can get in.
 echo         Zipping the source, which GPL-3.0 requires you to offer...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$i = Get-ChildItem -Path . -Force | Where-Object { $_.Name -notin @('.venv','.venv-build','dist','upload','__pycache__','.git','data','settings.json','settings.json.bak','settings-history','portable.txt','deposits.csv','locations.csv','sessions.csv','sessions-seen.json','rigs.json','imported.json','coverage','updates','crash.log','journal-mining-events.log','surfaceminingmap.csv','.instance.lock','.env','internal','server','RUNBOOK.md','DEVLOG.md','DECISIONS.md','BACKLOG.md','UPDATE-GUIDE.md') -and $_.Name -notlike '*.db*' -and $_.Name -notlike '*.bak' -and $_.Name -notlike '*.tmp' -and $_.Name -notlike '*.before-restore-*' -and $_.Name -notlike 'EDSMT-backup-*' }; Compress-Archive -Path $i.FullName -DestinationPath 'upload\EDSMT-source.zip' -CompressionLevel Optimal -Force"
+  "$files = git ls-files; if (-not $files) { exit 1 }; $stage = Join-Path $env:TEMP ('edsmt-src-' + [guid]::NewGuid()); foreach ($f in $files) { $to = Join-Path $stage $f; New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null; Copy-Item -LiteralPath $f -Destination $to }; Compress-Archive -Path (Join-Path $stage '*') -DestinationPath 'upload\EDSMT-source.zip' -CompressionLevel Optimal -Force; Remove-Item -Recurse -Force $stage"
+if errorlevel 1 goto FAIL
 echo         OK.
 
 echo.

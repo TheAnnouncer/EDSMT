@@ -90,14 +90,14 @@ check("in place - anything holding a style holds the new one", same is A.BTN_PRI
       and same["fg_color"] == OV.PALETTES["fleet"]["ORANGE"])
 check("an unknown theme is worn as the cockpit",
       A.apply_app_theme("nonsense") == "cockpit" and A.ORANGE == "#ff7a18")
-check("the app starts in the cockpit unless told otherwise",
-      A.DEFAULT_SETTINGS["app_theme"] == "cockpit"
-      and A.DEFAULT_SETTINGS["overlay_theme"] == "cockpit")
+check("the app starts in Imperial gold unless told otherwise",
+      A.DEFAULT_SETTINGS["app_theme"] == "gold"
+      and A.DEFAULT_SETTINGS["overlay_theme"] == "gold")
 
 print("== Settings offers them ==")
 src = open(A.__file__, encoding="utf-8").read()
 check("a Basic settings section comes first",
-      src.index('"Basic settings"') < src.index('"The community map"'))
+      src.index('"Basic settings"') < src.index('self._section(body, "Inara"'))
 check("and says everything can be changed",
       "can be changed" in src.split('"Basic settings"')[1][:400])
 check("the app theme and the overlay theme are both there, with every theme",

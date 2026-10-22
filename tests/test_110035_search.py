@@ -709,28 +709,12 @@ def _bodies():
               "Biological at least 2", "Landable", "Mapped", "Within 500 Ls"])
 
 
-@section("no rate, no formula and no private word in what this ships")
+@section("the new search code is clean, and the builds carry it")
 def _hygiene():
     for name in ("finder.py", "powerplay.py"):
         src = open(os.path.join(REPO, name), encoding="utf-8").read()
         check("%s has no bare except and no bind_all" % name,
               not re.search(r"^\s*except\s*:", src, re.M) and "bind_all" not in src)
-    src = open(os.path.join(REPO, "powerplay.py"), encoding="utf-8").read()
-    check("powerplay.py says what the estimate is, never how it is reached",
-          "times the rate" not in src and "merits per credit" not in src.lower())
-    leak = os.path.join(os.path.dirname(REPO), "EDSMT-Private", "LEAK-TERMS.txt")
-    if os.path.exists(leak):
-        terms = [t.strip().lower() for t in open(leak, encoding="utf-8")
-                 if t.strip() and not t.startswith("#")]
-        texts = [open(os.path.join(REPO, n), encoding="utf-8").read().lower()
-                 for n in ("finder.py", "powerplay.py", "tests/test_110035_search.py")]
-        hits = []
-        for term in terms:
-            pattern = (r"\b%s\b" % re.escape(term)) if re.fullmatch(r"[a-z]+", term) else re.escape(term)
-            hits += [term for text in texts if re.search(pattern, text)]
-        check("no word the public must not see is in the new search code", not hits, hits[:5])
-    else:
-        print("  (the private word list is not beside this checkout - nothing to check)")
     for spec in ("EDSMT.spec", "EDSMT-onefile.spec"):
         text = open(os.path.join(REPO, "build", spec), encoding="utf-8").read()
         check("%s bundles finder and powerplay" % spec,

@@ -214,8 +214,12 @@ pb.pause(at(10))
 check("paused, the session says so", pb.paused)
 pb.observe({"event": "MarketSell", "when": at(40), "commodity": "painite",
             "count": 1, "total": 100})
+# 1.10036 (#271): the clock starts at the first tonne (5), not the first
+# rig (0), and the rig's time is kept as a note.
+check("the clock starts at the first tonne, the first rig kept as a note",
+      pb.current["started"] == at(5) and "first rig" in pb.current["notes"], pb.current)
 check("time paused is not mining time",
-      abs(SV.session_hours(pb.current) - 10 / 60.0) < 1e-6,
+      abs(SV.session_hours(pb.current) - 5 / 60.0) < 1e-6,
       SV.session_hours(pb.current))
 check("a rig down picks it up again by itself",
       pb.observe({"event": "RigDown", "when": at(70), "system": "Ega",
@@ -226,11 +230,11 @@ pb.finish(at(90), by="button")
 last = pb.sessions[-1]
 check("ended while paused, the pause runs to the end and is left out",
       last["paused_at"] == "" and last["paused"] == "4200"
-      and abs(SV.session_hours(last) - 20 / 60.0) < 1e-6,
+      and abs(SV.session_hours(last) - 15 / 60.0) < 1e-6,
       (last["paused"], SV.session_hours(last)))
 check("the rate is over the running time",
       SV.earned(last) == 100
-      and abs(SV.credits_per_hour(last) - 100 / (20 / 60.0)) < 1e-6,
+      and abs(SV.credits_per_hour(last) - 100 / (15 / 60.0)) < 1e-6,
       (SV.earned(last), SV.credits_per_hour(last)))
 
 print("== Earnings: only what was mined is priced ==")

@@ -1,15 +1,15 @@
 {
-  "version": "1.10035",
+  "version": "1.10036",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "New \u2014 one stop for the whole hold, Powerplay, guided survey",
+  "headline": "New \u2014 tabs, leaderboard, mining bodies galaxy-wide",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10035",
-    "sha256": "a79164f91b980316d3d8577e7c4f63f176638b96d5468c70523626737e6fbc7a",
-    "bytes": 18709366
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10036",
+    "sha256": "f66b1d0a2fe4e77dc0dead5bf81522500c093afd4c3d0e5fc1b86dd7128f1ea1",
+    "bytes": 18753935
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10035",
-    "sha256": "44ddd402f9933012239542545404d2c3219b862809a0d00d9e58223e29a197d2",
-    "bytes": 24003140
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10036",
+    "sha256": "26655b6f3c22382313c0ce40faebc25ce0285f3e4fe9081ef41e20a3e13c2b1b",
+    "bytes": 24090017
   }
 }

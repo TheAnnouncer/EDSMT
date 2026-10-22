@@ -26,17 +26,16 @@ TARGETS = [
     ("build/version_info.txt", r"('ProductVersion', ')([\d.]+)(')",       "quad"),
 ]
 
-# The API carries the same number. Its source is not in this project; on
-# the machine that builds releases it is in the private folder beside it,
-# and moves on with everything else. Anywhere else there is nothing to move.
-SERVER_MAIN = os.path.join("..", "EDSMT-Private", "server", "main.py")
-if os.path.exists(os.path.join(REPO, SERVER_MAIN)):
-    TARGETS.append((SERVER_MAIN, r'(APP_VERSION\s*=\s*")([\d.]+)(")', "plain"))
-# The runbook beside it says which version is current, and its own check
-# fails the build when that drifts - it did on the first run for 1.10035.
-RUNBOOK = os.path.join("..", "EDSMT-Private", "RUNBOOK.md")
-if os.path.exists(os.path.join(REPO, RUNBOOK)):
-    TARGETS.append((RUNBOOK, r'(Current version: \*\*)([\d.]+)(\*\*)', "plain"))
+# Files outside this project that carry the same number, listed for this
+# machine only in build/bump.local.json as [[path, pattern, style], ...] with
+# paths relative to this project. Absent, there is nothing more to move.
+LOCAL = os.path.join(REPO, "build", "bump.local.json")
+if os.path.exists(LOCAL):
+    import json as _json
+    with io.open(LOCAL, encoding="utf-8") as _fh:
+        for _path, _pattern, _style in _json.load(_fh):
+            if os.path.exists(os.path.join(REPO, _path)):
+                TARGETS.append((_path, _pattern, _style))
 
 
 def read(path):

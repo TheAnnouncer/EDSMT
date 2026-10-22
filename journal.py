@@ -85,6 +85,7 @@ BODY_EVENTS = {"Scan", "SAASignalsFound", "SAAScanComplete", "FSSBodySignals"}
 # string is not documented anywhere yet, so match on the shape of it and
 # keep whatever else turns up.
 MINING_SIGNAL = re.compile(r"mining|deposit|resource", re.I)
+MINING_SYMBOL = re.compile(r"PlanetaryMiningLocation|Mining", re.I)
 
 
 def scan_facts(event, system=""):
@@ -141,8 +142,19 @@ def signal_rows(event):
     if not isinstance(signals, list):
         return None
     return [{"type": str(sig.get("Type_Localised") or sig.get("Type") or ""),
+             "symbol": str(sig.get("Type") or ""),
              "count": int(sig.get("Count") or 0)}
             for sig in signals if isinstance(sig, dict)]
+
+
+def is_mining_signal(sig):
+    """A mining-location signal, in any language (#263). The symbol
+    ($PlanetaryMiningLocation_Name;) is the same in every client; the
+    English words are only a fallback for rows kept before the symbol was."""
+    symbol = str((sig or {}).get("symbol") or "")
+    if symbol:
+        return bool(MINING_SYMBOL.search(symbol))
+    return bool(MINING_SIGNAL.search(str((sig or {}).get("type") or "")))
 SYSTEM_EVENTS = {"Location", "FSDJump", "CarrierJump", "SupercruiseExit",
                  "ApproachBody", "Touchdown", "Liftoff", "Embark", "Disembark",
                  "LeaveBody", "SupercruiseEntry"}
@@ -357,6 +369,9 @@ def find_journal_dir(override=None):
     return None
 
 
+SHARED_MEAN_PLACEHOLDER = 3
+
+
 def market_means(data):
     """{commodity: galactic average} out of a Market.json.
 
@@ -379,7 +394,14 @@ def market_means(data):
                 means[SV.fold(name)] = mean
     except (TypeError, AttributeError):
         return {}
-    return means
+    # One figure on three or more different commodities is the game's
+    # placeholder, not an average (#268): 129,763 stood for Iridium,
+    # Thortveitite and Periclase Dunite alike in 4.4.1.1.
+    shared = {}
+    for value in means.values():
+        shared[value] = shared.get(value, 0) + 1
+    return {name: value for name, value in means.items()
+            if shared[value] < SHARED_MEAN_PLACEHOLDER}
 
 
 class JournalWatcher:
@@ -507,7 +529,7 @@ class JournalWatcher:
         self._journal = None
         self._handle = None
         self._pos = 0
-        self._tail = ""
+        self._tail = b""
         self._roll_over = False
         self._market_stamp = ""
         self._cargo_seen = {}          # vessel -> last hold, for spotting gains
@@ -652,7 +674,7 @@ class JournalWatcher:
         self.directory = find_journal_dir(path)
         self._journal = None
         self._pos = 0
-        self._tail = ""
+        self._tail = b""
         self._roll_over = False
         self._market_stamp = ""
         self._cargo_seen = {}
@@ -923,7 +945,7 @@ class JournalWatcher:
             self.close()
             self._journal = newest
             self._pos = 0
-            self._tail = ""
+            self._tail = b""
             try:
                 self._handle = open(newest, "rb", 0)     # unbuffered - see below
             except OSError:
@@ -950,19 +972,24 @@ class JournalWatcher:
         # The game can be caught mid-write, leaving the last line
         # incomplete. Hold it back and glue it to the next read rather than
         # parsing half an event and losing it.
-        text = self._tail + chunk.decode("utf-8", errors="replace")
-        if text.endswith("\n"):
-            self._tail = ""
-        else:
-            cut = text.rfind("\n")
-            if cut == -1:
-                self._tail = text
-                return
-            self._tail, text = text[cut + 1:], text[:cut + 1]
-        self._consume(text)
+        #
+        # Split as BYTES, decode after (1.10036, #264). Decoding first turned
+        # a character the read happened to cut in half - an accent in a
+        # commander's or station's name - into U+FFFD in the held tail, and
+        # the name went to Inara mangled.
+        data = self._tail + chunk
+        cut = data.rfind(b"\n")
+        if cut == -1:
+            self._tail = data
+            return
+        self._tail, data = data[cut + 1:], data[:cut + 1]
+        self._consume(data.decode("utf-8", errors="replace"))
 
     def _consume(self, text):
-        for line in text.splitlines():
+        # On "\n" only (#264): splitlines() also breaks at U+2028, U+2029
+        # and \x85, which a chat line or a ship's name can carry, and both
+        # halves of the event then failed to parse.
+        for line in text.split("\n"):
             line = line.strip()
             if not line.startswith("{"):
                 continue
@@ -1219,7 +1246,7 @@ class JournalWatcher:
         body = body or self.body
         total = 0
         for sig in self.body_signals.get(body, []):
-            if MINING_SIGNAL.search(sig["type"]):
+            if is_mining_signal(sig):
                 total += sig["count"]
         return total
 

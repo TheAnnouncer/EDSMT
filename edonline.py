@@ -43,7 +43,7 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10035"
+APP_VERSION = "1.10036"
 # The worker tag the bodies of a system come back under.
 BODIES_TAG = "bodies"
 # How a deposit was rigged (#218): sent, and the best ones read back.
@@ -62,6 +62,7 @@ INARA_URL = "https://inara.cz/inapi/v1"
 # community schema ever appears, only the transport changes.
 DEPOSIT_SCHEMA = "radioraxxla/surfacemining/1"
 DEPLETION_SCHEMA = "radioraxxla/surfacemining-depletion/1"
+REGROWTH_SCHEMA = "radioraxxla/surfacemining-regrowth/1"
 MARKET_SCHEMA = "radioraxxla/surfacemining-market/1"
 VERIFY_SCHEMA = "radioraxxla/surfacemining-verify/1"
 REMOVE_SCHEMA = "radioraxxla/surfacemining-remove/1"
@@ -301,7 +302,7 @@ def discord_session_message(row: dict, cmdr: str = "", when=None,
                             summary: dict | None = None) -> dict:
     """A Rhino session that has just ended - one summary, for your channel.
 
-    1.10035, modelled on the mining summary the owner likes: whose and
+    1.10035, laid out like a good mining summary: whose and
     where, how long and how much at what rate, the hold, each commodity's
     tonnes, t/hr and estimated worth at the best price known and where, the
     total, rigs, finds, deposits worked, Cr/hr. summary is what the app
@@ -1069,8 +1070,49 @@ class CommunityClient:
             pass
         return params
 
+    # Every page of a search, not the first (1.10036). The first page is
+    # asked at FIRST_PAGE, which every server takes; a server that pages
+    # says `more` and the rest come at NEXT_PAGE a time until it stops, up
+    # to ALL_ROWS - a search that matches the whole map still comes back.
+    FIRST_PAGE = 500
+    NEXT_PAGE = 1000
+    ALL_ROWS = 25000
+
+    def every_page(self, path: str, params: dict, key: str) -> str:
+        """GET `path` page after page and answer with one result set, as
+        JSON: the first page's fields, every page's rows under `key`, and
+        `pages`, `complete`. A server older than paging answers one page."""
+        headers = self._headers()
+        query = dict(params, limit=self.FIRST_PAGE)
+        query.pop("offset", None)
+        first, rows, pages, cut = None, [], 0, False
+        while True:
+            url = f"{self.base_url}{path}?" + urllib.parse.urlencode(query)
+            data = get_json(url, headers=headers)
+            if not isinstance(data, dict):
+                break
+            if first is None:
+                first = data
+            rows.extend(data.get(key) or [])
+            pages += 1
+            more = bool(data.get("more")) and data.get("next_offset") is not None
+            if not more:
+                break
+            if len(rows) >= self.ALL_ROWS:
+                cut = True
+                break
+            query = dict(params, limit=self.NEXT_PAGE, offset=int(data["next_offset"]))
+        out = dict(first or {})
+        out[key] = rows[:self.ALL_ROWS]
+        out["count"] = len(out[key])
+        out["pages"] = pages
+        out["complete"] = not cut
+        for name in ("offset", "next_offset", "more"):
+            out.pop(name, None)
+        return json.dumps(out)
+
     def search(self, commodity: str = "", system: str = "", limit: int = 50,
-               near=None, within_ly: float = 0) -> bool:
+               near=None, within_ly: float = 0, every: bool = False) -> bool:
         if not self.can_read:
             return False
         params = {k: v for k, v in
@@ -1078,6 +1120,10 @@ class CommunityClient:
                    ("limit", limit))
                   if v}
         params.update(self._near(near, within_ly))
+        if every:
+            self.worker.submit("search", lambda: self.every_page(
+                "/v1/deposits", params, "deposits"))
+            return True
         url = f"{self.base_url}/v1/deposits?" + urllib.parse.urlencode(params)
         self.worker.submit(
             "search", lambda: json.dumps(get_json(url, headers=self._headers())))
@@ -1124,7 +1170,7 @@ class CommunityClient:
               near=None, within_ly: float = 0, system: str = "",
               verified_only: bool = False,
               include_depleted: bool = False, body: str = "",
-              name: str = "") -> bool:
+              name: str = "", every: bool = False) -> bool:
         """Ranked sites, ranked by overlap the way ring miners rank hotspots.
 
         A ring hotspot is permanent; a surface deposit is not. Frontier were
@@ -1154,6 +1200,9 @@ class CommunityClient:
         params.update(self._near(near, within_ly))
         params.update(self._flag("verified_only", verified_only))
         params.update(self._flag("include_depleted", include_depleted))
+        if every:
+            self.worker.submit("sites", lambda: self.every_page("/v1/sites", params, "sites"))
+            return True
         url = f"{self.base_url}/v1/sites?" + urllib.parse.urlencode(params)
         self.worker.submit(
             "sites", lambda: json.dumps(get_json(url, headers=self._headers())))
@@ -1163,7 +1212,7 @@ class CommunityClient:
                min_types: int = 0, min_confidence: float = 0.5,
                limit: int = 50, near=None, within_ly: float = 0,
                system: str = "", body: str = "", name: str = "",
-               verified_only: bool = False) -> bool:
+               verified_only: bool = False, every: bool = False) -> bool:
         """The sites most likely to STILL BE THERE, rather than the biggest.
 
         Deposit positions come out of the body address and anybody with the
@@ -1188,6 +1237,9 @@ class CommunityClient:
         params["min_confidence"] = float(min_confidence)
         params.update(self._near(near, within_ly))
         params.update(self._flag("verified_only", verified_only))
+        if every:
+            self.worker.submit("intact", lambda: self.every_page("/v1/intact", params, "sites"))
+            return True
         url = f"{self.base_url}/v1/intact?" + urllib.parse.urlencode(params)
         self.worker.submit(
             "intact", lambda: json.dumps(get_json(url, headers=self._headers())))
@@ -1445,6 +1497,184 @@ class CommunityClient:
                                "upstream": "", "upstream_status": "server not updated"})
 
         self.worker.submit(tag, ask)
+        return True
+
+    def leaderboard(self, season: str = "", cmdr: str = "", limit: int = 25,
+                    tag: str = "leaderboard", sort: str = "points") -> bool:
+        """The community leaderboard for the week since the Powerplay tick
+        ("week"), a month ("YYYY-MM", this one when blank) or "all", by
+        points or by Powerplay merits (`sort`). With `cmdr`, the answer carries that
+        commander's own row as `you`, even outside the top. A server older
+        than 1.10036 has no board: that 404 is answered as an empty board
+        saying so, not as an error."""
+        if not self.can_read:
+            return False
+        params = {"limit": max(1, min(int(limit or 25), 100))}
+        if season:
+            params["season"] = str(season)
+        if cmdr:
+            params["cmdr"] = str(cmdr)
+        if sort == "merits":
+            params["sort"] = "merits"
+        url = f"{self.base_url}/v1/leaderboard?" + urllib.parse.urlencode(params)
+        headers = self._headers()
+
+        def ask():
+            try:
+                return json.dumps(get_json(url, headers=headers))
+            except RuntimeError as exc:
+                if "HTTP 404" not in str(exc):
+                    raise
+            return json.dumps({"season": season or "", "rows": [], "you": None,
+                               "commanders": 0, "ranked": 0,
+                               "missing": "the community server has no leaderboard yet"})
+
+        self.worker.submit(tag, ask)
+        return True
+
+    def report_regrowth(self, cmdr: str, message: dict,
+                        tag: str = "regrowth-share") -> bool:
+        """A worked-out deposit of the commander's seen full again (1.10036):
+        when it was first found empty, the last look that still found it
+        empty, and when it came back. Only with sharing on."""
+        if not (self.ready and isinstance(message, dict) and message.get("regrown_at")):
+            return False
+        payload = {"$schema": REGROWTH_SCHEMA,
+                   "header": {"uploaderID": cmdr if self.share_name else "",
+                              "softwareName": APP_NAME,
+                              "softwareVersion": APP_VERSION,
+                              "gatewayTimestamp": utc_stamp()},
+                   "message": dict(message)}
+        url = f"{self.base_url}/v1/regrowth"
+        headers = self._headers()
+        self.worker.submit(tag, lambda: json.dumps(post_json(url, payload, headers=headers)))
+        return True
+
+    def crowd(self, what: str, tag: str = "") -> bool:
+        """What the community has measured: "regrowth" (how long worked-out
+        deposits took to come back) or "rig-spacing" (how close working rigs
+        have gone). An older server has neither; its 404 is answered as
+        nothing measured yet."""
+        if not self.can_read or what not in ("regrowth", "rig-spacing"):
+            return False
+        url = f"{self.base_url}/v1/{what}"
+        headers = self._headers()
+
+        def ask():
+            try:
+                return json.dumps(get_json(url, headers=headers))
+            except RuntimeError as exc:
+                if "HTTP 404" not in str(exc):
+                    raise
+            return json.dumps({"all": {"reports": 0}} if what == "regrowth"
+                              else {"layouts": 0})
+
+        self.worker.submit(tag or what, ask)
+        return True
+
+    # The server's own limits for the two searches fed by the game's public
+    # data network (1.10036): how far out, and how many rows a page.
+    MINING_BODIES_LY, MINING_BODIES_MOST_LY = 100, 1000
+    POWERPLAY_LY, POWERPLAY_MOST_LY = 50, 200
+    NEAR_PAGE = 500
+
+    def _near_point(self, near, within_ly, default_ly, most_ly) -> dict:
+        """"Near here" as query parameters: a system name, or a position
+        (x, y, z), with a radius no further than the server goes. {} when
+        there is nowhere to measure from."""
+        try:
+            within = float(within_ly or default_ly)
+        except (TypeError, ValueError):
+            within = float(default_ly)
+        within = min(max(within, 1.0), float(most_ly))
+        if isinstance(near, str):
+            name = " ".join(near.split())
+            return {"near": name, "within_ly": within} if name else {}
+        params = self._near(near, within)
+        if params:
+            params["within_ly"] = within
+        return params
+
+    def _near_search(self, path: str, key: str, params: dict, tag: str,
+                     missing: str) -> bool:
+        url = f"{self.base_url}{path}?" + urllib.parse.urlencode(params)
+        headers = self._headers()
+
+        def ask():
+            try:
+                return json.dumps(get_json(url, headers=headers))
+            except RuntimeError as exc:
+                if "HTTP 404" not in str(exc):
+                    raise
+            return json.dumps({"count": 0, key: [], "more": False,
+                               "within_ly": params.get("within_ly"),
+                               "missing": missing})
+
+        self.worker.submit(tag, ask)
+        return True
+
+    def mining_bodies(self, near=None, within_ly: float = 100, commodity: str = "",
+                      tag: str = "mining-bodies") -> bool:
+        """Bodies with mining locations near a system name or a position
+        (x, y, z), nearest first, galaxy-wide (#200): from what commanders'
+        FSS scans and DSS maps published to the game's public data network,
+        with the ground odds for `commodity` and the sample behind them
+        (#133). A server older than 1.10036 has no such search; its 404 is
+        answered as an empty list saying so, not as an error."""
+        if not self.can_read:
+            return False
+        params = self._near_point(near, within_ly, self.MINING_BODIES_LY,
+                                  self.MINING_BODIES_MOST_LY)
+        if not params:
+            return False
+        params["limit"] = self.NEAR_PAGE
+        if commodity:
+            params["commodity"] = str(commodity).strip()
+        return self._near_search("/v1/mining-bodies", "bodies", params, tag,
+                                 "the community server has no mining bodies yet")
+
+    def powerplay_systems(self, near=None, within_ly: float = 50, power: str = "",
+                          state: str = "", limit: int = 100,
+                          tag: str = "powerplay-systems") -> bool:
+        """Powerplay systems near a system name or a position, nearest first
+        (#230): who controls each, its state and the figures as of the last
+        commander through. An older server's 404 is an empty list."""
+        if not self.can_read:
+            return False
+        params = self._near_point(near, within_ly, self.POWERPLAY_LY,
+                                  self.POWERPLAY_MOST_LY)
+        if not params:
+            return False
+        params["limit"] = max(1, min(int(limit or 100), self.NEAR_PAGE))
+        if power:
+            params["power"] = str(power).strip()
+        if state:
+            params["state"] = str(state).strip()
+        return self._near_search("/v1/powerplay/systems", "systems", params, tag,
+                                 "the community server has no Powerplay systems yet")
+
+    def report_merits(self, report: dict, tag: str = "leaderboard-merits") -> bool:
+        """Merits the game paid for selling mined cargo, for the board:
+        {"cmdr", "power", "merits", "when"} (board.merits_report)."""
+        if not (self.can_read and isinstance(report, dict) and report.get("cmdr")
+                and report.get("power") and report.get("merits")):
+            return False
+        url = f"{self.base_url}/v1/leaderboard/merits"
+        headers = self._headers()
+        payload = {k: report[k] for k in ("cmdr", "power", "merits", "when")}
+        self.worker.submit(tag, lambda: json.dumps(post_json(url, payload, headers=headers)))
+        return True
+
+    def leaderboard_optin(self, cmdr: str, on: bool = True,
+                          tag: str = "leaderboard-optin") -> bool:
+        """Ask for a commander's name to go on the leaderboard, or come off."""
+        cmdr = str(cmdr or "").strip()
+        if not (self.can_read and cmdr):
+            return False
+        url = f"{self.base_url}/v1/leaderboard/optin"
+        headers = self._headers()
+        payload = {"cmdr": cmdr, "on": bool(on)}
+        self.worker.submit(tag, lambda: json.dumps(post_json(url, payload, headers=headers)))
         return True
 
     def sell(self, commodity: str, near_system: str = "", limit: int = 20,

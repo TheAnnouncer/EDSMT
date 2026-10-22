@@ -350,7 +350,7 @@ print("== nothing is defined twice ==")
 import collections
 dupes = []
 for filename in FILES + ("survey.py", "journal.py", "edonline.py",
-                         "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py",
+                         "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "board.py", "crowd.py", "presale.py", "gamebinds.py", "galaxy.py",
                          "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py"):
     path = os.path.join(REPO, filename)
     if not os.path.exists(path):

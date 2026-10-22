@@ -404,7 +404,7 @@ def seed_books():
             "station_type": kind, "pad": pad,
             "items": [{"commodity": name, "sell": sell, "demand": demand}
                       for name, (sell, demand) in items.items()]})
-    # Merits per credit, learnt from four sales. Made-up figures for the
+    # The merit rate, learnt from four sales. Made-up figures for the
     # picture - not anybody's real rate.
     app.merits.pairs = [
         {"when": stamp(86400 * days), "credits": credits, "merits": merits,

@@ -164,9 +164,8 @@ check("Last there sorts by age, not by the words",
       sorted(range(3), key=lambda i: keys[i])[0] == 0, keys)
 
 print("== the window ==")
-check("the top bar has a My sites button",
-      'text="My sites"' in open(A.__file__, encoding="utf-8").read()
-      and 'command=self.open_sites' in open(A.__file__, encoding="utf-8").read())
+check("the top bar has a My sites button (a tab since 1.10036)",
+      '("sites", "My sites", 92, self.open_sites)' in open(A.__file__, encoding="utf-8").read())
 app = _ctkstub.ctk.CTk()
 app.store = store
 app.settings = dict(A.DEFAULT_SETTINGS)
@@ -260,8 +259,12 @@ for _node in _ast.walk(_tree):
                     and _sub.func.attr in ("lift", "focus_force", "deiconify",
                                            "grab_set", "tkraise")):
                 _raisers.setdefault(_node.name, set()).add(_sub.func.attr)
+# 1.10036: show_tab brings a tab forward inside EDSMT's own window (from a
+# click on its button, or opening it), and ToolWindow's lift and focus_force
+# only pass the call on to the tool's own window.
 check("only windows opened by a click, a typed box and the key capture do",
-      set(_raisers) == {"open_sites", "open_land", "_capture", "__init__", "show"},
+      set(_raisers) == {"open_sites", "open_land", "_capture", "__init__", "show",
+                        "show_tab", "lift", "focus_force"},
       _raisers)
 
 print("== every copy goes through the one clipboard writer ==")

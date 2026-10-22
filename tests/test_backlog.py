@@ -5,7 +5,7 @@ commander who first mapped a site was invisible on the search people
 actually use. A status column is a thing somebody types; this is a thing
 that fails.
 
-Each row here is one numbered requirement from BACKLOG.md and a test that
+Each row here is one numbered requirement and a test that
 would fail if it were quietly removed. It is deliberately coarse - it proves
 the feature is REACHABLE, not that it is correct; correctness is the rest of
 the suite. The failure it is built to catch is "written, never wired up",

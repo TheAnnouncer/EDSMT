@@ -23,6 +23,7 @@ What each part does to the window:
 import time
 
 import chattags as CT
+import gamebinds as GB
 import inputdev as IND
 import survey as SV
 
@@ -40,8 +41,14 @@ class InputState:
     def __init__(self):
         self.started_at = time.time()      # chat older than this is history
         self.joystick = IND.JoystickWatcher()
-        self.mouse = IND.WinMouse()
-        self.longpress = IND.LongPress()
+        self.mouse = IND.WinMouse()          # whether the game is in front
+        self.longpress = IND.LongPress()     # kept for older callers
+        # 1.10036: the rig button is the game's own Primary or Secondary fire
+        # for the SRV, read from the commander's .binds (gamebinds.py).
+        self.reader = GB.BindReader()
+        self.hold = IND.HoldWatcher()
+        self.binds = None                    # what fire_bindings() last said
+        self.binds_at = -1e9
         self.clock = time.monotonic        # replaceable, for the checks
         self.joy_after = None              # the pending timer, or None
         self.mouse_after = None
@@ -455,38 +462,59 @@ def mouse_wanted(app):
                 and getattr(game, "in_rhino", getattr(game, "in_srv", False)))
 
 
+BINDS_REFRESH_S = 30.0
+# The game's own defaults, for a PC whose binds cannot be read: Primary fire
+# is the left mouse button and Secondary fire the right.
+DEFAULT_FIRE = {"primary": [{"device": "Mouse", "key": "Mouse_1", "modifiers": []}],
+                "secondary": [{"device": "Mouse", "key": "Mouse_2", "modifiers": []}]}
+
+
+def fire_choice(settings):
+    """"primary" or "secondary". Older settings said "left", "right" or
+    "learn", and read as the fire button those were on the game's defaults."""
+    value = str((settings or {}).get("long_press_button") or "primary").lower()
+    return "secondary" if value in ("secondary", "right") else "primary"
+
+
+def rig_binds(app, now=None, force=False):
+    """The commander's SRV fire binds, read again every BINDS_REFRESH_S
+    (a change in the game's Controls takes effect without a restart)."""
+    st = state(app)
+    now = st.clock() if now is None else now
+    if force or st.binds is None or now - st.binds_at >= BINDS_REFRESH_S:
+        st.binds = GB.fire_bindings()
+        st.binds_at = now
+        st.reader.forget()
+    return st.binds
+
+
+def rig_inputs(app, now=None):
+    """What a long press of counts as a rig: the chosen fire binding."""
+    which = fire_choice(settings_of(app))
+    found = rig_binds(app, now) or {}
+    return list(found.get(which) or DEFAULT_FIRE[which]) if not found.get("why") \
+        else list(DEFAULT_FIRE[which])
+
+
 def ensure_mouse(app):
     st = state(app)
     if st.mouse_after is None and st.mouse.available() and mouse_wanted(app):
-        # A button already down on the way in is not the start of a press.
-        st.longpress.reset(*st.mouse.buttons())
+        # Held already on the way into the Rhino is not the start of a press.
+        st.hold.reset(st.reader.any_down(rig_inputs(app)))
         st.mouse_after = app.after(IND.POLL_MS, lambda: mouse_tick(app))
 
 
 def mouse_tick(app):
-    """One look at the mouse; asks to be called again while it is wanted."""
+    """One look at the fire binding; asks to be called again while wanted."""
     st = state(app)
     st.mouse_after = None
     if not mouse_wanted(app):
-        st.longpress.reset()
+        st.hold.reset()
         return
     delay = IND.POLL_MS
     try:
-        settings = settings_of(app)
-        mode = str(settings.get("long_press_button") or "left").lower()
-        st.longpress.mode = mode if mode in ("left", "right", "learn") else "left"
-        learned = str(settings.get("long_press_learned") or "").lower()
-        st.longpress.learned = learned if learned in IND.BUTTONS else ""
-        left, right = st.mouse.buttons()
-        hit = st.longpress.step(left, right, st.mouse.elite_in_front(), st.clock())
-        if hit:
-            button, learnt = hit
-            if learnt:
-                settings["long_press_learned"] = button
-                app.keep_settings()
-                app.say("Rig button learned: the %s mouse button. A long press "
-                        "of it now counts as a rig placed." % button,
-                        tones(app).get("ok"))
+        down = st.reader.any_down(rig_inputs(app))
+        if st.hold.step(down, st.mouse.elite_in_front(), st.clock()):
             press(app, "rigs")
     except Exception as exc:
         app.trouble("Long press", exc)

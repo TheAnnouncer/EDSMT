@@ -4,6 +4,45 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10036
+
+### New — tabs, leaderboard, mining bodies galaxy-wide
+
+- **Tools as tabs.** Find, My sites, Where to land, Earnings, Powerplay and
+  the new Leaderboard open as tabs of the main window, with Map to come
+  back. Settings → Basics puts them back in windows of their own.
+- **Leaderboard.** This week (from the Powerplay tick), this month, last
+  month and all time: points for finds, first finds on a body, confirmed
+  sites, old sites seen again, worked-out reports, regrowth and shared rig
+  layouts. Powerplay merits from selling what you mined sit beside the
+  points, with a merits ranking and totals per Power. Leave takes you off.
+- **Mining bodies galaxy-wide.** Find → Mining bodies lists bodies near you
+  with mining locations from what commanders' tools publish, not only
+  deposits marked in EDSMT, with the ground, the odds and the sample size.
+- **What the community measured.** How long worked-out deposits take to
+  come back, and how close rigs have gone, from everyone's reports.
+- **At the dock.** Open the commodities market with mined cargo aboard and
+  EDSMT says what selling here pays, after crew wages, and the merits when
+  it counts for your Power.
+- **Rig count from the fire button.** Hold the SRV's Primary or Secondary
+  fire to count a rig; EDSMT reads the binding from the game's controls.
+
+### Changed
+
+- Find lists every match, not the first 500.
+- Every find is shared with your commander name; the sharing section in
+  Settings is gone.
+- Powerplay merits earned are on Earnings, per session.
+
+### Fixed
+
+- Mining signals are recognised in every game language.
+- A price the game gives several unrelated commodities is ignored.
+- A session written twice is counted once.
+- The top bar keeps every button whole on narrow windows.
+
+---
+
 ## 1.10035
 
 ### New — one stop for the whole hold, Powerplay, guided survey

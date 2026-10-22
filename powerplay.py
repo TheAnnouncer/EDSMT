@@ -11,7 +11,7 @@ What the journal says, kept:
   - where mined goods came from, and whether they went through a fleet
     carrier or were bought, because merits are paid on mined cargo only.
 
-The rules, as the owner plays them:
+The rules:
 
   Expand      mine in a Stronghold or Fortified system of your Power and
               sell in an UNOCCUPIED system within its reach: 30 Ly from a

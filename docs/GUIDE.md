@@ -68,7 +68,7 @@ most layouts) are plain 1 to 4, without Alt; if your layout puts something on
 Alt and a number, or another program of yours does, move one of the two.
 
 **Keys other programs own.** Whoever registers a key first gets it, and
-EDSMT never hears it. Settings names the owner the moment you press one of
+EDSMT never hears it. Settings names the program that has it the moment you press one of
 these: graphics-driver capture keys (Alt+F1, Alt+F3, Alt+F9, Alt+Shift+F10,
 Alt+Z, Alt+R and Ctrl+Shift combinations); any Win+ key (Windows and the Xbox
 Game Bar); the Shift+Tab and F12 keys of game-launcher overlays; the Shift+\`
@@ -87,6 +87,11 @@ Basics turns the notes off, and **Show me round again** runs the tour.
 
 **Settings is in tabs** — Basics, Overlay, Keys, Rigs, Sharing, Your data,
 About. Each tab scrolls on its own, and Save and Close are under all of them.
+
+**Find, My sites, Where to land, Earnings, Powerplay and Leaderboard open as
+tabs** of the main window, along the top bar with **Map** to come back. The
+one on show is lit, and it has the window's whole width. Settings → Basics →
+*Tools open as tabs* turns this off, and each opens in a window of its own.
 
 **There is no centre to set and no bearing to work out.** A deposit records
 where it is, and distances and directions are worked out live from wherever
@@ -301,7 +306,11 @@ for rig 6 — and the same number with **AltGr** as you pick it up. **RIG
 DOWN** in the window, or a spare key you bind in Settings, puts down the
 next free one instead. A rig already down somewhere else under that number
 moves to where you are, and a double press on the same spot is not counted
-twice. Each rig is a numbered square on the map, the scope and
+twice. Settings → Rigs can also count a rig when you **hold the SRV's fire
+button** — Primary or Secondary fire, whichever you pick — for a moment.
+EDSMT reads what that is bound to from the game's own controls, so a mouse
+button, key or HOTAS button all work, and a change in the game's Controls
+takes effect without a restart. Each rig is a numbered square on the map, the scope and
 the compass tape, in the colour of the deposit it is on, with that deposit's
 commodity beside it. The STATUS box shows how many are down and how far the
 farthest one is.
@@ -374,7 +383,7 @@ you drove and the pins, if you used the rig planner. Drive onto a deposit
 with no plan of your own and the best layout anyone has shared for it — the
 most rigs, newest first — shows on the scope as **SHARED PIN** pins, with the
 same guidance as your own planner pins. Settings → Rigs turns the pins off.
-Your commander name goes with a layout only if name sharing is on.
+Your commander name goes with a layout.
 
 ### The wing link (beta)
 
@@ -383,7 +392,7 @@ Switch on **Settings → Wing link**, and everyone types the same
 six-character code (**Make a new code** makes one up to read out). Each of
 you sees the others' Rhinos and rigs on the scope in a colour of their own,
 and dropping a rig closer than the rig spacing to a wingmate's says so. Your
-commander name goes with it only if name sharing is on. Nothing is stored:
+commander name goes with it. Nothing is stored:
 you drop out two minutes after your last update.
 
 ---
@@ -631,14 +640,42 @@ up under **Find** and on your map. There is no switch for this: the map is
 only useful if everybody's finds are on it.
 
 What goes up is the system, body, commodity, position and how rich it was,
-and the prices at markets you open. Your CMDR name goes on your finds only if
-you choose - the first start asks, and Settings has it after. Your notes,
+and the prices at markets you open, with your CMDR name. Your notes,
 sessions and settings never leave your PC — sessions go to your own Discord
 channel only if you set one up. When your rigs come up, how they were laid
 out goes too (see *Shared rig layouts*).
 
+### The leaderboard
+
+**Leaderboard** on the top bar ranks the commanders who share finds: this
+week (from the Powerplay tick, Thursday 07:00 UTC), this month, last month
+and all time. Points come from finds (more when a find has rigs, amount and
+density), the first find on a body, finds staff confirm, old sites seen
+again, worked-out reports, deposits found grown back and shared rig
+layouts; the window lists them. The merits the game pays you for selling
+cargo you mined go on the board with your Power - beside the points, not
+added to them. **By Powerplay merits** ranks on those instead, and the line
+under the table totals them per Power. Everyone who shares is on it until
+they press **Leave**, and **Join** puts them back.
+
+### Mining bodies galaxy-wide
+
+**Find → Mining bodies** lists bodies near you that carry mining
+locations, from what commanders' tools publish when they scan and map —
+not only the ones somebody marked in EDSMT. Each row has how many
+locations, whether it is DSS mapped, the kind of ground, how often a
+commodity has turned up on that ground (with how many sites that rests
+on), and how many sites are already on the community map there.
+
+### What the community has measured
+
+Mark one of your worked-out deposits full again and the map learns how long
+deposits take to come back; every depleted deposit then says what those
+reports measured. Shared rig layouts also say how close two rigs have gone.
+
 Find is filtered by commodity, minimum rigs, how many different
-commodities sit in one patch, and how recently anybody confirmed it. Every
+commodities sit in one patch, and how recently anybody confirmed it, and it
+lists every match, not the first 500. Every
 row has a **Distance** column — light years from where you are now, whether
 or not you picked a radius.
 

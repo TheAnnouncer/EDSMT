@@ -47,24 +47,26 @@ CHECKS = [
     ("1.10035: one stop for the whole hold, within N jumps, price trends", "test_110035_sell.py"),
     ("1.10035: marking from range, chat commands, joystick buttons and the long press", "test_110035_input.py"),
     ("1.10035: imports, regrowth, My sites bin and stars, map filters, prompts", "test_110035_sites.py"),
+    ("1.10036: the community leaderboard", "test_110036_leaderboard.py"),
+    ("1.10036: regrowth and rig spacing measured by the community", "test_110036_crowd.py"),
+    ("1.10036: the tools as tabs of the main window", "test_110036_tabs.py"),
+    ("1.10036: journal-check fixes and the pre-sale line", "test_110036_journal.py"),
+    ("1.10036: the rig button from the game's own binds", "test_110036_binds.py"),
+    ("1.10036: Find past 500, merits earned on Earnings", "test_110036_find.py"),
+    ("1.10036: mining bodies near me, galaxy-wide, with ground odds", "test_110036_galaxy.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
-# The checks on the API and on the documents that describe the live server
-# live beside them, in the private folder, and never ship. That folder is
-# EDSMT-Private, next to this project's folder - or, in the older layout,
-# internal/ inside it. Where either exists - the machine that builds
-# releases - they run with everything else. On GitHub neither does.
+# More checks kept on this machine only: EDSMT_EXTRA_CHECKS names one or more
+# folders (separated as PATH is) whose test_*.py files run with everything
+# else, each told where this project is through EDSMT_REPO.
 REPO_DIR = os.path.dirname(HERE)
-PRIVATE = next((p for p in (os.path.join(REPO_DIR, "internal"),
-                            os.path.join(os.path.dirname(REPO_DIR), "EDSMT-Private"))
-                if os.path.isdir(p)), "")
-INTERNAL_TESTS = os.path.join(PRIVATE, "tests") if PRIVATE else ""
 os.environ["EDSMT_REPO"] = REPO_DIR
-if INTERNAL_TESTS and os.path.isdir(INTERNAL_TESTS):
-    for _name in sorted(os.listdir(INTERNAL_TESTS)):
-        if _name.startswith("test_") and _name.endswith(".py"):
-            CHECKS.append(("internal: " + _name[5:-3].replace("_", " "),
-                           os.path.join(INTERNAL_TESTS, _name)))
+for _folder in [f for f in os.environ.get("EDSMT_EXTRA_CHECKS", "").split(os.pathsep) if f]:
+    if os.path.isdir(_folder):
+        for _name in sorted(os.listdir(_folder)):
+            if _name.startswith("test_") and _name.endswith(".py"):
+                CHECKS.append(("local: " + _name[5:-3].replace("_", " "),
+                               os.path.join(_folder, _name)))
 
 # --quiet (the public build): a check that passes is one line, a failure
 # prints in full. The full output is for the machine that builds releases.
@@ -75,11 +77,10 @@ for label, script in CHECKS:
     result = subprocess.run([sys.executable, os.path.join(HERE, script)],
                             capture_output=True, text=True)
     out = result.stdout + result.stderr
-    if (label.startswith("internal:") or QUIET) and result.returncode == 0:
-        # The internal checks describe the live server line by line. On a
-        # pass there is nothing to read, and nothing about the server
-        # belongs on a screen that might be shared or streamed - so a pass
-        # is one line. A failure still prints in full.
+    if (label.startswith("local:") or QUIET) and result.returncode == 0:
+        # A pass is one line: nothing to read, and a screen that might be
+        # shared or streamed has no use for the detail. A failure prints in
+        # full.
         print("  %d checks passed" % out.count("  PASS  "))
     else:
         print(out.rstrip())
@@ -92,8 +93,7 @@ for label, script in CHECKS:
 
 print("=" * 66)
 print("%d assertions passed" % passed)
-# A skipped suite is not a pass. Saying so out loud is the difference
-# between "the API is fine" and "nobody checked the API on this machine".
+# A skipped suite is not a pass, so it is said out loud.
 for label in skipped:
     print("SKIPPED: %s - see the note above it" % label)
 if failed:

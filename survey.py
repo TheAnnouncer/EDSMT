@@ -1766,7 +1766,7 @@ class Earnings:
 
     def load(self):
         self.sessions = _read(self.path, SESSION_FIELDS)
-        changed = False
+        changed = self._dedupe()
         # Only the last row can still be in progress. An earlier one left
         # open - by two copies of the app running at once, or by a file
         # written before this column existed - can never become current
@@ -1790,6 +1790,34 @@ class Earnings:
     def save(self):
         _write(self.path, SESSION_FIELDS, self.sessions)
 
+    def _dedupe(self):
+        """The same session written twice is one (#270). Two copies of the
+        app, or an older build replaying a journal, left rows with one id
+        twice, or the same run under two ids. True when any went."""
+        kept, ids, runs = [], set(), set()
+        for row in self.sessions:
+            ident = str(row.get("id") or "")
+            run = tuple(str(row.get(k) or "") for k in (
+                "started", "kind", "system", "body", "mined", "sold", "credits"))
+            real = run[0] and (run[4] or run[5])
+            if (ident and ident in ids) or (real and run in runs):
+                continue
+            ids.add(ident)
+            runs.add(run)
+            kept.append(row)
+        gone = len(self.sessions) - len(kept)
+        self.sessions = kept
+        return gone > 0
+
+    @staticmethod
+    def sale_only(row):
+        """A row with credits but nothing dug up or carried across: a sale
+        an older build booked as a session of its own (#270). Its credits
+        did not come off a Rhino trip, so it is not shown or added up."""
+        return (not unpack_counts(row.get("mined"))
+                and not unpack_counts(row.get("transferred"))
+                and _number(row.get("credits")) > 0)
+
     @property
     def current(self):
         """The run still in progress, if there is one."""
@@ -1806,7 +1834,8 @@ class Earnings:
         nothing of the commander's is ever deleted, but they are not shown
         or added up."""
         rows = [row for row in self.sessions
-                if not rhino_only or row.get("kind") == RHINO]
+                if not rhino_only or (row.get("kind") == RHINO
+                                      and not self.sale_only(row))]
         rows = sorted(rows, key=lambda row: _epoch(row.get("started")),
                       reverse=True)
         return rows[:limit] if limit else rows
@@ -2065,6 +2094,14 @@ class Earnings:
                 self.finish(row.get("ended"), "closed - the session went quiet",
                             by="quiet")
                 row = None
+        # A different commander logged in on this PC (#277): an alt does not
+        # inherit the open run, its tonnes and its credits. Closed when the
+        # first commander was last heard of.
+        who = str(note.get("cmdr") or "").strip()
+        if row is not None and who and str(row.get("cmdr") or "").strip() \
+                and not _same(row.get("cmdr"), who):
+            self.finish(row.get("ended"), "closed - %s logged in" % who, by="cmdr")
+            row = None
         # A run an older build left open is never carried on by this one.
         if row is not None and row.get("kind") != RHINO:
             self.finish(row.get("ended"), "closed - only Rhino sessions now")
@@ -2155,6 +2192,17 @@ class Earnings:
                     line = "Rhino session started - first tonne refined"
             elif self._resume(row, when):
                 line = "Session running again - mining"
+            elif row.get("started_by") == "rigs" and not unpack_counts(row.get("mined")) \
+                    and _epoch(when) > _epoch(row.get("started")):
+                # Opened by the first rig, and this is the first tonne (#271):
+                # the work starts now. The minutes spent putting rigs down
+                # and driving to the first deposit are kept as a note, not
+                # counted against the credits an hour.
+                rigs_at = str(row.get("started") or "")
+                row["started"] = when
+                row["notes"] = ("%s; first rig %s" % (row.get("notes"), rigs_at[11:16])
+                                if str(row.get("notes") or "").strip()
+                                else "first rig %s" % rigs_at[11:16])
             # Per Rhino first, so the save inside note_mined writes both.
             self._note_rhino(self.current, note.get("srv_id"), when,
                              gains={commodity: 1})
@@ -2163,6 +2211,10 @@ class Earnings:
 
         if name == "CargoTransfer":
             if row is None:
+                return None
+            # "toship" is also a fleet carrier loading the ship (#265). Only
+            # with a Rhino out is it the Rhino's hold going across.
+            if not (self._in_rhino or self._out):
                 return None
             moved = {}
             for key, count in dict(note.get("moved") or {}).items():
@@ -2532,8 +2584,10 @@ def merit_note(event):
     if name == "MarketSell":
         count = _whole(event.get("Count"))
         return {"event": name, "when": str(event.get("timestamp") or ""),
-                "commodity": canonical(event.get("Type_Localised") or event.get("Type") or "")
-                             or str(event.get("Type_Localised") or event.get("Type") or ""),
+                # The symbol first (#263): "platinum" is the same in every
+                # client, "Platine" is not.
+                "commodity": canonical(event.get("Type") or event.get("Type_Localised") or "")
+                             or str(event.get("Type") or event.get("Type_Localised") or ""),
                 "count": count,
                 "total": _whole(event.get("TotalSale")) or count * _whole(event.get("SellPrice")),
                 "avg_paid": _whole(event.get("AvgPricePaid"))}
@@ -2550,7 +2604,7 @@ def merit_note(event):
 
 
 class MeritRate:
-    """Merits per credit of sale profit, from sales the game paid merits on."""
+    """The merit rate, learnt from sales the game paid merits on."""
 
     def __init__(self, folder=None):
         self.path = os.path.join(folder, MERITS_FILE) if folder else ""
@@ -2604,9 +2658,9 @@ class MeritRate:
         if name == "MarketSell":
             profit = _whole(note.get("total")) - _whole(note.get("avg_paid")) * _whole(note.get("count"))
             at = _epoch(note.get("when"))
-            # Only mined cargo is paid merits: in his own journals thirty
-            # profitable loads of bought goods paid none, so a bought load
-            # never stands in for a sale the merits were paid on.
+            # Only mined cargo is paid merits: profitable loads of bought
+            # goods have been seen to pay none, so a bought load never
+            # stands in for a sale the merits were paid on.
             if profit > 0 and at and not _whole(note.get("avg_paid")):
                 # Only sales the next merits could still be paying for: a
                 # commander who is not pledged sells all evening and is paid
@@ -2655,7 +2709,7 @@ class MeritRate:
         return True
 
     def per_credit(self, commodity=None):
-        """Merits per credit of profit, or None until MERIT_MIN_PAIRS are seen.
+        """The learnt merit rate, or None until MERIT_MIN_PAIRS are seen.
 
         With a commodity, that commodity's own rate once it has been paired
         MERIT_MIN_PAIRS times on its own; until then the rate over every

@@ -65,7 +65,7 @@ print("== the words the program shows ==")
 SOURCES = ["edsmt.py", "overlay.py", "journal.py", "survey.py", "edonline.py",
            "planview.py", "rigplan.py",
            # 1.10035's own modules say things to the commander too.
-           "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py",
+           "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "board.py", "crowd.py", "presale.py", "gamebinds.py", "galaxy.py",
            "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py"]
 # Anything else to hold to the same spelling, as full paths separated by
 # os.pathsep - how the checks kept beside the API's source use this list.

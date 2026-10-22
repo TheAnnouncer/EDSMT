@@ -1294,12 +1294,12 @@ check("nothing grids itself at len(self._headers) any more",
 check("every data cell is offset past the copy column",
       "column=DATA_COLUMN_0 + column" in src_find)
 
-print("== the page cap is admitted, not hidden ==")
-check("the app asks for more than fifty", A.SEARCH_LIMIT >= 200, A.SEARCH_LIMIT)
-check("and says so when the page is full",
-      "the most this asks for at" in src_find)
-check("both searches send the limit",
-      src_find.count("limit=SEARCH_LIMIT") >= 2)
+print("== no page cap: every page is asked for (1.10036) ==")
+check("the first page is more than fifty", A.SEARCH_LIMIT >= 200, A.SEARCH_LIMIT)
+check("all three finds searches ask for every page, where the client can",
+      src_find.count("limit=SEARCH_LIMIT,") == 3 and '"every": True' in src_find)
+check("and a search stopped short says so",
+      "narrow it to " in src_find and "see past them" in src_find)
 
 print("== the server's depletion ranking survives the trip to the screen ==")
 # The client re-ranked every /v1/sites response through a local scorer

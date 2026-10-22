@@ -6,7 +6,7 @@ away from the thing it belongs to:
 
   materials   MaterialCollected while the session was running.
   wages       NpcCrewPaidWage, in the same second as the sale it comes out
-              of - the owner's 28 sales were each exactly 15.0% of profit.
+              of - measured in real sessions as a fixed share of the profit.
               Net is the sale less these.
   merits      PowerplayMerits, up to a minute or so after the sale.
 

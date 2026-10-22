@@ -346,6 +346,9 @@ os.makedirs(_JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
     json.dump({"asked_to_share": True, "journal_dir": _JOURNALS}, _f)
 app = A.EDSMT()
+# The window checks below are the tools in windows of their own; as tabs of
+# the main window they are checked in test_110036_tabs.py and at the end here.
+app.settings["tools_as_tabs"] = False
 check("the window reads the test's own empty journal folder, never a real one",
       os.path.normcase(os.path.abspath(str(getattr(app.watcher, "directory", "") or "")))
       == os.path.normcase(os.path.abspath(_JOURNALS)),
@@ -843,8 +846,9 @@ check("and the readout still has room for a long system and body",
 check("because the buttons went under the readouts, not over them",
       app._top_stacked is True)
 # 1.10035: the Powerplay button is a fifth on the left, so the buttons need
-# 112 pixels more room than they did at 1400.
-app.geometry("1520x900+0+0"); settle(6)
+# 112 pixels more room than they did at 1400. 1.10036 added the Map and
+# Leaderboard tabs, so beside the readouts now needs about 1650.
+app.geometry("1680x900+0+0"); settle(6)
 check_wide("given the width back, the buttons go back beside the readouts",
            lambda: app._top_stacked is False)
 # 1.10033: a tester's screenshot - "mined aboard 59t worth ... Rhino session
@@ -1065,8 +1069,8 @@ check("the session you are on leads the window (1.10035)",
       ledger.current.cget("text").startswith("CURRENT SESSION")
       and "t mined" in ledger.current.cget("text")
       and "sold so far" in ledger.current.cget("text"), ledger.current.cget("text"))
-check("with Powerplay merits an hour, a dash until it has been learnt",
-      ledger.current_merits.cget("text") == "Powerplay merits/hr: \u2014",
+check("with the Powerplay merits earned, and no estimate until it has been learnt",
+      ledger.current_merits.cget("text") == "Powerplay merits earned: none yet",
       ledger.current_merits.cget("text"))
 check("and the all-time totals sit under the sessions table",
       ledger.summary.cget("text").startswith("All time:")
@@ -1423,13 +1427,13 @@ check("the Rhino is across the top of the first-run window",
       _pics and _pics[0].winfo_reqwidth() >= 500, [p.winfo_reqwidth() for p in _pics])
 _body_needs = _pics[0].master.winfo_reqheight() if _pics else 10 ** 6
 _given = A.WELCOME_SIZE[1]
-check("with the two answers still inside the window under it",
+check("with its button still inside the window under it",
       _body_needs + 24 <= _given, (_body_needs, _given))
-_welcome[0].answer(False); settle(6)
+_welcome[0].answer(True); settle(6)
 check("answering closes it", not _welcome[0].winfo_exists())
 check("and gives the keyboard back", app.grab_current() is None, str(app.grab_current()))
-check("Stay anonymous takes the name off, and the finds are still shared",
-      app.settings.get("community_share_cmdr_name") is False
+check("the finds are shared with the name on them",
+      app.settings.get("community_share_cmdr_name") is True
       and app.settings.get("community_enabled") is True)
 entry_of(app.fields["commodity"]).focus_force(); settle(4)
 press(entry_of(app.fields["commodity"]), "Escape")
@@ -1438,6 +1442,18 @@ for ch in "iri":
     press(entry_of(app.fields["commodity"]), ch, ch)
 check("and typing in the boxes works again straight after",
       app.fields["commodity"].get() == "iri", app.fields["commodity"].get())
+
+# As a tab (the default since 1.10036): Find has the window's width, so on a
+# 1400-pixel window every column is on screen too.
+app.settings["tools_as_tabs"] = True
+app.geometry("1400x900"); settle(6)
+_tab = app.open_find(); settle(6)
+_tab.results("sites", json.dumps(SITES), True); settle(8)
+_tscore = [w for w in _tab.table.winfo_children() if _text_of(w).startswith("Score")]
+check("as a tab on a 1400-pixel window every Find column is on screen",
+      _tab.docked and _tscore and inside(_tscore[0], _tab.scroller.canvas),
+      "Score is off the edge of the tab")
+app.show_map(); settle(4)
 
 app.destroy()
 shutil.rmtree(_HOME, ignore_errors=True)

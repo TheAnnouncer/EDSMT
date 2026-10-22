@@ -375,8 +375,8 @@ for path in (clean, rude):
 spec = open(os.path.join(os.path.dirname(HERE), "build", "EDSMT.spec")).read()
 check("both go into the build", "rig-warning.wav" in spec
       and "rig-warning-profane.wav" in spec)
-check("and there is a switch for which", "rig_sound_profane" in A.DEFAULT_SETTINGS
-      and A.DEFAULT_SETTINGS["rig_sound_profane"] is False)
+check("and there is a switch for which (the profane one by default, 21 Oct 2026)",
+      "rig_sound_profane" in A.DEFAULT_SETTINGS and A.DEFAULT_SETTINGS["rig_sound_profane"] is True)
 
 print()
 print("FAILURES:", len(fails))

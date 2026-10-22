@@ -328,6 +328,43 @@ class LongPress:
         return result
 
 
+class HoldWatcher:
+    """One binding held for LONG_PRESS_S, from any of its inputs (1.10036).
+
+    The same rules as LongPress, for whatever the game's own Primary or
+    Secondary fire is bound to - a mouse button, a key or a joystick button
+    (gamebinds.py reads which). `step(down, active, now)` is True once for
+    each hold that reaches LONG_PRESS_S, and None otherwise."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, down=False):
+        self._since = None
+        self._fired = False
+        self._ignore = bool(down)
+        self._at = None
+
+    def step(self, down, active, now):
+        stalled = self._at is not None and now - self._at > MAX_GAP_S
+        self._at = now
+        if not active or stalled:
+            self._since, self._fired, self._ignore = None, False, bool(down)
+            return None
+        if not down:
+            self._since, self._fired, self._ignore = None, False, False
+            return None
+        if self._ignore:
+            return None
+        if self._since is None:
+            self._since = now
+            return None
+        if not self._fired and press_kind(now - self._since) == "rig":
+            self._fired = True
+            return True
+        return None
+
+
 class WinMouse:
     """The two mouse buttons, and whether Elite Dangerous is in front.
 

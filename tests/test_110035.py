@@ -301,7 +301,7 @@ journal(SALES, [
 check("the next journal adds the second, and files already read are not re-read",
       rate.learn_folder(SALES) == 1 and len(rate.pairs) == 2, rate.pairs)
 per = rate.per_credit()
-check("merits per credit of sale learnt from the two sales (a made-up rate)",
+check("the merit rate learnt from the two sales (a made-up rate)",
       per is not None and abs(1 / per - 2000.0) < 1e-6, per)
 check("and it is remembered", SV.MeritRate(os.path.join(TMP, "merits")).per_credit() == per)
 check("the ratio is kept per commodity, in the file as well",
@@ -409,12 +409,12 @@ check("with what it is worth at the best credible price, and Cr/hr",
       lines[1].startswith("Estimated 23,344,800 Cr   11,672,400 Cr/hr")
       and "best price seen in the last day" in lines[1], lines[1])
 _mph = 23344800 * per / 2.0
-check("and Powerplay merits an hour from his own rate",
-      lines[2] == "Powerplay merits/hr: ~%s (estimated from your own sales)"
+check("and Powerplay merits an hour from his own rate, after the merits earned (1.10036)",
+      lines[2] == "Powerplay merits earned: none yet   ~%s/hr (estimated from your own sales)"
       % "{:,}".format(int(round(_mph))), (lines[2], _mph))
 app.merits = SV.MeritRate()
-check("not learnt yet, merits read as a dash",
-      A.current_session_lines(app, [], now=NOW)[2] == "Powerplay merits/hr: —")
+check("not learnt yet, no estimate - only what was earned",
+      A.current_session_lines(app, [], now=NOW)[2] == "Powerplay merits earned: none yet")
 check("the window builds the three lines at the top, merits with its note",
       "self.current = ctk.CTkLabel(top" in SRC and "MERITS_TIP)" in SRC
       and SRC.index("self.current = ctk.CTkLabel(top") < SRC.index("self.sell_title"))
@@ -437,7 +437,8 @@ lw._rows, lw.summary, lw._session_buttons = [], _Said(), lambda: None
 lw._summarise()
 check("drawing the window puts the current session at the top, totals as all-time",
       str(lw.current.text).startswith("CURRENT SESSION")
-      and str(lw.current_merits.text).startswith("Powerplay merits/hr: ~")
+      and str(lw.current_merits.text).startswith("Powerplay merits earned:")
+      and "/hr (estimated" in str(lw.current_merits.text)
       and str(lw.summary.text).startswith("All time:"),
       (lw.current.text, lw.current_merits.text, lw.summary.text))
 lw.current.text = None
@@ -610,16 +611,6 @@ check("and the ticked row is coloured: green on the theme's own background",
 check("the Any row still clears", sg.listbox.rows[0] == " Any - clear")
 
 # ---------------------------------------------------------------------------
-print("== the server never sends a provider's name ==")
-PRIV = os.path.join(os.path.dirname(os.path.dirname(HERE)), "EDSMT-Private", "server", "main.py")
-if os.path.exists(PRIV):
-    server = open(PRIV, encoding="utf-8").read()
-    check("every upstream row goes out as market data",
-          '"source": SELL_UPSTREAM_NAME' not in server
-          and server.count("source=SELL_SOURCE_LABEL") == 2)
-else:
-    print("  (the private server is not beside this checkout - nothing to check)")
-
 print()
 print("FAILURES: %d" % len(fails))
 for f in fails:
