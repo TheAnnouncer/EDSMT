@@ -569,8 +569,9 @@ check("Tab goes Commodity, Rigs, Amount, Density and back round",
 check("and tabbing through a box without typing leaves it as it was",
       [app.fields[k].get() for k in ("rigs", "amount", "density")] == ["", "", ""],
       [app.fields[k].get() for k in ("rigs", "amount", "density")])
-order[2].focus_force(); settle(3)
-order[2].event_generate("<Shift-Tab>", when="now"); settle(3)
+order[2].focus_force(); settle_until(lambda: app.focus_get() == order[2])
+order[2].event_generate("<Shift-Tab>", when="now")
+settle_until(lambda: app.focus_get() == order[1])
 check("and Shift-Tab goes back up", app.focus_get() == order[1], str(app.focus_get()))
 
 rigs = app.fields["rigs"]
@@ -1318,25 +1319,31 @@ click_row(fc.suggest, "Monazite"); click_row(fc.suggest, "Ruby")
 check("Find: tick two commodities", finder._commodities() == ["Monazite", "Ruby"],
       finder._commodities())
 fe = entry_of(fc)
-fe.focus_force(); settle(3)
+fe.focus_force(); settle_until(lambda: app.focus_get() == fe)
 fe.icursor("end")
 for ch, sym in ((",", "comma"), (" ", "space"), ("s", "s"), ("a", "a"), ("p", "p")):
     press(fe, sym, ch)
+settle_until(lambda: fe.get().endswith(", sap"))
 check("typing after a comma filters on the new word only",
       fc.suggest._shown and fc.suggest._shown[0] == "Sapphire", fc.suggest._shown[:3])
 press(fe, "Return")
+settle_until(lambda: fc.get() == "Monazite, Ruby, Sapphire")
 check("and Enter adds it to the two already ticked",
       fc.get() == "Monazite, Ruby, Sapphire", fc.get())
 click_row(fc.suggest, "Sapphire")
+settle_until(lambda: fc.get() == "Monazite, Ruby")
 check("a click takes it off again", fc.get() == "Monazite, Ruby", fc.get())
+fe.icursor("end")
 for ch, sym in ((",", "comma"), ("q", "q"), ("q", "q")):
     press(fe, sym, ch)
+settle_until(lambda: fe.get().endswith("qq"))
 check("a word that matches nothing shows nothing - not a lone Any",
       not fc.suggest.visible(), fc.suggest._shown)
 press(fe, "Return")
 check("so Enter on a typo cannot wipe what is ticked",
       fc.suggest.picked() == ["Monazite", "Ruby"], fc.get())
 press(fe, "Tab")
+settle_until(lambda: fc.get() == "Monazite, Ruby")
 check("and leaving the box tidies the typo away",
       fc.get() == "Monazite, Ruby", fc.get())
 app.community.calls.clear()
