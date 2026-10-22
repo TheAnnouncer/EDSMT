@@ -519,6 +519,16 @@ def press(widget, keysym, _char=""):
     widget.event_generate("<KeyRelease>", keysym=keysym, when="now")
     settle(2)
 
+def settle_until(cond, tries=25):
+    """On Windows a generated key's character can land a few event loops
+    late (it comes back through the system's own message queue). Wait for
+    what the check is about rather than for a fixed number of loops."""
+    for _ in range(tries):
+        if cond():
+            return True
+        settle(1)
+    return bool(cond())
+
 app.deiconify(); app.lift(); app.focus_force(); settle(4)
 # If another window has the keyboard, every check below fails for a reason
 # that has nothing to do with the boxes. Say so first, in one line.
@@ -532,6 +542,7 @@ sugg = app._suggest_commodity
 check("clicking into the commodity box opens its list", sugg.visible())
 for ch in "bast":
     press(ce, ch, ch)
+settle_until(lambda: com.get().strip().lower() == "bast")
 names = [sugg.listbox.get(i).strip() for i in range(sugg.listbox.size())]
 check("typing narrows it as you go - 'bast' finds Bastnasite",
       names and SV_fold(names[0]).startswith("bast"), names[:5])
@@ -540,6 +551,7 @@ check("and the list is under the box, not somewhere else",
       or sugg.popup.winfo_rooty() < com.winfo_rooty(),
       (sugg.popup.winfo_rooty(), com.winfo_rooty(), com.winfo_height()))
 press(ce, "Return")
+settle_until(lambda: com.get() == names[0])
 check("Enter takes the highlighted one", com.get() == names[0], com.get())
 check("and closes the list", not sugg.visible())
 
