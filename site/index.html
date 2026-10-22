@@ -75,6 +75,7 @@
 .edsmt .split{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(24px,3.5vw,48px);align-items:start}
 .edsmt .split + .split{margin-top:clamp(28px,3.5vw,48px)}
 .edsmt .split.flip > :first-child{order:2}
+.edsmt .text-only{margin-top:clamp(28px,3.5vw,48px);max-width:72ch}
 .edsmt .cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:34px}
 
 .edsmt ul{margin:0 0 14px;padding-left:20px;max-width:66ch;color:var(--mute)}
@@ -387,7 +388,7 @@
         <figcaption>Earnings &middot; the current session first</figcaption>
       </figure>
     </div>
-    <div class="split flip">
+    <div class="text-only">
       <div>
         <h3>Your own Discord channel</h3>
         <p>Paste a channel's webhook in Settings and EDSMT posts a summary of
@@ -398,14 +399,6 @@
         <p>The picture is also saved on your PC, and Copy map puts it on the
         clipboard to paste anywhere.</p>
       </div>
-      <figure class="shot">
-        <a href="edsmt-session-map-full.jpg"><img src="edsmt-session-map-800.jpg"
-           srcset="edsmt-session-map-800.jpg 800w, edsmt-session-map-full.jpg 1280w"
-           sizes="(max-width: 900px) 100vw, 700px" width="1280" height="900"
-           loading="lazy" decoding="async"
-           alt="The session map picture: the signal with nine deposits, the best patch ringed, two numbered rigs, the trail, a legend by commodity and a list of finds with amount, density, distance and direction."></a>
-        <figcaption>The session map picture EDSMT makes for Discord</figcaption>
-      </figure>
     </div>
   </section>
 
