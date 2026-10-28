@@ -661,3 +661,75 @@ def body_count_line(shown, total, counts):
                     for k, n in sorted((counts or {}).items(), key=lambda kv: -kv[1]) if n)
     return "%d of %d bodies match - %d hidden%s." % (
         shown, total, total - shown, (": " + why) if why else "")
+
+
+# -- Find's searches, one at a time (1.10038) -----------------------------------
+#
+# A switch at the top of Find chooses the search, and only that search's
+# filters are on screen. One that is not on screen keeps its value but does
+# not act: a filter nobody can see quietly emptying a table would be worse
+# than the clutter this replaces.
+
+MODES = (("sites", "Sites"), ("intact", "Still there"), ("deposits", "Deposits"),
+         ("prices", "Sell prices"), ("bodies", "Mining bodies"))
+DEFAULT_MODE = "sites"
+
+_FIND_FILTERS = ("commodity", "min_rigs", "min_types", "seen", "within", "place",
+                 "hide_worked", "verified")
+MODE_FILTERS = {
+    "sites": _FIND_FILTERS, "intact": _FIND_FILTERS, "deposits": _FIND_FILTERS,
+    # "place" is the system box. For prices it means near which system:
+    # prices near what is typed, or near where you are when it is blank.
+    "prices": ("commodity", "from", "within", "place", "pad", "station", "carriers",
+               "price_age", "min_price", "demand", "power_state", "power_side",
+               "show"),
+    # And for Mining bodies it narrows the bodies to a system or body name.
+    "bodies": ("commodity", "within", "place"),
+}
+
+# Which search a table belongs to, by the kind of table the window draws.
+KIND_MODES = {"sites": "sites", "intact": "intact", "search": "deposits",
+              "sell": "prices", "market": "prices", "published": "prices",
+              "bodies": "bodies"}
+
+# The filter each part of a find_spec comes from, and that part switched off.
+SPEC_FILTERS = {"from_ly": "from", "to_ly": "within", "pad": "pad",
+                "age_s": "price_age", "min_demand": "demand", "max_demand": "demand",
+                "min_price": "min_price", "station": "station",
+                "no_carriers": "carriers", "state": "power_state",
+                "power": "power_side", "show": "show"}
+SPEC_OFF = dict(DEFAULT_FIND, no_carriers=False)
+
+
+def mode_key(value):
+    """A search's key from its key or its label. Anything else is Sites."""
+    text = str(value or "").strip().lower()
+    for key, label in MODES:
+        if text in (key, label.lower()):
+            return key
+    return DEFAULT_MODE
+
+
+def mode_label(mode):
+    return dict(MODES)[mode_key(mode)]
+
+
+def mode_filters(mode):
+    """The filters on screen for this search, in the order they are shown."""
+    return MODE_FILTERS[mode_key(mode)]
+
+
+def mode_of_kind(kind):
+    """The search a table of this kind belongs to, or "" for none."""
+    return KIND_MODES.get(str(kind or ""), "")
+
+
+def mode_spec(spec, mode):
+    """A copy of the Find spec with every filter this search does not show
+    switched off."""
+    shown = set(mode_filters(mode))
+    out = dict(DEFAULT_FIND if spec is None else spec)
+    for key, name in SPEC_FILTERS.items():
+        if name not in shown:
+            out[key] = SPEC_OFF[key]
+    return out

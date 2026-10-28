@@ -95,31 +95,32 @@ def _table():
           [r[1][0] for r in rows] == ["CMDR Bee", "CMDR Ace", "CMDR Cee"], rows)
     check("your row is marked", [r[0][1] for r in rows] == ["", "", "you"])
     check("points with thousands commas, sorted as numbers",
-          rows[0][3][0] == "1,240" and rows[0][3][2] == 1240)
+          rows[0][5][0] == "1,240" and rows[0][5][2] == 1240)
     check("the Power and its merits beside the points",
-          rows[0][2][0] == "Aisling Duval" and rows[0][4][0] == "5,400"
-          and rows[1][2][0] == "-" and rows[1][4][0] == "0")
+          rows[0][2][0] == "Aisling Duval" and rows[0][6][0] == "5,400"
+          and rows[1][2][0] == "-" and rows[1][6][0] == "0")
     inside = LB.cells(ANSWER, "cmdr ace")
     check("inside the top you are not listed twice, whatever the case",
           [r[1][0] for r in inside] == ["CMDR Bee", "CMDR Ace"] and inside[1][0][1] == "you", inside)
     check("someone else's `you` is never shown",
           [r[1][0] for r in LB.cells(ANSWER, "CMDR Dee")] == ["CMDR Bee", "CMDR Ace"])
-    check("twelve columns, as headed", len(LB.HEADERS) == 12
+    check("fifteen columns, as headed", len(LB.HEADERS) == 15
           and all(len(r) == len(LB.HEADERS) for r in rows))
     check("Power and Merits after the name, old sites seen and regrowth their own",
-          LB.HEADERS[2:5] == ("Power", "Points", "Merits")
-          and LB.HEADERS[8] == "Old sites seen" and LB.HEADERS[10] == "Regrowth")
+          LB.HEADERS[2:7] == ("Power", "PP rank", "PP merits", "Points", "Merits")
+          and LB.HEADERS[11] == "Old sites seen" and LB.HEADERS[13] == "Regrowth")
     check("your merits are in your line when you have some",
           LB.you_words(dict(ANSWER, you=dict(ANSWER["you"], merits=1200, power="Zemina Torval")),
                        "CMDR Cee", True, True)
           == "CMDR Cee: number 3 of 3 this season, 27 points, 1,200 merits for Zemina Torval.")
     check("the Powers line, most merits first as the server sent them",
-          LB.powers_words(ANSWER) == "Powers, October 2026, merits from mining: "
-          "Aisling Duval 5,400 (1 CMDR)  |  Zemina Torval 800 (2 CMDRs).", LB.powers_words(ANSWER))
+          LB.powers_words(dict(ANSWER, sort="merits")) == "Powers, October 2026, merits from mining: "
+          "Aisling Duval 5,400 (1 CMDR)  |  Zemina Torval 800 (2 CMDRs).",
+          LB.powers_words(dict(ANSWER, sort="merits")))
     check("no merits yet says so", "no merits from mining for all time yet"
-          in LB.powers_words({"season": "all", "powers": []}))
+          in LB.powers_words({"season": "all", "sort": "merits", "powers": []}))
     check("by merits, the headline counts those with merits",
-          LB.board_words(dict(ANSWER, sort="merits")).endswith("3 with merits."))
+          LB.board_words(dict(ANSWER, sort="merits")).endswith("3 with merits from mining."))
     paid = {"event": "PowerplayMerits", "merits": 800, "when": "2026-10-22T09:00:00Z"}
     check("merits for a sale become a report with the Power and the time",
           LB.merits_report(paid, "Aisling Duval", "CMDR Cee") ==
@@ -358,11 +359,11 @@ def _window():
     check("three rows, yours in orange", len(rows) == 3 and rows[2][1][1] == A.ORANGE
           and rows[0][1][1] == A.TEXT, rows)
     block = win.grid_table.as_text()
-    check("Copy all is a plain table", block.splitlines()[0].startswith("Rank | Commander | Power | Points")
-          and "CMDR Bee | Aisling Duval | 1,240 | 5,400" in block, block)
-    check("the Powers line is under the table", win.powers.cget("text").startswith("Powers, October 2026"))
-    win.pick_view("By Powerplay merits")
-    check("By Powerplay merits asks the same season by merits",
+    check("Copy all is a plain table", block.splitlines()[0].startswith("Rank | Commander | Power | PP rank")
+          and "CMDR Bee | Aisling Duval | - | 0 | 1,240 | 5,400" in block, block)
+    check("the Powers line is under the table", win.powers.cget("text").startswith("Powers"))
+    win.pick_view("Merits from mining")
+    check("Merits from mining asks the same season by merits",
           fake.sorts[-1] == "merits" and fake.asked[-1][0] == "week")
     win.pick_view("By points")
     win.pick("This month")

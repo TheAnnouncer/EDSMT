@@ -59,6 +59,7 @@ import crowd as CR
 import presale as PS
 import gamebinds as GB
 import galaxy as GX
+import zone as ZN
 
 ctk.set_appearance_mode("Dark")
 
@@ -213,8 +214,9 @@ SAME_DEPOSIT_M = 100.0
 RETYPE_M = 25.0
 # Standing this close to a logged signal's centre, LOG SIGNAL means that one,
 # whatever the Signal box says. Two mining locations can sit a few km apart,
-# so this is tighter than being "at" a signal.
-SAME_SIGNAL_M = 1500.0
+# so this is tighter than being "at" a signal. One figure with zone.py, which
+# uses it to let your own centre win over a shared one (1.10038).
+SAME_SIGNAL_M = ZN.ZONE_OWN_M
 # ...and UPDATE does the rename for this long after the question.
 RETYPE_WAIT_S = 60.0
 
@@ -865,6 +867,9 @@ DEFAULT_SETTINGS = {
     # Light years a jump, for "sell within N jumps" (1.10035). 0 takes the
     # range from the ship's own Loadout.
     "jump_range_ly": 0,
+    # The Earnings page last on show (1.10038): This session, Where to
+    # sell, Sessions or System prices.
+    "earnings_page": "This session",
     # Which warning to play: the clean one, or the one with language in it.
     "rig_sound_profane": True,
     # The scanner's reach, and how much neighbouring drive circles overlap.
@@ -3751,7 +3756,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                           target=attr(self, "_guide_to", None), only=only,
                           cargo=self.overlay_cargo(),
                           hazard=self.overlay_hazard(),
-                          rigplan=self.plan_marks(), wing=self.wing_marks())
+                          rigplan=self.plan_marks(), wing=self.wing_marks(),
+                          zone=self.zone_card())
 
     def guide_facts(self):
         """What the guide can see has been done, on the signal being worked."""
@@ -6208,9 +6214,19 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         signal = self.signal()
         rows = self.store.at(system, body, signal) if system and body else []
         strays = self.stray_deposits(system, body, signal)
+        # 1.10038: what other commanders found in this signal, under yours.
+        # On a body where you have marked nothing yet, this is what the
+        # signal holds.
+        theirs = []
+        if system and body:
+            try:
+                theirs = self.zone_finds(system, body, signal)[1]
+            except Exception as exc:
+                self.trouble("Shared finds in this signal", exc)
         header = self.deposit_header
         if header is not None:
-            header.configure(text="SIGNAL %s  (%d)" % (signal, len(rows)))
+            header.configure(text="SIGNAL %s  (%d)%s" % (
+                signal, len(rows), "  +%d shared" % len(theirs) if theirs else ""))
         if not rows:
             ctk.CTkLabel(box, text="Nothing marked in signal %s yet.\n"
                                    "Drive to a scanner ping and press %s."
@@ -6218,6 +6234,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                          font=F_SMALL, text_color=DIM,
                          justify="left").pack(pady=8, padx=6, anchor="w")
             self._show_strays(box, strays, signal)
+            self._show_shared(box, theirs)
             return
         chosen = (self.selected or {}).get("id")
         for row in rows:
@@ -6249,6 +6266,33 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 command=lambda r=row: self.pick_deposit(r)
             ).pack(side="left", fill="x", expand=True)
         self._show_strays(box, strays, signal)
+        self._show_shared(box, theirs)
+
+    def _show_shared(self, box, theirs):
+        """Other commanders' finds in this signal, one row each: pick one
+        and the card on the right is its, and the overlay guides to it. Not
+        editable from here - they are not in your records."""
+        if not theirs:
+            return
+        chosen = (self.selected or {}).get("id")
+        ctk.CTkLabel(box, text="Shared finds in this signal:",
+                     font=F_SMALL_B, text_color=DIM, anchor="w",
+                     justify="left").pack(fill="x", padx=6, pady=(8, 2))
+        for row in theirs:
+            bits = [row.get("commodity") or "unnamed"]
+            if row.get("rigs"):
+                bits.append("%sR" % row["rigs"])
+            if row.get("amount"):
+                bits.append(row["amount"])
+            bits.append("- %s" % (row.get("cmdr") or ANONYMOUS))
+            line = ctk.CTkFrame(box, fg_color="transparent")
+            line.pack(fill="x", pady=1)
+            ctk.CTkButton(
+                line, text="  ".join(bits), anchor="w", height=28,
+                font=F_SMALL,
+                **(BTN_PRIMARY if row.get("id") == chosen else BTN_ROW),
+                command=lambda r=row: self.pick_deposit(r)
+            ).pack(side="left", fill="x", expand=True)
 
     def stray_deposits(self, system, body, signal):
         """Finds right here, filed under some other signal's number.
@@ -6424,41 +6468,123 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.trouble("Signal from the touchdown", exc)
 
     def follow_arrival(self, state):
-        """Pick the logged signal you have driven into, once per arrival.
+        """Pick the signal you have come into, once per arrival, and say
+        what is in it.
 
         The box used to keep whatever it said last, so arriving at signal 5
         with it still on 1 had the scope zoomed out to hold signal 1 forty
         kilometres back - and a deposit marked there was filed under 1.
         Only on arriving somewhere new: a number picked by hand while you
         stand there is left alone until you drive into another signal.
+
+        1.10038: not only your own logged signals. On a body where you have
+        logged nothing, the finds other commanders shared say which
+        location you are in and what it holds - from the glide down, not
+        only once the game has it targeted. zone.py decides; a location the
+        game has targeted right now keeps the box.
         """
         if not getattr(state, "has_position", False) or not state.radius_m:
             return
         system, body = self.here()
         if not (system and body):
             return
-        row = SV.nearest_signal(self.store.locations_on(system, body),
-                                state.lat, state.lon, state.radius_m,
-                                PV.SIGNAL_AT_M)
-        at = (system, body, str(row["location"]).strip()) if row else None
+        zone = ZN.zone_here(self.store.locations_on(system, body),
+                            self.shared_finds_on(system, body),
+                            state.lat, state.lon, state.radius_m,
+                            getattr(state, "altitude", None))
+        at = (system, body, zone["signal"]) if zone else None
         if at == attr(self, "_arrived_at", None):
+            if at is None:
+                self.zone_quiet(state, system, body)
             return
         self._arrived_at = at
-        if at is None or at[2] == str(self.signal()).strip():
+        if at is None:
+            self.zone_quiet(state, system, body)
             return
+        boxed = str(self.signal()).strip()
         # Two logged signals close together: while the one in the box is
         # also one you are standing in, it stays - its finds are filed
         # under it, and flipping at an invisible line would split them.
-        current = self.store.location(system, body, self.signal())
-        if current is not None and SV.nearest_signal(
+        current = self.store.location(system, body, boxed)
+        if at[2] != boxed and current is not None and SV.nearest_signal(
                 [current], state.lat, state.lon, state.radius_m,
                 PV.SIGNAL_AT_M) is not None:
             return
+        targeted = str(getattr(state, "destination_signal", "") or "").strip()
         try:
-            self.choose_signal(at[2])
-            self.say("You are at signal %s - picked it for you." % at[2], CYAN)
+            picked = at[2] != boxed and not targeted
+            if picked:
+                self.choose_signal(at[2])
+            mine, theirs = self.zone_finds(system, body, at[2])
+            line = ZN.zone_line(zone, mine, theirs)
+            if picked:
+                line += " - signal %s picked for you." % at[2]
+            self.say(line, CYAN)
         except Exception as exc:
             self.trouble("Signal you are at", exc)
+
+    def shared_finds_on(self, system, body):
+        """Other commanders' finds on this body, as take_shared filed them,
+        or nothing - with the shared finds switched off, nothing too."""
+        if not self.settings.get("show_shared_finds", True):
+            return []
+        book = attr(self, "shared", None)
+        if not isinstance(book, dict):
+            return []
+        entry = book.get((str(system).lower(), str(body).lower()))
+        return list(entry["rows"]) if entry else []
+
+    def zone_finds(self, system, body, signal):
+        """(yours, theirs): what is filed under one signal on this body -
+        your own deposits, and the shared finds that are not yours come
+        back from the server."""
+        mine = self.store.at(system, body, signal)
+        state = attr(self, "game", None)
+        radius = getattr(state, "radius_m", None) or 1e6
+        theirs = ZN.others(ZN.finds_in(signal, self.shared_finds_on(system, body)),
+                           mine, radius, SAME_FIND_M)
+        return mine, theirs
+
+    def zone_quiet(self, state, system, body):
+        """Nothing known within reach: one dim line, once per body, so the
+        commander knows why nothing shows. Waits for this body's shared
+        finds when they have been asked for; with no server to ask it
+        speaks at once."""
+        told = attr(self, "_zone_told", None)
+        if not isinstance(told, set):
+            told = self._zone_told = set()
+        key = (str(system).lower(), str(body).lower())
+        if key in told:
+            return False
+        community = attr(self, "community")
+        asking = (community is not None and getattr(community, "can_read", False)
+                  and self.settings.get("show_shared_finds", True))
+        book = attr(self, "shared", None)
+        answered = isinstance(book, dict) and key in book
+        if asking and not answered:
+            return False
+        told.add(key)
+        try:
+            count = state.mining_signals()
+        except Exception:
+            count = 0
+        self.say(ZN.nothing_line(ZN.reach_m(getattr(state, "altitude", None)), count), DIM)
+        return True
+
+    def zone_card(self):
+        """The location you are in, for the overlay's STATUS box - its
+        number and top finds - or None when you are in none, or have no
+        position to be in one with."""
+        at = attr(self, "_arrived_at", None)
+        state = attr(self, "game", None)
+        if not at or state is None or not getattr(state, "has_position", False):
+            return None
+        system, body, signal = at
+        try:
+            mine, theirs = self.zone_finds(system, body, signal)
+        except Exception:
+            return None
+        return ZN.status_card(signal, mine, theirs)
 
     def choose_signal(self, number):
         self._signal_picked = True
@@ -8527,6 +8653,26 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self._board_tell_off = not settings.get("leaderboard_optin", True)
         self.keep_board()
 
+    def keep_standing(self):
+        """Once a tick, and cheap: the commander's Powerplay standing as the
+        game reports it (Power, rank, total merits), for the board's
+        Powerplay overall view. Sent when it changes, not every tick (1.10038)."""
+        community = attr(self, "community")
+        settings = attr(self, "settings", None)
+        if community is None or not isinstance(settings, dict) \
+                or not settings.get("leaderboard_optin", True):
+            return False
+        report = LB.standing_report(attr(self, "watcher"), self.board_cmdr())
+        if not report or report == attr(self, "_standing_sent", None):
+            return False
+        try:
+            if community.report_standing(report, tag=LB_STANDING_TAG):
+                self._standing_sent = report
+                return True
+        except Exception:
+            pass
+        return False
+
     def keep_board(self):
         """Once a tick, and cheap: put the commander in the journal on the
         board (once a session), or take them off after the switch went off."""
@@ -8534,6 +8680,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         settings = attr(self, "settings", None)
         if community is None or not isinstance(settings, dict):
             return False
+        try:
+            self.keep_standing()
+        except Exception:
+            pass
         sent = attr(self, "_board_sent", None)
         if sent is None:
             sent = self._board_sent = {}
@@ -9155,6 +9305,9 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 "cmdr": str(item.get("uploader") or ""),
                 "status": str(item.get("status") or ""),
                 "shared": True,
+                # When anyone last reported it (1.10038): the zone line says
+                # how old what it names is.
+                "when": str(item.get("last_seen") or item.get("created") or ""),
             })
         if not isinstance(attr(self, "shared", None), dict):
             self.shared = {}
@@ -9927,8 +10080,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if tag in (LB_TAG, LB_OPTIN_TAG):
                 self.take_board(tag, ok, message)
                 continue
-            if tag == LB_MERITS_TAG:
-                # Merits for the board: nothing to show either way.
+            if tag in (LB_MERITS_TAG, LB_STANDING_TAG):
+                # Merits and standing for the board: nothing to show either way.
                 continue
             if tag in (CR.REGROWTH_TAG, CR.SPACING_TAG, CR.REGROWTH_SHARE_TAG):
                 self.take_crowd(tag, ok, message)
@@ -10047,7 +10200,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         info = attr(self, "update_info", None) or {}
         package = attr(self, "update_package", None)
         version = str(info.get("version") or "")
-        if not (package and version):
+        # The version names the file on disk: only a version number may.
+        if not (package and version and re.fullmatch(r"\d+(?:\.\d+){0,3}", version)):
             return self.open_download_page()
         if attr(self, "_update_fetching", False):
             return False
@@ -10311,6 +10465,15 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         """One tab on show, in the map's place; the map and the rest out of
         sight but kept as they were."""
         key = self.tool_key(tool)
+        if not getattr(tool, "docked", True):
+            # Popped out to a window of its own (1.10038): that window
+            # comes forward, and the main window stays as it is.
+            try:
+                tool.deiconify()
+                tool.lift()
+            except Exception:
+                return False
+            return True
         try:
             self.plan.grid_remove()
         except Exception:
@@ -10323,7 +10486,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                     pass
         try:
             tool.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-            tool.tkraise()
+            # Tk's own raise. The tool's tkraise means "show this tab" and
+            # came straight back here, a few hundred times a press, until
+            # the recursion limit stopped it (1.10038).
+            tk.Misc.tkraise(tool)
         except Exception:
             return False
         # A table wants the width; the rail's controls are for the map.
@@ -10897,7 +11063,7 @@ SETTING_TIPS = {
     "overlay_span_deg": "How many degrees of compass the tape shows.",
     "overlay_targets": "How many nearest deposits TARGETS lists.",
     "community_share_cmdr_name": "Every find goes up with your CMDR name on it.",
-    "tools_as_tabs": "Find, My sites, Where to land, Earnings, Powerplay and Leaderboard open as tabs in this window. Off: each opens in a window of its own.",
+    "tools_as_tabs": "Find, My sites, Where to land, Earnings, Powerplay and Leaderboard open as tabs in this window. Off: each opens in a window of its own. Pop out, at the right of any tab's header, moves just that one out to a window, and Dock brings it back.",
     "leaderboard_optin": "Your CMDR name and points on the community leaderboard. Leave in the Leaderboard window takes them off.",
     "show_shared_finds": "Other commanders' finds on your map, scope and compass.",
     "verify_my_finds": "With a staff token: your finds go up already verified.",
@@ -10950,10 +11116,15 @@ def tips_on():
 
 
 class Tooltip:
-    """What a control is for, once the mouse rests on it. Never raises."""
+    """What a control is for, once the mouse rests on it. Never raises.
 
-    def __init__(self, widget, text):
+    `always`: the words are the table's own content - a "Why" cell's whole
+    sentence (1.10038) - not a note on a control, so they show with tips
+    switched off too."""
+
+    def __init__(self, widget, text, always=False):
         self.widget, self.text = widget, str(text or "")
+        self.always = bool(always)
         self._after = None
         self._win = None
         for sequence, handler in (("<Enter>", self._enter), ("<Leave>", self._leave),
@@ -10984,7 +11155,7 @@ class Tooltip:
 
     def _show(self):
         self._after = None
-        if not self.text or not tips_on() or self._win is not None:
+        if not self.text or not (self.always or tips_on()) or self._win is not None:
             return
         try:
             win = tk.Toplevel(self.widget)
@@ -11017,11 +11188,11 @@ class Tooltip:
             self._win = None
 
 
-def tip(widget, text):
+def tip(widget, text, always=False):
     """Give a control its tooltip; hands the control back, so it can be
     packed in the same breath. A blank text adds nothing."""
     if text:
-        note = Tooltip(widget, text)
+        note = Tooltip(widget, text, always)
         try:
             widget._edsmt_tip = str(text)
             widget._edsmt_tooltip = note
@@ -11272,6 +11443,11 @@ class SettingsWindow(ctk.CTkToplevel):
                       "without touching any of it. All of it can be changed "
                       "at any time, on every tab, and Save keeps it. The keys "
                       "and the overlay boxes have tabs of their own.")
+        # First on the page (1.10038): the one setting people asked for and
+        # could not find. Pop out, on any tab, moves one tool for now.
+        self._switch(body, "tools_as_tabs",
+                     "Open Find, Earnings and the other tools as tabs "
+                     "(off: each in its own window)")
         themes = [(OV.THEME_NAMES[k], k) for k in OV.THEME_ORDER]
         self._choice(body, "app_theme", "App theme", themes,
                      "The main window's colours. Worn from the next start - "
@@ -11295,8 +11471,6 @@ class SettingsWindow(ctk.CTkToplevel):
         self._entry(body, "jump_range_ly",
                     "Jump range for selling within N jumps (Ly)",
                     "blank = my ship's")
-        self._switch(body, "tools_as_tabs",
-                     "Open Find, My sites, Earnings and the rest as tabs")
         self._switch(body, "show_tips",
                      "A note on what each control does, when the mouse rests on it")
         tour_row = ctk.CTkFrame(body, fg_color="transparent")
@@ -13867,12 +14041,25 @@ def row_buttons(table, index, buttons):
     return box
 
 
-def cell_label(table, index, column, text, colour=None, wrap=None):
-    """One table cell: a plain Tk label, never the toolkit's."""
-    tk.Label(table, text=text, font=F_SMALL, fg=colour or TEXT, bg=PANEL,
-             justify="left", anchor="w", wraplength=wrap or CELL_WRAP,
-             bd=0).grid(row=index, column=DATA_COLUMN_0 + column,
-                        padx=8, pady=2, sticky="w")
+def cell_full(cell):
+    """A table cell's whole text: its fourth part, when the cell shows a
+    short form of a sentence (1.10038), else what it shows. What Copy
+    takes."""
+    if len(cell) > 3 and cell[3]:
+        return str(cell[3])
+    return str(cell[0])
+
+
+def cell_label(table, index, column, text, colour=None, wrap=None, full=None):
+    """One table cell: a plain Tk label, never the toolkit's. `full`, when
+    it says more than `text`, is the cell's tooltip."""
+    label = tk.Label(table, text=text, font=F_SMALL, fg=colour or TEXT, bg=PANEL,
+                     justify="left", anchor="w", wraplength=wrap or CELL_WRAP,
+                     bd=0)
+    label.grid(row=index, column=DATA_COLUMN_0 + column, padx=8, pady=2, sticky="w")
+    if full and str(full) != str(text):
+        tip(label, full, always=True)
+    return label
 
 
 # A scrollbar decision settles within this many rounds, and a bar shown and
@@ -14159,6 +14346,98 @@ class ToolShell(ctk.CTkToplevel):
         super().destroy()
 
 
+class PoppedShell:
+    """The window a tab becomes when Pop out is pressed (1.10038).
+
+    Tk cannot move a widget into another window, so the tool is not moved
+    and not rebuilt: its own frame is handed to the window manager (wm
+    manage) and becomes a window, with everything typed, ticked and found
+    still in it; wm forget makes it a frame again for Dock. This answers
+    the window calls ToolWindow forwards to its shell, on that frame."""
+
+    def __init__(self, tool):
+        self.tool = tool
+        self._dying = False
+
+    def _wm(self, name, *args):
+        return self.tool.tk.call("wm", name, self.tool._w, *args)
+
+    def title(self, text=None):
+        if text is None:
+            return str(self._wm("title"))
+        self._wm("title", str(text))
+        return None
+
+    def geometry(self, spec=None):
+        if spec is None:
+            return str(self._wm("geometry"))
+        self._wm("geometry", spec)
+        return ""
+
+    def minsize(self, *args):
+        return self._wm("minsize", *args)
+
+    def maxsize(self, *args):
+        return self._wm("maxsize", *args)
+
+    def resizable(self, *args):
+        return self._wm("resizable", *args)
+
+    def transient(self, *args):
+        return self._wm("transient", *[getattr(a, "_w", a) for a in args])
+
+    def attributes(self, *args):
+        return self._wm("attributes", *args)
+
+    def protocol(self, name=None, func=None):
+        if func is None:
+            return str(self._wm("protocol", name))
+        return self._wm("protocol", name, self.tool.register(func))
+
+    def state(self, *args):
+        return str(self._wm("state", *args))
+
+    def wm_deiconify(self):
+        return self._wm("deiconify")
+
+    def withdraw(self):
+        return self._wm("withdraw")
+
+    def lift(self, *_args):
+        return self.tool.tk.call("raise", self.tool._w)
+
+    def focus_force(self):
+        return self.tool.tk.call("focus", "-force", self.tool._w)
+
+    def iconbitmap(self, *args):
+        return self._wm("iconbitmap", *args)
+
+    def manage(self):
+        """The tool's frame handed to the window manager: a window from here."""
+        return self._wm("manage")
+
+    def forget(self):
+        """And a plain frame again, for Dock."""
+        return self._wm("forget")
+
+    def _close(self):
+        tool = self.tool
+        handler = getattr(tool, "_on_close", None)
+        try:
+            (handler or tool.destroy)()
+        except Exception:
+            tool.destroy()
+
+    def destroy(self):
+        # The tool is the window; destroying it is the tool's own job.
+        self._dying = True
+
+
+POP_OUT_TIP = ("Opens this tool in a window of its own, as it stands. Dock on "
+               "that window puts it back as a tab.")
+DOCK_TIP = "Puts this window back as a tab of the main window, as it stands."
+
+
 class ToolWindow(ctk.CTkFrame):
     """Find, My sites, Where to land, Earnings, Powerplay and Leaderboard
     (1.10036, #147): a tab of the main window, or - with the setting off -
@@ -14176,6 +14455,11 @@ class ToolWindow(ctk.CTkFrame):
         self._on_close = None
         self._tab_title = ""
         self._wheels = []
+        self._wheel_funcs = []
+        # The size and minimum the tool asks for as a window, kept while it
+        # is a tab for the day it is popped out.
+        self._asked_geometry = None
+        self._asked_minsize = None
         docked = False
         try:
             docked = bool(app.tools_as_tabs())
@@ -14184,6 +14468,17 @@ class ToolWindow(ctk.CTkFrame):
         self._shell = None if docked else ToolShell(app)
         super().__init__(app.tool_host() if docked else self._shell, fg_color=VOID,
                          corner_radius=0, **kwargs)
+        # Pop out, at the right of the header (1.10038): this tab out to a
+        # window of its own; on that window it reads Dock. Placed over the
+        # header rather than in it, so every tool gets it without its own
+        # header changing, and lifted again once the tool has built its
+        # header under it. A tool opened as a window (the setting off) has
+        # no tab to go back to, so it shows neither.
+        self.dock_button = tip(ctk.CTkButton(
+            self, text="Pop out", width=72, height=24, font=F_SMALL,
+            **BTN_SECONDARY, command=self.toggle_dock), POP_OUT_TIP)
+        self._paint_dock_button()
+        self.after_idle(self._paint_dock_button)
         if self._shell is not None:
             self._shell.tool = self
             self.pack(fill="both", expand=True)
@@ -14205,6 +14500,8 @@ class ToolWindow(ctk.CTkFrame):
         return None
 
     def geometry(self, spec=None):
+        if spec is not None and "x" in str(spec):
+            self._asked_geometry = str(spec).split("+")[0].split("-")[0]
         if self._shell is not None:
             return self._shell.geometry(spec) if spec is not None else self._shell.geometry()
         if spec is None:
@@ -14219,6 +14516,8 @@ class ToolWindow(ctk.CTkFrame):
         return getattr(self._shell, name)(*args, **kwargs)
 
     def minsize(self, *args, **kwargs):
+        if len(args) == 2:
+            self._asked_minsize = args
         return self._shell_call("minsize", *args, **kwargs)
 
     def maxsize(self, *args, **kwargs):
@@ -14277,11 +14576,124 @@ class ToolWindow(ctk.CTkFrame):
         # - the main window, or the shell. Each table's wheel handler only
         # acts while its table is on screen.
         if sequence in WHEEL_EVENTS and func is not None:
+            self._wheel_funcs.append((sequence, func))
+            return self._bind_wheel(sequence, func)
+        return super().bind(sequence, func, add)
+
+    def _bind_wheel(self, sequence, func):
+        if isinstance(self._shell, PoppedShell):
+            # Popped out, the frame is the window: events inside it reach
+            # it, not the main window. Bound on the frame itself - the
+            # toolkit's bind would put it on the frame's canvas.
+            target, ident = self, tk.Misc.bind(self, sequence, func, add="+")
+        else:
             target = self._shell if self._shell is not None else self._tool_app
             ident = target.bind(sequence, func, add="+")
-            self._wheels.append((target, sequence, ident))
-            return ident
-        return super().bind(sequence, func, add)
+        self._wheels.append((target, sequence, ident))
+        return ident
+
+    def _rebind_wheels(self):
+        """The wheel handlers onto whichever window the tool is in now."""
+        for target, sequence, ident in self._wheels:
+            unbind_one(target, sequence, ident)
+        self._wheels = []
+        for sequence, func in list(self._wheel_funcs):
+            try:
+                self._bind_wheel(sequence, func)
+            except Exception:
+                pass
+
+    # -- Pop out and Dock (1.10038) -----------------------------------------
+
+    @property
+    def popped(self):
+        return isinstance(self._shell, PoppedShell)
+
+    def toggle_dock(self):
+        return self.dock() if self.popped else self.pop_out()
+
+    def pop_out(self):
+        """This tab out to a window of its own, exactly as it stands. The
+        main window goes back to the map if this was the tab on show."""
+        app = self._tool_app
+        if self._shell is not None or self._gone:
+            return False
+        key = app.tool_key(self)
+        was_active = attr(app, "active_tab", "map") == key
+        shell = PoppedShell(self)
+        try:
+            self.grid_remove()
+            shell.manage()
+        except Exception:
+            try:
+                app.show_tab(self)
+            except Exception:
+                pass
+            return False
+        self._shell = shell
+        shell.title(self._tab_title or APP_TITLE)
+        size = self._asked_geometry or "%dx%d" % (max(self.winfo_width(), 400),
+                                                  max(self.winfo_height(), 300))
+        for call in ((shell.geometry, size),
+                     (shell.minsize,) + tuple(self._asked_minsize or ()),
+                     (shell.protocol, "WM_DELETE_WINDOW", shell._close)):
+            try:
+                if len(call) > 1:
+                    call[0](*call[1:])
+            except Exception:
+                pass
+        try:
+            # The app's icon, where the platform lets a window be asked
+            # for the one it wears; the toolkit's default otherwise.
+            icon = app.tk.call("wm", "iconbitmap", app._w)
+            if icon:
+                shell.iconbitmap(icon)
+        except Exception:
+            pass
+        self._rebind_wheels()
+        self._paint_dock_button()
+        if was_active:
+            app.show_map()
+        try:
+            shell.lift()
+        except Exception:
+            pass
+        return True
+
+    def dock(self):
+        """A popped-out window back as the tab on show, as it stands."""
+        if not self.popped or self._gone:
+            return False
+        try:
+            self._shell.forget()
+        except Exception:
+            return False
+        self._shell._dying = True
+        self._shell = None
+        self._rebind_wheels()
+        self._paint_dock_button()
+        self._tool_app.show_tab(self)
+        return True
+
+    def _paint_dock_button(self):
+        """Pop out on a tab, Dock on a popped-out window, nothing on a
+        window opened as one; over the header's right end, above it."""
+        button = attr(self, "dock_button", None)
+        if button is None or self._gone:
+            return
+        try:
+            if self._shell is not None and not self.popped:
+                button.place_forget()
+                return
+            text, note = ("Dock", DOCK_TIP) if self.popped else ("Pop out", POP_OUT_TIP)
+            button.configure(text=text)
+            tooltip = getattr(button, "_edsmt_tooltip", None)
+            if tooltip is not None:
+                tooltip.text = note
+            button.place(relx=1.0, anchor="ne", x=-26, y=22)
+            button.lift()
+        except Exception:
+            pass
 
     def destroy(self):
         if self._gone:
@@ -14291,7 +14703,7 @@ class ToolWindow(ctk.CTkFrame):
             unbind_one(target, sequence, ident)
         self._wheels = []
         shell = self._shell
-        if shell is None:
+        if shell is None or isinstance(shell, PoppedShell):
             try:
                 self._tool_app.undock_tool(self)
             except Exception:
@@ -14302,6 +14714,40 @@ class ToolWindow(ctk.CTkFrame):
                 shell.destroy()
             except Exception:
                 pass
+
+
+# Find's searches (1.10038): what each does, on its segment of the switch and
+# on the status line when it is chosen. finder.MODES has their names.
+FIND_MODE_TIPS = {
+    "sites": "Sites - one patch, every commodity in it - best first.",
+    "intact": "Sites ranked by how likely they are to still be there.",
+    "deposits": "Every single deposit, with its position.",
+    "prices": "Where to sell the ticked commodities, nearest first.",
+    "bodies": "Bodies with mining locations near where you are, nearest first, "
+              "with the odds for the first ticked commodity on that kind of ground.",
+}
+PLACE_WORDS = {
+    # The system box narrows finds to a system or body; for prices it says
+    # where to measure from.
+    False: ("System / body", "narrow by system or body - e.g. Col 285 or Ega 1",
+            "A system or body to narrow to - the start of the name is enough."),
+    True: ("Near system", "near which system - blank is where you are",
+           "Prices near this system. Blank: near the system you are in."),
+}
+
+
+def packed_with(widget):
+    """The options a widget was packed with, as it was asked - before the
+    toolkit scaled them - so it can be packed again exactly as it was."""
+    call = getattr(widget, "_last_geometry_manager_call", None)
+    if isinstance(call, dict) and isinstance(call.get("kwargs"), dict):
+        return dict(call["kwargs"])
+    try:
+        info = dict(widget.pack_info())
+    except Exception:
+        return {}
+    info.pop("in", None)
+    return info
 
 
 class FindWindow(ToolWindow):
@@ -14337,46 +14783,72 @@ class FindWindow(ToolWindow):
         top.pack(fill="x", padx=12, pady=(12, 6))
         bracket(top, colour=ORANGE)
         hud_header(top, "Shared finds", padx=12, pady=(12, 4))
-        # wraplength is not optional on a paragraph this long: without it the
-        # label sizes itself to one enormous line and the window clips it at
-        # BOTH ends, so the sentence starts mid-word and never finishes.
+        # One line (1.10038): what each search does is on its tip and on the
+        # status line when it is chosen. wraplength stays, so a narrow
+        # window wraps it rather than clipping it at both ends.
         self.blurb = ctk.CTkLabel(
-            top, text="Shared finds from everyone running EDSMT. Older "
-                      "sites rank lower - deposits do not come back "
-                      "quickly. A row marked VERIFIED is one somebody "
-                      "from Radio Raxxla has stood on; everything else "
-                      "is commander-reported and just as welcome.",
+            top, text="Finds and prices shared by everyone running EDSMT. "
+                      "VERIFIED: Radio Raxxla staff have stood on it.",
             font=F_BODY, text_color=DIM,
             wraplength=920, justify="left", anchor="w")
-        self.blurb.pack(fill="x", anchor="w", padx=12, pady=(10, 6))
+        self.blurb.pack(fill="x", anchor="w", padx=12, pady=(6, 6))
         # And it has to follow the window, or resizing reintroduces the clip.
         top.bind("<Configure>", self._rewrap)
         self._rewrap()
 
-        row = ctk.CTkFrame(top, fg_color="transparent")
-        row.pack(fill="x", padx=12, pady=(0, 10))
-        ctk.CTkLabel(row, text="Commodity", font=F_BODY,
-                     text_color=DIM).pack(side="left")
+        # 1.10038: one search at a time, chosen here, with only its own
+        # filters under it and one Search button. The five buttons it
+        # replaces each ran a different search over the same wall of
+        # filters, half of which did nothing for the one pressed.
+        self.mode = None
+        self._tables = {}
+        self.mode_switch = tip(ctk.CTkSegmentedButton(
+            top, values=[label for _key, label in FD.MODES], height=30,
+            font=F_STRONG, fg_color=PANEL, selected_color=ORANGE,
+            selected_hover_color=AMBER, unselected_color=STEEL,
+            unselected_hover_color=RULE, text_color=TEXT,
+            command=self._mode_picked),
+            "The search the Search button runs. Only its own filters are "
+            "shown; the others keep their values.")
+        self.mode_switch.pack(anchor="w", padx=12, pady=(0, 8))
+        segments = getattr(self.mode_switch, "_buttons_dict", None) or {}
+        for key, label in FD.MODES:
+            if label in segments:
+                tip(segments[label], FIND_MODE_TIPS[key])
+
+        # The filters, a row at a time. Which are on screen is the mode's
+        # (finder.MODE_FILTERS); _show_filters puts them up.
+        self.filter_box = ctk.CTkFrame(top, fg_color="transparent")
+        self.filter_box.pack(fill="x", padx=12)
+        self._labels = {}
+        row = self._row_main = ctk.CTkFrame(self.filter_box, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 10))
+        self._labels["commodity"] = ctk.CTkLabel(row, text="Commodity", font=F_BODY,
+                                                 text_color=DIM)
+        self._labels["commodity"].pack(side="left")
         # Several at once (#188): tick Monazite AND Bastnasite and every
         # search asks for either. Wider than one name needs, for two.
         self.commodity = tip(ctk.CTkComboBox(row, width=240, font=F_BODY, **BOX,
                                          values=["Any"] + list(SV.KNOWN_COMMODITIES)), "Tick one or several commodities; Any clears them. Or type them, comma separated, and press Enter.")
         self.commodity.set("Any")
         self.commodity.pack(side="left", padx=(6, 14))
-        ctk.CTkLabel(row, text="Min rigs", font=F_BODY,
-                     text_color=DIM).pack(side="left")
+        self._labels["min_rigs"] = ctk.CTkLabel(row, text="Min rigs", font=F_BODY,
+                                                text_color=DIM)
+        self._labels["min_rigs"].pack(side="left")
         self.min_rigs = tip(ctk.CTkComboBox(row, width=70, font=F_BODY, **BOX,
                                         values=[str(n) for n in range(0, 25)]), "Only sites or deposits with at least this many rigs.")
         self.min_rigs.set("0")
         self.min_rigs.pack(side="left", padx=(6, 14))
-        ctk.CTkLabel(row, text="Types in patch", font=F_BODY,
-                     text_color=DIM).pack(side="left")
+        self._labels["min_types"] = ctk.CTkLabel(row, text="Types in patch", font=F_BODY,
+                                                 text_color=DIM)
+        self._labels["min_types"].pack(side="left")
         self.min_types = tip(ctk.CTkComboBox(row, width=64, font=F_BODY, **BOX,
                                          values=["0", "1", "2", "3", "4", "5"]), "Only sites carrying at least this many different commodities.")
         self.min_types.set("0")
         self.min_types.pack(side="left", padx=(6, 14))
-        ctk.CTkLabel(row, text="Seen within", font=F_BODY,
-                     text_color=DIM).pack(side="left")
+        self._labels["seen"] = ctk.CTkLabel(row, text="Seen within", font=F_BODY,
+                                            text_color=DIM)
+        self._labels["seen"].pack(side="left")
         self.max_age = tip(ctk.CTkComboBox(row, width=110, font=F_BODY, **BOX,
                                        values=["Any time", "7 days", "14 days",
                                                "30 days", "90 days"]), "Only finds reported this recently.")
@@ -14385,8 +14857,9 @@ class FindWindow(ToolWindow):
         # The filter that makes the whole thing usable. Without it the top
         # of the list is whatever is best in 400 billion systems, which is
         # a place nobody is going.
-        ctk.CTkLabel(row, text="Within", font=F_BODY,
-                     text_color=DIM).pack(side="left")
+        self._labels["within"] = ctk.CTkLabel(row, text="Within", font=F_BODY,
+                                              text_color=DIM)
+        self._labels["within"].pack(side="left")
         self.within = tip(ctk.CTkComboBox(row, width=110, font=F_BODY, **BOX,
                                       values=list(DISTANCE_CHOICES)), "Only finds this many light years from where you are.")
         self.within.set(DEFAULT_DISTANCE)
@@ -14399,25 +14872,28 @@ class FindWindow(ToolWindow):
         # only one allowed to grow, and packing it before the two toggles
         # would push them out of the window exactly the way the edit
         # button went missing off the signal rows.
-        row2 = ctk.CTkFrame(top, fg_color="transparent")
-        row2.pack(fill="x", padx=12, pady=(0, 8))
-        ctk.CTkLabel(row2, text="System / body", font=F_BODY,
-                     text_color=DIM).pack(side="left")
+        row2 = self._row_place = ctk.CTkFrame(self.filter_box, fg_color="transparent")
+        row2.pack(fill="x", pady=(0, 8))
+        self._labels["place"] = ctk.CTkLabel(row2, text="System / body", font=F_BODY,
+                                             text_color=DIM)
+        self._labels["place"].pack(side="left")
         self.only_verified = ctk.BooleanVar(value=False)
-        tip(ctk.CTkCheckBox(row2, width=130, text="Verified only", variable=self.only_verified,
+        self.verified_box = tip(ctk.CTkCheckBox(row2, width=130, text="Verified only", variable=self.only_verified,
                         onvalue=True, offvalue=False, font=F_BODY,
                         checkbox_width=18, checkbox_height=18, border_width=2,
                         fg_color=ORANGE, hover_color=AMBER, text_color=DIM,
-                        command=self._paint), "Only finds a Radio Raxxla staff member has stood on.").pack(side="right", padx=(12, 0))
+                        command=self._paint), "Only finds a Radio Raxxla staff member has stood on.")
+        self.verified_box.pack(side="right", padx=(12, 0))
         # On by default. A site somebody has already stripped is not a
         # result, it is a wasted drive, and the server only hides them
         # from the site search - a deposit row can still be sitting on one.
         self.hide_worked = ctk.BooleanVar(value=True)
-        tip(ctk.CTkCheckBox(row2, width=152, text="Hide worked-out", variable=self.hide_worked,
+        self.hide_worked_box = tip(ctk.CTkCheckBox(row2, width=152, text="Hide worked-out", variable=self.hide_worked,
                         onvalue=True, offvalue=False, font=F_BODY,
                         checkbox_width=18, checkbox_height=18, border_width=2,
                         fg_color=ORANGE, hover_color=AMBER, text_color=DIM,
-                        command=self._paint), "Leaves out sites somebody has reported stripped.").pack(side="right", padx=(12, 0))
+                        command=self._paint), "Leaves out sites somebody has reported stripped.")
+        self.hide_worked_box.pack(side="right", padx=(12, 0))
         self.query = tip(ctk.CTkEntry(row2, font=F_BODY, height=30, **ENTRY,
                                   placeholder_text="narrow by system or body "
                                                    "- e.g. Col 285 or Ega 1"), "A system or body to narrow to - the start of the name is enough.")
@@ -14433,13 +14909,25 @@ class FindWindow(ToolWindow):
                 Suggest(box, list(box.cget("values")))
             except Exception:
                 pass
-        chain_tab([self.commodity, self.min_rigs, self.min_types,
-                   self.max_age, self.within, self.query])
 
-        # 1.10035: pad, price age, demand, price, station type, Powerplay,
-        # the best five of each commodity, saved searches and Reset.
+        # Mining bodies' own line: what the odds in its table rest on.
+        row3 = self._row_note = ctk.CTkFrame(self.filter_box, fg_color="transparent")
+        row3.pack(fill="x", pady=(0, 8))
+        self.bodies_note = ctk.CTkLabel(
+            row3, text="The odds are from what commanders have shared; one "
+                       "resting on fewer than %d sites is shown in amber."
+                       % GX.SMALL_SAMPLE,
+            font=F_SMALL, text_color=DIM, anchor="w", justify="left")
+        self.bodies_note.pack(side="left")
+
+        # 1.10035: pad, price age, demand, price, station type, Powerplay
+        # and the best five of each commodity. From goes on the first row,
+        # beside Within: the two ends of one distance window.
         self._want_sort = None
-        self._filters = FindFilters(self, top)
+        actions = ctk.CTkFrame(top, fg_color="transparent")
+        actions.pack(fill="x", padx=12, pady=(2, 10))
+        self._filters = FindFilters(self, self.filter_box, lead=self._row_main,
+                                    actions=actions)
         # Within is the far end of the distance window as well as the radius
         # a search is sent with: narrowing it narrows what is on screen at
         # once, From being the near end.
@@ -14447,32 +14935,40 @@ class FindWindow(ToolWindow):
         if getattr(self.within, "suggest", None) is not None:
             self.within.suggest.on_pick = lambda _value: self._paint()
 
-        buttons = ctk.CTkFrame(top, fg_color="transparent")
-        buttons.pack(fill="x", padx=12, pady=(0, 10))
+        # One primary action, then Reset and Saved; Copy all at the right.
         # The right-hand one goes down first. Pack order is claim order,
         # and a button packed last against the far edge is the one that
         # disappears when the window is dragged narrow.
-        tip(ctk.CTkButton(buttons, text="Copy all", width=100, height=32,
+        tip(ctk.CTkButton(actions, text="Copy all", width=100, height=32,
                       font=F_STRONG, **BTN_SECONDARY,
                       command=self.copy_all), "Copies the table as text, ready to paste into Discord.").pack(side="right")
-        tip(ctk.CTkButton(buttons, text="Search sites", width=130, height=32,
-                      font=F_STRONG, **BTN_PRIMARY,
-                      command=self.search_sites), "Sites - one patch, every commodity in it - best first.").pack(side="left", padx=(0, 8))
-        # The one thing here a position generator can never work out for
-        # itself, and until now the app had no way of asking for it.
-        tip(ctk.CTkButton(buttons, text="Still there", width=120, height=32,
-                      font=F_STRONG, **BTN_SECONDARY,
-                      command=self.search_intact), "Sites ranked by how likely they are to still be there.").pack(side="left", padx=8)
-        tip(ctk.CTkButton(buttons, text="Individual deposits", width=160,
-                      height=32, font=F_STRONG, **BTN_SECONDARY,
-                      command=self.search_deposits), "Every single deposit, with its position.").pack(side="left", padx=8)
-        tip(ctk.CTkButton(buttons, text="Best sell prices", width=140, height=32,
-                      font=F_STRONG, **BTN_SECONDARY,
-                      command=self.search_prices), "Where to sell the ticked commodities, nearest first.").pack(side="left", padx=8)
-        # 1.10036 (#200): galaxy-wide, from every commander's scans.
-        tip(ctk.CTkButton(buttons, text="Mining bodies", width=130, height=32,
-                      font=F_STRONG, **BTN_SECONDARY,
-                      command=self.search_bodies), "Bodies with mining locations near where you are, nearest first, with the odds for the first ticked commodity on that kind of ground.").pack(side="left", padx=8)
+        self.search_button = tip(ctk.CTkButton(
+            actions, text="Search", width=120, height=32, font=F_STRONG,
+            **BTN_PRIMARY, command=self.search),
+            "Runs the search chosen above with these filters. Enter in any box does the same.")
+        self.search_button.pack(side="left", padx=(0, 8))
+        tip(ctk.CTkButton(actions, text="Reset", width=80, height=32,
+                          font=F_STRONG, **BTN_SECONDARY,
+                          command=self._filters.reset),
+            "Puts every filter back to how the window opens.").pack(side="left", padx=8)
+        self._filters.saved.button.pack(side="left", padx=8)
+
+        # Tab walks every filter on screen, left to right and row by row;
+        # the ones out of sight are stepped over. Enter in any of them runs
+        # the search - unless a list is open, where Enter takes its choice.
+        f = self._filters
+        boxes = [self.commodity, self.min_rigs, self.min_types, self.max_age,
+                 f.far_box, self.within, self.query, f.pad_box, f.age_box,
+                 f.price_box, f.demand_low, f.demand_high, f.station_box,
+                 f.power_state_box, f.power_side_box, f.show_box]
+        chain_tab(boxes)
+        for box in boxes:
+            for sequence in ("<Return>", "<KP_Enter>"):
+                try:
+                    box.bind(sequence, self._enter_key, add="+")
+                except Exception:
+                    pass
+        self._layout = self._filter_layout()
 
         self.status = ctk.CTkLabel(self, text="", font=F_READOUT,
                                    text_color=DIM, anchor="w")
@@ -14483,6 +14979,10 @@ class FindWindow(ToolWindow):
         for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
                          "<Button-4>", "<Button-5>"):
             self.bind(sequence, self.scroller.wheel, add="+")
+        # The search it was left on last time (1.10038) - written to the
+        # settings the first time too, since the toolkit does not report a
+        # press on the segment already up.
+        self.set_mode(app.settings.get("find_mode"))
         self.refresh()
 
     def _rewrap(self, event=None):
@@ -14507,6 +15007,124 @@ class FindWindow(ToolWindow):
                 self.blurb.configure(wraplength=width)
         except Exception:
             pass
+
+    # -- one search at a time (1.10038) ------------------------------------
+
+    def _mode_picked(self, label):
+        self.set_mode(label)
+
+    def set_mode(self, mode, remember=True, table=True):
+        """Show one search: its filters on screen, the others kept as they
+        are but out of sight, and the table it last drew. `table` False
+        leaves the table to the caller - an answer that is about to draw
+        its own. Remembered in settings as find_mode."""
+        mode = FD.mode_key(mode)
+        switch = attr(self, "mode_switch")
+        if switch is not None and switch.get() != FD.mode_label(mode):
+            switch.set(FD.mode_label(mode))
+        # Remembered first: pressing the segment already up counts as
+        # choosing it, so it is the one Find opens on next time.
+        settings = attr(self.app, "settings", None)
+        if remember and isinstance(settings, dict) \
+                and settings.get("find_mode") != mode:
+            settings["find_mode"] = mode
+            save_settings(settings)
+        old = attr(self, "mode", None)
+        if old == mode:
+            return mode
+        tables = attr(self, "_tables", None)
+        if tables is None:
+            tables = self._tables = {}
+        if self._builder is not None:
+            tables[FD.mode_of_kind(self._kind) or old] = self._table_state()
+        self.mode = mode
+        self._show_filters()
+        state = tables.pop(mode, None)
+        if not table:
+            return mode
+        if state is not None:
+            self._put_table_state(state)
+            self._paint()
+        else:
+            self._forget()
+            self.say("%s Set the filters and press Search." % FIND_MODE_TIPS[mode])
+        return mode
+
+    def _table_state(self):
+        return {"rows": self._rows, "headers": self._headers,
+                "builder": self._builder, "empty": self._empty, "kind": self._kind,
+                "sort": (self._sort_column, self._sort_reverse),
+                "cut": attr(self, "_cut", False)}
+
+    def _put_table_state(self, state):
+        self._rows, self._headers = state["rows"], state["headers"]
+        self._builder, self._empty, self._kind = state["builder"], state["empty"], state["kind"]
+        self._sort_column, self._sort_reverse = state["sort"]
+        self._cut = state["cut"]
+
+    def _filter_layout(self):
+        """The filter rows top to bottom, each with its widgets in packing
+        order: (row, row's pack options, [(widget, filter, pack options)]).
+        Read once, when everything is packed, so a mode can take widgets
+        away and put them back exactly where they were."""
+        f, labels = self._filters, self._labels
+        rows = [(self._row_main, [
+                    (labels["commodity"], "commodity"), (self.commodity, "commodity"),
+                    (labels["min_rigs"], "min_rigs"), (self.min_rigs, "min_rigs"),
+                    (labels["min_types"], "min_types"), (self.min_types, "min_types"),
+                    (labels["seen"], "seen"), (self.max_age, "seen"),
+                    (f.labels["from"], "from"), (f.far_box, "from"),
+                    (labels["within"], "within"), (self.within, "within")]),
+                # Fixed-width things first, the expanding box last: packed
+                # the other way round it pushes the two toggles off the edge.
+                (self._row_place, [
+                    (labels["place"], "place"), (self.verified_box, "verified"),
+                    (self.hide_worked_box, "hide_worked"), (self.query, "place")])]
+        rows += list(zip(f.rows, f.parts))
+        rows.append((self._row_note, [(self.bodies_note, "bodies_note")]))
+        return [(row, packed_with(row),
+                 [(widget, key, packed_with(widget)) for widget, key in items])
+                for row, items in rows]
+
+    def _show_filters(self):
+        """Only the filters of the search on show. Packed again in their
+        own order, every time, so nothing comes back in the wrong place."""
+        mode = attr(self, "mode", None) or FD.DEFAULT_MODE
+        wanted = set(FD.mode_filters(mode))
+        if mode == "bodies":
+            wanted.add("bodies_note")
+        layout = attr(self, "_layout", None) or []
+        for row, _row_pack, items in layout:
+            for widget, _key, _pack in items:
+                widget.pack_forget()
+            row.pack_forget()
+        for row, row_pack, items in layout:
+            keep = [(widget, pack) for widget, key, pack in items if key in wanted]
+            if not keep:
+                continue
+            row.pack(**row_pack)
+            for widget, pack in keep:
+                widget.pack(**pack)
+        label, holder, hint = PLACE_WORDS[mode == "prices"]
+        try:
+            self._labels["place"].configure(text=label)
+            self.query.configure(placeholder_text=holder)
+            note = getattr(self.query, "_edsmt_tooltip", None)
+            if note is not None:
+                note.text = hint
+        except Exception:
+            pass
+
+    def search(self):
+        """The one Search button: the search chosen at the top."""
+        mode = attr(self, "mode", None) or FD.DEFAULT_MODE
+        return {"sites": self.search_sites, "intact": self.search_intact,
+                "deposits": self.search_deposits, "prices": self.search_prices,
+                "bodies": self.search_bodies}[mode]()
+
+    def _enter_key(self, _event=None):
+        self.search()
+        return "break"
 
     def refresh(self):
         # Silently, and never fatally: the dropdown already works from the
@@ -15028,6 +15646,11 @@ class FindWindow(ToolWindow):
             if not any("intact_confidence" in row for row in rows):
                 rows = EDO.rank_sites(rows, half_life_days=float(
                     self.app.settings.get("freshness_half_life_days", 21) or 21))
+        # An answer brings its own search up with it (1.10038), so the
+        # filters on screen are always the ones acting on the table.
+        mode = FD.mode_of_kind(kind)
+        if mode and attr(self, "mode", None) not in (None, mode):
+            self.set_mode(mode, table=False)
         headers, builder = self._widen(headers, builder, kind)
         self._rows, self._headers = rows, list(headers)
         self._builder, self._empty, self._kind = builder, empty, kind
@@ -15153,8 +15776,9 @@ class FindWindow(ToolWindow):
         # Prices are the one table the box does not narrow, because there
         # it went out as near_system - and "near Sol" rightly answers with
         # markets that are not called Sol. Filtering the answer by the word
-        # that produced it would throw all of them away.
-        if text and self._kind not in PRICE_KINDS:
+        # that produced it would throw all of them away. The published
+        # figures belong to Sell prices too (1.10038), so the same goes.
+        if text and self._kind not in PRICE_KINDS + ("published",):
             hay = " ".join(str(row.get(key) or "") for key in
                            ("system", "planet", "body", "spot", "station",
                             "commodity", "type"))
@@ -15679,6 +16303,44 @@ class FindWindow(ToolWindow):
 RUN_HEADERS = ("Started", "Mined at", "Mined", "To ship", "Sold", "Credits",
                "Cr/hr", "t/hr", "Merits", "Time", "Sold at")
 
+# The Earnings window's pages (1.10038), in order. The one on show is kept
+# as the setting earnings_page.
+EARNINGS_PAGES = ("This session", "Where to sell", "Sessions", "System prices")
+EARNINGS_PAGE_TIPS = {
+    "This session": "The session you are on: its numbers, the hold, and Start, "
+                    "Pause and End.",
+    "Where to sell": "Where what is aboard sells best within the distance, and "
+                     "one stop for the whole hold.",
+    "Sessions": "Every Rhino session, and what they add up to.",
+    "System prices": "The last known prices at every market in a system you name.",
+}
+# The narrowest a stat card is laid out at.
+CARD_MIN_W = 150
+
+
+def earnings_page(name):
+    """The Earnings page called `name`, or This session for any other."""
+    text = str(name or "").strip().lower()
+    for page in EARNINGS_PAGES:
+        if page.lower() == text:
+            return page
+    return EARNINGS_PAGES[0]
+
+
+def stat_card(parent, title, note=None):
+    """One number with its name over it, in a box of its own (1.10038):
+    how This session shows the numbers that matter, big enough to read
+    across the room. (box, the number's label)."""
+    box = ctk.CTkFrame(parent, fg_color=PANEL, corner_radius=6,
+                       border_width=1, border_color=RULE)
+    name = ctk.CTkLabel(box, text=title, font=F_SMALL_B, text_color=DIM, anchor="w")
+    name.pack(fill="x", padx=12, pady=(8, 0))
+    value = ctk.CTkLabel(box, text=CARD_NONE, font=F_HEAD, text_color=DIM, anchor="w")
+    value.pack(fill="x", padx=12, pady=(0, 8))
+    for widget in (box, name, value):
+        tip(widget, note)
+    return box, value
+
 
 class EarningsWindow(ToolWindow):
     """Every run this commander has banked, and what they add up to.
@@ -15710,87 +16372,172 @@ class EarningsWindow(ToolWindow):
         bracket(top, colour=ORANGE)
         hud_header(top, "Session earnings", padx=12, pady=(12, 4))
 
-        # The session you are on, first (1.10035: "current session data is
-        # the one that is important"). Elapsed, tonnes, t/hr, what it is
-        # worth at the best credible price, Cr/hr, sold so far, and the
-        # Powerplay merits an hour your own sales say it is earning. The
-        # sessions before it are the table; all-time totals under that.
+        # The session you are on, in one line under the title (1.10035:
+        # "current session data is the one that is important"): which one,
+        # and what is sold so far. Its numbers are the cards on This
+        # session (1.10038); the sessions before it are the Sessions page.
         self.current = ctk.CTkLabel(top, text="", font=F_READOUT,
                                     text_color=AMBER, anchor="w",
                                     justify="left")
-        self.current.pack(fill="x", anchor="w", padx=12, pady=(6, 0))
-        self.current_value = ctk.CTkLabel(top, text="", font=F_STRONG,
-                                          text_color=GREEN, anchor="w",
-                                          justify="left")
-        self.current_value.pack(fill="x", anchor="w", padx=12, pady=(0, 0))
-        self.current_merits = tip(ctk.CTkLabel(
-            top, text="", font=F_BODY, text_color=DIM, anchor="w",
-            justify="left"), MERITS_TIP)
-        self.current_merits.pack(fill="x", anchor="w", padx=12, pady=(0, 2))
+        self.current.pack(fill="x", anchor="w", padx=12, pady=(2, 4))
+
+        # Four pages (1.10038: "the tabs for earning ... feel cluttered and
+        # filters should actually match what the tabs are"). Each shows its
+        # own controls and nothing else; the one picked is remembered.
+        switch = ctk.CTkFrame(top, fg_color="transparent")
+        switch.pack(fill="x", padx=12, pady=(2, 10))
+        self.page_buttons = {}
+        for name in EARNINGS_PAGES:
+            button = tip(ctk.CTkButton(switch, text=name, width=130, height=30,
+                                       font=F_STRONG, **BTN_SECONDARY,
+                                       command=lambda n=name: self.show_page(n)),
+                         EARNINGS_PAGE_TIPS[name])
+            button.pack(side="left", padx=(0, 6))
+            self.page_buttons[name] = button
+
+        # -- This session: the cards, the hold, and the session's controls.
+        self.session_page = ctk.CTkFrame(self, fg_color="transparent")
+        self.card_row = tk.Frame(self.session_page, bg=VOID, bd=0)
+        self.card_row.pack(fill="x", pady=(0, 2))
+        self.cards = {}
+        for name in SESSION_CARDS:
+            self.cards[name] = stat_card(self.card_row, name, SESSION_CARD_TIPS[name])
+        self._card_columns = 0
+        self._lay_cards(len(SESSION_CARDS) * CARD_MIN_W)
+        self.card_row.bind("<Configure>", self._lay_cards, add="+")
+        self.card_row.bind("<Configure>", self._rewrap, add="+")
+        # What the value rests on, in one line under the cards.
+        self.session_note = ctk.CTkLabel(self.session_page, text="", font=F_SMALL,
+                                         text_color=DIM, anchor="w", justify="left")
+        self.session_note.pack(fill="x", anchor="w", padx=2)
         # What is in the hold RIGHT NOW, at the last price seen. The rows
-        # below are history; this line is the run you are still on, and it
-        # is the reason to have the window open while the game is running.
-        self.holding = ctk.CTkLabel(top, text="", font=F_BODY,
+        # on Sessions are history; this line is the run you are still on,
+        # and it is the reason to have the window open while the game is
+        # running.
+        self.holding = ctk.CTkLabel(self.session_page, text="", font=F_BODY,
                                     text_color=DIM, anchor="w",
                                     justify="left")
-        self.holding.pack(fill="x", anchor="w", padx=12, pady=(0, 6))
+        self.holding.pack(fill="x", anchor="w", padx=2, pady=(4, 6))
+        buttons = ctk.CTkFrame(self.session_page, fg_color="transparent")
+        buttons.pack(fill="x", pady=(0, 2))
+        # Right-hand one first. Pack order is claim order, and the button
+        # packed last against the far edge is the one that disappears when
+        # the window is dragged narrow.
+        self.session_copy = tip(ctk.CTkButton(
+            buttons, text="Copy", width=90, height=32, font=F_STRONG,
+            **BTN_SECONDARY, command=self.copy_session),
+            "Copies this session as text, ready to paste into Discord.")
+        self.session_copy.pack(side="right")
+        # A session opens on the first rig down or the first tonne refined
+        # in the Rhino, and closes on every rig up or the Rhino aboard. These
+        # are for doing it by hand: Start before anything is down, Pause for
+        # the drive to a station or a break - paused time is not in the
+        # Cr/hr - and End.
+        self.start_button = tip(ctk.CTkButton(
+            buttons, text="Start session", width=120, height=32,
+            font=F_STRONG, **BTN_SECONDARY, command=self.start_session), "Starts a session by hand. The first rig down or tonne refined starts one anyway.")
+        self.start_button.pack(side="left", padx=(0, 6))
+        self.pause_button = tip(ctk.CTkButton(
+            buttons, text="Pause", width=100, height=32, font=F_STRONG,
+            **BTN_SECONDARY, command=self.pause_session), "Stops the clock for a break or a trip; Cr/hr leaves the pause out.")
+        self.pause_button.pack(side="left", padx=6)
+        self.end_button = tip(ctk.CTkButton(
+            buttons, text="End session", width=110, height=32, font=F_STRONG,
+            **BTN_SECONDARY, command=self.end_session), "Ends the session now.")
+        self.end_button.pack(side="left", padx=6)
+        # One session across several trips. Off, a session is one outing:
+        # the Rhino goes out, fills the ship a hold at a time, and comes
+        # back aboard. On, it carries on through the flight to a station,
+        # the sale and the trip back, until it is ticked off again.
+        self.multi = ctk.BooleanVar(
+            value=bool(self.app.settings.get("earnings_multi_session")))
+        self.multi_box = tip(ctk.CTkCheckBox(
+            buttons, text="Multi-session - keep one session going across "
+                          "trips to a station",
+            variable=self.multi, font=F_BODY, command=self.set_multi),
+            "One session across trips to a station, instead of a new one each time the Rhino comes aboard.")
+        self.multi_box.pack(side="left", padx=(14, 6))
 
-        # Where what is aboard sells best, from the system you are in. The
+        # -- Where to sell what is aboard, from the system you are in. The
         # price at the last station seen is not the answer to "where do I
         # take this": the same Sapphire is worth more two jumps away, and
         # this is the one screen that already knows what is in the hold.
-        sell = ctk.CTkFrame(top, fg_color="transparent")
-        sell.pack(fill="x", padx=12, pady=(0, 6))
-        self.sell_title = ctk.CTkLabel(sell, text="Where to sell what is aboard",
+        self.sell_bar = ctk.CTkFrame(self, fg_color="transparent")
+        self.sell_title = ctk.CTkLabel(self.sell_bar, text="Where to sell what is aboard",
                                        font=F_STRONG, text_color=ORANGE,
                                        anchor="w")
         self.sell_title.pack(side="left")
-        tip(ctk.CTkButton(sell, text="Check prices", width=120, height=30,
-                      font=F_STRONG, **BTN_SECONDARY,
-                      command=self.check_prices), "Prices what is aboard: galactic average, best here, and best within the distance.").pack(side="right")
-        self.sell_within = tip(ctk.CTkComboBox(sell, width=100, font=F_BODY,
+        self.check_button = tip(ctk.CTkButton(
+            self.sell_bar, text="Check prices", width=120, height=30,
+            font=F_STRONG, **BTN_PRIMARY, command=self.check_prices),
+            "Prices what is aboard: galactic average, best here, and best within the distance.")
+        self.check_button.pack(side="right")
+        self.sell_within = tip(ctk.CTkComboBox(self.sell_bar, width=100, font=F_BODY,
                                            **BOX, values=list(QUOTE_DISTANCES)
                                            + [name for name, _n in SP.JUMP_CHOICES]),
                                "How far you would fly to sell: in light years, or in "
                                "jumps at your jump range (Settings > Basics).")
         self.sell_within.set(DEFAULT_QUOTE_DISTANCE)
         self.sell_within.pack(side="right", padx=6)
-        ctk.CTkLabel(sell, text="within", font=F_BODY,
+        ctk.CTkLabel(self.sell_bar, text="within", font=F_BODY,
                      text_color=DIM).pack(side="right")
-        self.quote_table = tk.Frame(top, bg=PANEL, bd=0)
-        self.quote_table.pack(fill="x", anchor="w", padx=12, pady=(0, 6))
+        # The prices, then one stop for the whole hold - scrolled, so a
+        # full hold on a short window is never cut off.
+        self.sell_scroller = ScrollTable(self)
+        self.quote_table = self.sell_scroller.inner
 
-        # Prices in any system you name (#187): the last known sell price of
-        # each commodity at every market there - what commanders read off
-        # their own markets and what the market index last saw, whichever
-        # is newer, and whose it was. Blank is the system you are in.
+        # -- Sessions: the table, the all-time line, Copy all.
+        self.sessions_bar = ctk.CTkFrame(self, fg_color="transparent")
+        self.sessions_copy = tip(ctk.CTkButton(
+            self.sessions_bar, text="Copy all", width=100, height=32,
+            font=F_STRONG, **BTN_SECONDARY, command=self.copy_all),
+            "Copies the sessions as text, ready to paste into Discord.")
+        self.sessions_copy.pack(side="right")
+        self.refresh_button = tip(ctk.CTkButton(
+            self.sessions_bar, text="Refresh", width=100, height=32,
+            font=F_STRONG, **BTN_PRIMARY, command=self.refresh),
+            "Reads the sessions again.")
+        self.refresh_button.pack(side="left")
+
+        # -- System prices (#187): the last known sell price of each
+        # commodity at every market in any system you name - what
+        # commanders read off their own markets and what the market index
+        # last saw, whichever is newer, and whose it was. Blank is the
+        # system you are in.
         #
         # Right-hand things first, the expanding box last: pack order is
         # claim order, and the box packed before them would push the button
         # off the edge of a narrow window.
-        look = ctk.CTkFrame(top, fg_color="transparent")
-        look.pack(fill="x", padx=12, pady=(2, 6))
-        ctk.CTkLabel(look, text="Prices in a system", font=F_STRONG,
+        self.prices_bar = ctk.CTkFrame(self, fg_color="transparent")
+        ctk.CTkLabel(self.prices_bar, text="System", font=F_STRONG,
                      text_color=ORANGE, anchor="w").pack(side="left")
-        tip(ctk.CTkButton(look, text="Search system", width=130, height=30,
-                      font=F_STRONG, **BTN_SECONDARY,
-                      command=self.search_system), "The last known sell price of each commodity at every market in the system.").pack(side="right")
+        self.prices_copy = tip(ctk.CTkButton(
+            self.prices_bar, text="Copy all", width=100, height=30,
+            font=F_STRONG, **BTN_SECONDARY, command=self.copy_all),
+            "Copies the prices as text, ready to paste into Discord.")
+        self.prices_copy.pack(side="right")
+        self.search_button = tip(ctk.CTkButton(
+            self.prices_bar, text="Search system", width=130, height=30,
+            font=F_STRONG, **BTN_PRIMARY, command=self.search_system),
+            "The last known sell price of each commodity at every market in the system.")
+        self.search_button.pack(side="right", padx=(0, 10))
         self.system_best = ctk.BooleanVar(value=True)
-        tip(ctk.CTkCheckBox(look, width=150, text="Best market only",
-                        variable=self.system_best, onvalue=True,
-                        offvalue=False, font=F_BODY, checkbox_width=18,
-                        checkbox_height=18, border_width=2, fg_color=ORANGE,
-                        hover_color=AMBER, text_color=DIM,
-                        command=self._paint), "One row per commodity - the best station. Untick for every station.").pack(side="right", padx=(10, 8))
+        self.best_box = tip(ctk.CTkCheckBox(
+            self.prices_bar, width=150, text="Best market only",
+            variable=self.system_best, onvalue=True, offvalue=False,
+            font=F_BODY, checkbox_width=18, checkbox_height=18, border_width=2,
+            fg_color=ORANGE, hover_color=AMBER, text_color=DIM,
+            command=self._paint), "One row per commodity - the best station. Untick for every station.")
+        self.best_box.pack(side="right", padx=(10, 8))
         self.system_pick = tip(ctk.CTkComboBox(
-            look, width=240, font=F_BODY, **BOX,
+            self.prices_bar, width=240, font=F_BODY, **BOX,
             values=["Any"] + list(SV.KNOWN_COMMODITIES)), "Tick the commodities to price; Any is all of them.")
         self.system_pick.set("Any")
         self.system_pick.pack(side="right", padx=(6, 0))
-        ctk.CTkLabel(look, text="for", font=F_BODY,
+        ctk.CTkLabel(self.prices_bar, text="for", font=F_BODY,
                      text_color=DIM).pack(side="right")
         self.system_box = tip(ctk.CTkEntry(
-            look, height=30, font=F_BODY, **ENTRY,
+            self.prices_bar, height=30, font=F_BODY, **ENTRY,
             placeholder_text="system name - blank is the one you are in"), "The system to look at. Blank is the one you are in.")
         self.system_box.pack(side="left", fill="x", expand=True, padx=(10, 8))
         self.system_box.bind("<Return>", lambda _e: self.search_system(),
@@ -15800,79 +16547,26 @@ class EarningsWindow(ToolWindow):
                                                    typed), multi=True)
         chain_tab([self.system_box, self.system_pick])
 
-        buttons = ctk.CTkFrame(top, fg_color="transparent")
-        buttons.pack(fill="x", padx=12, pady=(0, 10))
-        # Right-hand one first. Pack order is claim order, and the button
-        # packed last against the far edge is the one that disappears when
-        # the window is dragged narrow.
-        tip(ctk.CTkButton(buttons, text="Copy all", width=100, height=32,
-                      font=F_STRONG, **BTN_SECONDARY,
-                      command=self.copy_all), "Copies the table as text, ready to paste into Discord.").pack(side="right")
-        tip(ctk.CTkButton(buttons, text="Refresh", width=100, height=32,
-                      font=F_STRONG, **BTN_PRIMARY,
-                      command=self.refresh), "Reads the sessions again.").pack(side="left")
-        # One session across several trips. Off, a session is one outing:
-        # the Rhino goes out, fills the ship a hold at a time, and comes
-        # back aboard. On, it carries on through the flight to a station,
-        # the sale and the trip back, until it is ticked off again.
-        self.multi = ctk.BooleanVar(
-            value=bool(self.app.settings.get("earnings_multi_session")))
-        tip(ctk.CTkCheckBox(buttons, text="Multi-session - keep one session "
-                                      "going across trips to a station",
-                        variable=self.multi, font=F_BODY,
-                        command=self.set_multi), "One session across trips to a station, instead of a new one each time the Rhino comes aboard.").pack(side="left", padx=(14, 6))
-        # A session opens on the first rig down or the first tonne refined
-        # in the Rhino, and closes on every rig up or the Rhino aboard. These
-        # are for doing it by hand: Start before anything is down, Pause for
-        # the drive to a station or a break - paused time is not in the
-        # Cr/hr - and End.
-        self.start_button = tip(ctk.CTkButton(
-            buttons, text="Start session", width=120, height=32,
-            font=F_STRONG, **BTN_SECONDARY, command=self.start_session), "Starts a session by hand. The first rig down or tonne refined starts one anyway.")
-        self.start_button.pack(side="left", padx=6)
-        self.pause_button = tip(ctk.CTkButton(
-            buttons, text="Pause", width=100, height=32, font=F_STRONG,
-            **BTN_SECONDARY, command=self.pause_session), "Stops the clock for a break or a trip; Cr/hr leaves the pause out.")
-        self.pause_button.pack(side="left", padx=6)
-        tip(ctk.CTkButton(buttons, text="End session", width=110, height=32,
-                      font=F_STRONG, **BTN_SECONDARY,
-                      command=self.end_session), "Ends the session now.").pack(side="left", padx=6)
-
-        # The table below shows one of two things: the sessions, or the
-        # prices from the last system search. Two plain buttons, the one
-        # showing lit.
-        views = ctk.CTkFrame(self, fg_color="transparent")
-        views.pack(fill="x", padx=12, pady=(0, 2))
+        # Sessions and System prices share one table: it shows the
+        # sessions, or the prices from the last system search.
         self._view = "sessions"
         self._system_answer, self._system_asked = None, {}
         self._price_sort = (None, False)
-        self.view_buttons = {}
-        for name, text in (("sessions", "Rhino sessions"),
-                           ("prices", "System prices")):
-            button = tip(ctk.CTkButton(views, text=text, width=140, height=28,
-                                   font=F_STRONG, **BTN_SECONDARY,
-                                   command=lambda n=name: self.show_view(n)), "Your Rhino sessions, or the last known prices in a system.")
-            button.pack(side="left", padx=(0, 6))
-            self.view_buttons[name] = button
 
         self.status = ctk.CTkLabel(self, text="", font=F_READOUT,
                                    text_color=DIM, anchor="w")
-        self.status.pack(fill="x", padx=14, pady=(0, 4))
-        # All-time totals, under the sessions they add up. Packed before the
-        # table, at the bottom, so a short window squeezes the table and not
-        # this line.
+        # All-time totals, under the sessions they add up.
         self.summary = ctk.CTkLabel(self, text="", font=F_READOUT,
                                     text_color=AMBER, anchor="w",
                                     justify="left")
-        self.summary.pack(side="bottom", fill="x", anchor="w", padx=14,
-                          pady=(0, 10))
         self.scroller = ScrollTable(self)
-        self.scroller.pack(fill="both", expand=True, padx=12, pady=(0, 4))
         self.table = self.scroller.inner
-        for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
-                         "<Button-4>", "<Button-5>"):
-            self.bind(sequence, self.scroller.wheel, add="+")
-        self._light_view()
+        for scroller in (self.scroller, self.sell_scroller):
+            for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
+                             "<Button-4>", "<Button-5>"):
+                self.bind(sequence, scroller.wheel, add="+")
+        settings = attr(app, "settings", None) or {}
+        self.show_page(settings.get("earnings_page"), keep=False)
         self.refresh()
         self.show_quotes()
         # Asked for straight away when there is something aboard - the
@@ -15882,24 +16576,109 @@ class EarningsWindow(ToolWindow):
         if self.app.aboard_for_sale():
             self.check_prices(quiet=True)
 
-    # -- prices in a system (#187) -----------------------------------------
+    # -- the pages (1.10038) --------------------------------------------------
 
-    def show_view(self, name):
-        """Show the sessions, or the last system search's prices."""
-        self._view = "prices" if name == "prices" else "sessions"
-        self._light_view()
-        self._paint()
-        scroller = attr(self, "scroller")
-        if scroller is not None:
-            scroller.top()
+    def show_page(self, name, keep=True):
+        """Show one of the four pages, and nothing of the other three.
 
-    def _light_view(self):
-        for name, button in (attr(self, "view_buttons") or {}).items():
+        An unknown name is This session. `keep`: remember it for next time
+        (the setting earnings_page)."""
+        page = earnings_page(name)
+        self.page = page
+        if page == "Sessions":
+            self._view = "sessions"
+        elif page == "System prices":
+            self._view = "prices"
+        for other, button in (attr(self, "page_buttons") or {}).items():
             try:
-                button.configure(**(BTN_PRIMARY if name == self._view
-                                    else BTN_SECONDARY))
+                button.configure(**(BTN_PRIMARY if other == page else BTN_SECONDARY))
             except Exception:
                 pass
+        self._arrange()
+        # The status line is the page's: what another page said is not news.
+        self.say("")
+        if page in ("Sessions", "System prices"):
+            self._paint()
+            self.scroller.top()
+        settings = attr(self.app, "settings", None)
+        if keep and isinstance(settings, dict) and settings.get("earnings_page") != page:
+            settings["earnings_page"] = page
+            save_settings(settings)
+
+    def _arrange(self):
+        """Pack the page on show in the order every tool has: its own
+        controls, the status line, then its table."""
+        for widget in (self.session_page, self.sell_bar, self.sell_scroller,
+                       self.sessions_bar, self.prices_bar, self.status,
+                       self.summary, self.scroller):
+            widget.pack_forget()
+        page = self.page
+        own = {"This session": self.session_page, "Where to sell": self.sell_bar,
+               "Sessions": self.sessions_bar, "System prices": self.prices_bar}[page]
+        own.pack(fill="x", padx=12, pady=(0, 4))
+        self.status.pack(fill="x", padx=14, pady=(0, 4))
+        if page == "Where to sell":
+            self.sell_scroller.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+        elif page in ("Sessions", "System prices"):
+            if page == "Sessions":
+                # Packed before the table, at the bottom, so a short window
+                # squeezes the table and not this line.
+                self.summary.pack(side="bottom", fill="x", anchor="w", padx=14,
+                                  pady=(0, 10))
+            self.scroller.pack(fill="both", expand=True, padx=12, pady=(0, 4))
+
+    def _lay_cards(self, event=None):
+        """The cards in as many columns as the width takes: one row on a
+        wide window, two or more on a narrow one. Must not raise."""
+        try:
+            width = event if isinstance(event, int) else int(event.width)
+            cards = list((attr(self, "cards", None) or {}).values())
+            if not cards or width < 2:
+                return
+            rows = -(-len(cards) // max(1, width // CARD_MIN_W))
+            columns = -(-len(cards) // rows)
+            if columns == self._card_columns:
+                return
+            self._card_columns = columns
+            for index, (box, _value) in enumerate(cards):
+                box.grid(row=index // columns, column=index % columns,
+                         padx=(0, 8), pady=(0, 8), sticky="nsew")
+            for column in range(len(cards)):
+                self.card_row.grid_columnconfigure(
+                    column, weight=1 if column < columns else 0,
+                    uniform="card" if column < columns else "")
+        except Exception:
+            pass
+
+    def _table_say(self, text, colour=None):
+        """The table's own word on the status line - only while the table
+        is on show. On This session, "6 Rhino session(s)" is not news."""
+        if attr(self, "page", "Sessions") in ("Sessions", "System prices"):
+            self.say(text, colour)
+
+    def _rewrap(self, event=None):
+        """The hold line and the note under the cards wrap at the page's
+        width, not off the edge of a narrow window. Must not raise."""
+        try:
+            wrap = max(300, int(event.width) - 20)
+            for label in (self.holding, self.session_note):
+                label.configure(wraplength=wrap)
+        except Exception:
+            pass
+
+    def show_view(self, name):
+        """The table's two pages by their old names: the sessions, or the
+        last system search's prices."""
+        self.show_page("System prices" if name == "prices" else "Sessions")
+
+    def copy_session(self):
+        """This session as text, ready to paste into Discord."""
+        try:
+            lines = current_session_lines(self.app, attr(self, "_rows", None) or [])
+            put_on_clipboard(self, "\n".join(line for line in lines if line))
+        except Exception as exc:
+            return self.say("Could not copy the session: %s" % exc, RED)
+        return self.say("Copied the session - paste it straight into Discord.", GREEN)
 
     def _system_wanted(self):
         """The system typed, or the one the game has us in."""
@@ -16021,14 +16800,14 @@ class EarningsWindow(ToolWindow):
                              text_color=DIM, justify="left",
                              wraplength=820).grid(row=0, column=0, padx=14,
                                                   pady=18, sticky="w")
-                return self.say("No system searched yet.", AMBER)
+                return self._table_say("No system searched yet.", AMBER)
             rows = self._price_rows()
             if not rows:
                 ctk.CTkLabel(table, text=system_price_empty(answer),
                              font=F_BODY, text_color=DIM, justify="left",
                              wraplength=820).grid(row=0, column=0, padx=14,
                                                   pady=18, sticky="w")
-                return self.say(system_price_status(answer, rows), AMBER)
+                return self._table_say(system_price_status(answer, rows), AMBER)
             column_now, backwards = attr(self, "_price_sort") or (None, False)
             for column, name in enumerate(PRICE_HEADERS):
                 text = name
@@ -16049,7 +16828,7 @@ class EarningsWindow(ToolWindow):
                                  padx=8, pady=2, sticky="w")
             colour = GREEN if answer.get("status") in ("live", "cached", "off",
                                                        "not configured") else AMBER
-            self.say(system_price_status(answer, rows), colour)
+            self._table_say(system_price_status(answer, rows), colour)
         except Exception as exc:
             self.say("Could not draw the prices: %s" % exc, RED)
 
@@ -16171,13 +16950,20 @@ class EarningsWindow(ToolWindow):
             count, why = 0, "Could not ask: %s" % exc
         if not count:
             if not quiet:
-                self.say(why, AMBER)
+                self._sell_say(why, AMBER)
             return 0
-        self.say("Asking for the best price for %d commodit%s within %d Ly "
-                 "of %s..." % (count, "y" if count == 1 else "ies",
-                               self._radius(),
-                               self.app.quote_asked.get("system", "here")))
+        self._sell_say("Asking for the best price for %d commodit%s within %d Ly "
+                       "of %s..." % (count, "y" if count == 1 else "ies",
+                                     self._radius(),
+                                     self.app.quote_asked.get("system", "here")))
         return count
+
+    def _sell_say(self, text, colour=None):
+        """The price check's word on the status line - only on Where to
+        sell, whose news it is. The check the window runs by itself when
+        something is aboard used to say "Asking..." over This session."""
+        if attr(self, "page", "Where to sell") == "Where to sell":
+            self.say(text, colour)
 
     def show_quotes(self):
         """Draw what has come back so far. Must not raise."""
@@ -16205,8 +16991,8 @@ class EarningsWindow(ToolWindow):
             if not rows:
                 problem = attr(self.app, "quote_problem")
                 if problem:
-                    self.say("Could not get prices - the server said: %s"
-                             % problem, AMBER)
+                    self._sell_say("Could not get prices - the server said: %s"
+                                   % problem, AMBER)
                 return
             headings = ("Commodity", "Aboard", "Galactic avg (est.)",
                         "In this system",
@@ -16390,11 +17176,11 @@ class EarningsWindow(ToolWindow):
                              text_color=DIM, justify="left",
                              wraplength=820).grid(row=0, column=0, padx=14,
                                                   pady=18, sticky="w")
-                return self.say("No Rhino sessions recorded yet.", AMBER)
+                return self._table_say("No Rhino sessions recorded yet.", AMBER)
             self._headings()
             for index, row in enumerate(rows, start=1):
                 self._row(index, row)
-            self.say("%d Rhino session(s)." % len(rows), GREEN)
+            self._table_say("%d Rhino session(s)." % len(rows), GREEN)
         except Exception as exc:
             self.say("Could not draw the ledger: %s" % exc, RED)
 
@@ -16500,15 +17286,26 @@ class EarningsWindow(ToolWindow):
                               "running.")
 
     def _show_current(self):
-        """The current session's three lines. Must not raise."""
+        """The session on show: the line under the title, the cards and the
+        line under them (1.10038). Must not raise."""
         try:
-            lines = current_session_lines(self.app, attr(self, "_rows", None) or [])
+            view = current_session(self.app, attr(self, "_rows", None) or [])
         except Exception as exc:
-            lines = ("Current session: could not be worked out (%s)." % exc, "", "")
-        for label, text in zip((attr(self, "current"), attr(self, "current_value"),
-                                attr(self, "current_merits")), lines):
-            if label is not None:
-                label.configure(text=text)
+            view = {"head": "Current session: could not be worked out (%s)." % exc,
+                    "cards": [], "note": ""}
+        cards = attr(self, "cards", None) or {}
+        try:
+            current = attr(self, "current")
+            if current is not None:
+                current.configure(text=view["head"])
+            for name, text, colour in view["cards"]:
+                if name in cards:
+                    cards[name][1].configure(text=text, text_color=colour)
+            note = attr(self, "session_note")
+            if note is not None:
+                note.configure(text=view["note"])
+        except Exception:
+            pass
 
     def _holding(self):
         """The live line: what is aboard, and what it would fetch.
@@ -16760,7 +17557,7 @@ LAND_HEADERS = ("Body", "Est. value", "Why", "Ls", "Locations", "Best bets",
                 "Known sites", "Yours", "Swept", "Ground")
 # Wrap widths per column, so the prose columns share the width instead of
 # each taking the full CELL_WRAP and pushing the table off the screen.
-LAND_WRAP = {"Why": 220, "Best bets": 230, "Known sites": 200, "Ground": 170}
+LAND_WRAP = {"Why": 250, "Best bets": 230, "Known sites": 200, "Ground": 170}
 
 LAND_FOOTNOTE = (
     "Est. value is an estimate, not a promise. It is the known sites still "
@@ -17091,7 +17888,8 @@ class LandWindow(ToolWindow):
         for column, cell in enumerate(self._land_row(row)):
             text, colour, _key = EarningsWindow._cell(cell)
             cell_label(self.table, index, column, text, colour,
-                       LAND_WRAP.get(LAND_HEADERS[column], CELL_WRAP))
+                       LAND_WRAP.get(LAND_HEADERS[column], CELL_WRAP),
+                       full=cell_full(cell))
         row_buttons(self.table, index,
                     [(label, lambda w=what, t=text: self.copy_text(w, t), False)
                      for label, what, text in self._copies(row)])
@@ -17134,7 +17932,9 @@ class LandWindow(ToolWindow):
             (row["short"] or row["body"], tier_colour, row["short"].lower()),
             (credits_text(row["value"]) + " Cr" if row.get("value") else "-",
              tier_colour, row.get("value") or 0),
-            (row.get("note") or "", tier_colour, row.get("tier", 3)),
+            # A few words; the sentence is the tooltip and the copy (1.10038).
+            (row.get("why") or row.get("note") or "", tier_colour,
+             row.get("tier", 3), row.get("note") or ""),
             ("{:,.0f}".format(ls) if ls is not None else "-", None,
              ls if ls is not None else ""),
             (where, None if locations is not None else AMBER,
@@ -17155,7 +17955,7 @@ class LandWindow(ToolWindow):
     def _copies(self, row):
         return [("body", "the body name", row["body"]),
                 ("row", "this body",
-                 " | ".join(EarningsWindow._cell(c)[0].replace("\n", " ")
+                 " | ".join(cell_full(c).replace("\n", " ")
                             for c in self._land_row(row)))]
 
     # -- sorting and copying --------------------------------------------------
@@ -17198,7 +17998,7 @@ class LandWindow(ToolWindow):
             return ""
         lines = ["Where to land - %s" % self._system(), " | ".join(LAND_HEADERS)]
         for row in rows:
-            lines.append(" | ".join(EarningsWindow._cell(c)[0].replace("\n", " ")
+            lines.append(" | ".join(cell_full(c).replace("\n", " ")
                                     for c in self._land_row(row)))
         return "\n".join(lines)
 
@@ -17554,6 +18354,22 @@ MERITS_TIP = ("Estimated from your own sales, learnt from your journals as "
               "you play. Frontier publish no formula, so until %d sales have "
               "been seen this shows \u2014." % SV.MERIT_MIN_PAIRS)
 
+# This session's numbers, one stat card each, in reading order (1.10038).
+SESSION_CARDS = ("Time", "Mined", "t/hr", "Est. value", "Cr/hr", "Merits earned",
+                 "Merits/hr")
+SESSION_CARD_TIPS = {
+    "Time": "How long the session has run, to now. Paused time is left out.",
+    "Mined": "Tonnes the Rhino has refined this session.",
+    "t/hr": "Tonnes refined an hour: what the digging itself is doing.",
+    "Est. value": "What is sold, plus what is still aboard at the best price "
+                  "that can be trusted. The line under the cards says which.",
+    "Cr/hr": "The estimated value, an hour.",
+    "Merits earned": "The Powerplay merits the game paid for this session's sales.",
+    "Merits/hr": MERITS_TIP,
+}
+# A card with no figure yet.
+CARD_NONE = "\u2014"
+
 
 def session_merits(rate, lines, sold, earned):
     """Powerplay merits a session's credits are estimated to earn, or None
@@ -17586,16 +18402,31 @@ def session_merits(rate, lines, sold, earned):
 
 def current_session_lines(app, rows=(), now=None):
     """(headline, value, merits) for the Rhino session in progress - or,
-    with none open, the last one, and it says so. Never raises."""
+    with none open, the last one, and it says so. The session as text: what
+    This session's Copy takes. Never raises."""
+    return current_session(app, rows, now)["lines"]
+
+
+def current_session(app, rows=(), now=None):
+    """The Rhino session Earnings leads with: the one in progress or, with
+    none open, the last one (1.10038). A dict:
+
+    head   one line under the window's title - which session, what is sold
+    cards  [(name, figure, colour)] in SESSION_CARDS order
+    note   one line under the cards: what the estimated value rests on
+    lines  the session as three lines of text (current_session_lines)
+    """
     books = attr(app, "earnings")
     live = getattr(books, "rhino", None) if books is not None else None
     run, label = live, "CURRENT SESSION"
     if run is None:
         done = [r for r in rows or () if str(r.get("closed") or "").strip()]
         if not done:
-            return ("CURRENT SESSION: none running. One starts on your first "
+            none = ("CURRENT SESSION: none running. One starts on your first "
                     "rig down, the first tonne the Rhino refines, or Start "
-                    "session.", "", "")
+                    "session.")
+            return {"head": none, "lines": (none, "", ""), "note": "",
+                    "cards": [(name, CARD_NONE, DIM) for name in SESSION_CARDS]}
         run = max(done, key=lambda r: SV._epoch(r.get("started")))
         label = "LAST SESSION (ended %s)" % str(run.get("ended") or "")[:16].replace("T", " ")
     else:
@@ -17631,7 +18462,30 @@ def current_session_lines(app, rows=(), now=None):
               else "Powerplay merits earned: none yet")
     merits += ("   ~%s/hr (estimated from your own sales)"
                % "{:,}".format(int(round(rate))) if rate else "")
-    return head, value, merits
+    worth = est["value"] > 0
+    cards = [
+        ("Time", duration_text(est["hours"]), TEXT),
+        ("Mined", "%d t" % est["tonnes"], TEXT),
+        ("t/hr", "%.1f" % est["t_hr"], TEXT),
+        ("Est. value", credits_text(est["value"]) + " Cr" if worth else CARD_NONE,
+         GREEN if worth else DIM),
+        ("Cr/hr", credits_text(est["cr_hr"]) if worth else CARD_NONE,
+         GREEN if worth else DIM),
+        ("Merits earned", "{:,}".format(earned) if earned else "none yet",
+         GREEN if earned else DIM),
+        ("Merits/hr", "~{:,}".format(int(round(rate))) if rate else CARD_NONE,
+         TEXT if rate else DIM),
+    ]
+    if worth:
+        note = "Est. value and Cr/hr: %s." % basis
+    elif est["tonnes"]:
+        note = ("No price known for what is mined yet - open a commodity "
+                "market, or Check prices on Where to sell.")
+    else:
+        note = ""
+    sold = ("%s   sold so far %s Cr" if live is not None else "%s   sold %s Cr")
+    return {"head": sold % (label, credits_text(est["earned"])),
+            "lines": (head, value, merits), "cards": cards, "note": note}
 
 
 def session_merits_earned(app, row):
@@ -17654,6 +18508,7 @@ TOOL_KEYS = {"FindWindow": "find", "SitesWindow": "sites", "LandWindow": "land",
 LB_TAG = "leaderboard"
 LB_OPTIN_TAG = "leaderboard-optin"
 LB_MERITS_TAG = "leaderboard-merits"
+LB_STANDING_TAG = "leaderboard-standing"
 
 # Its columns, in reading order: what, what it pays, where, then the detail.
 # Markets is how many in the system buy it - with Best market only ticked,
@@ -17662,8 +18517,8 @@ PRICE_HEADERS = ("Commodity", "Sell", "Station", "Type", "Pad", "Demand",
                  "Last known", "Source", "Markets")
 
 SYSTEM_PRICE_ADVICE = (
-    "Type a system into Prices in a system - or leave it blank for the one "
-    "you are in - pick commodities if you only want some, and press Search "
+    "Type a system name into System - or leave it blank for the one you "
+    "are in - pick commodities if you only want some, and press Search "
     "system.\n\nYou get the last known sell price of each commodity at every "
     "market there: what commanders running EDSMT read off their own markets, "
     "and what the market index last saw - whichever is newer, and it says "
@@ -18796,6 +19651,112 @@ class SavedRow:
         self.say("Choose a saved search to delete first.", AMBER)
 
 
+class SavedMenu:
+    """Find's saved searches as one Saved button beside Reset (1.10038). Its
+    menu saves the filters as they stand under a name, loads a saved search
+    - with the search it was saved on - or deletes one. What happened goes
+    on the window's status line; there is no row of its own any more.
+
+    The searches are in the app's searches.json, as before. `ask` gives the
+    name for a new one - a small box asks for it - and can be replaced."""
+
+    def __init__(self, parent, app, key, snapshot, restore, say):
+        self.app, self.key = app, key
+        self.snapshot, self.restore, self.say = snapshot, restore, say
+        self.ask = self._ask_name
+        self.menu = self.delete_menu = None
+        self.button = tip(ctk.CTkButton(
+            parent, text="Saved", width=90, height=32, font=F_STRONG,
+            **BTN_SECONDARY, command=self.open),
+            "Save these filters under a name, load a saved search, or delete one.")
+
+    def book(self):
+        return attr(self.app, "searches")
+
+    def names(self):
+        book = self.book()
+        return list(book.names(self.key)) if book is not None else []
+
+    def build_menu(self):
+        """The menu as it stands now: Save these filters, each saved search
+        (choose one to load it), then Delete with each of them again."""
+        for old in (self.delete_menu, self.menu):
+            try:
+                if old is not None:
+                    old.destroy()
+            except Exception:
+                pass
+        style = dict(tearoff=0, bg=PANEL, fg=TEXT, activebackground=ORANGE,
+                     activeforeground=VOID, disabledforeground=DIM, font=F_BODY)
+        menu = self.menu = tk.Menu(self.button, **style)
+        menu.add_command(label="Save these filters...", command=self.save)
+        self.delete_menu = tk.Menu(menu, **style)
+        names = self.names()
+        if not names:
+            menu.add_command(label="No saved searches yet", state="disabled")
+            return menu
+        menu.add_separator()
+        for name in names:
+            menu.add_command(label=name, command=lambda n=name: self.load(n))
+            self.delete_menu.add_command(label=name,
+                                         command=lambda n=name: self.delete(n))
+        menu.add_separator()
+        menu.add_cascade(label="Delete", menu=self.delete_menu)
+        return menu
+
+    def open(self):
+        menu = self.build_menu()
+        try:
+            menu.tk_popup(self.button.winfo_rootx(),
+                          self.button.winfo_rooty() + self.button.winfo_height())
+        except Exception:
+            pass
+        finally:
+            try:
+                menu.grab_release()
+            except Exception:
+                pass
+
+    @staticmethod
+    def _ask_name():
+        dialog = ctk.CTkInputDialog(
+            title="EDSMT - Save this search", text="A name for these filters:",
+            font=F_BODY, fg_color=VOID, text_color=TEXT, button_fg_color=ORANGE,
+            button_hover_color=AMBER, button_text_color=VOID,
+            entry_fg_color=STEEL, entry_border_color=RULE, entry_text_color=TEXT)
+        return dialog.get_input()
+
+    def save(self, name=None):
+        book = self.book()
+        if book is None:
+            return self.say("Saved searches are not available in this build.", AMBER)
+        if name is None:
+            name = self.ask()
+        name = book.tidy(name)
+        if not name:
+            return self.say("Not saved - a saved search needs a name.", AMBER)
+        if not book.put(name, self.snapshot(), window=self.key):
+            return self.say("Could not save it - %d saved searches is the most "
+                            "kept." % FD.SEARCHES_MAX, RED)
+        self.say('Saved "%s".' % name, GREEN)
+
+    def load(self, name):
+        book = self.book()
+        state = book.get(name) if book is not None else None
+        if state is None:
+            self.say('No saved search is called "%s".' % name, AMBER)
+            return False
+        self.restore(state)
+        self.say('Loaded "%s".' % name, GREEN)
+        return True
+
+    def delete(self, name):
+        book = self.book()
+        if book is not None and book.delete(name):
+            return self.say('Deleted "%s".' % name, GREEN)
+        self.say('No saved search is called "%s".' % name, AMBER)
+
+
 class FindFilters:
     """Find's second set of filters, at the level of the sites that built
     this kind of search (1.10035): a distance window, pad size, price age,
@@ -18804,76 +19765,101 @@ class FindFilters:
     searches and Reset. Which rows stay is finder.why_hidden's decision; the
     count line gives the reason for every row hidden."""
 
-    def __init__(self, window, parent):
+    def __init__(self, window, parent, lead=None, actions=None):
         self.window = window
         self.counts = {}
         self._building = True
-        panel = ctk.CTkFrame(parent, fg_color="transparent")
-        panel.pack(fill="x", padx=12, pady=(0, 4))
+        # 1.10038: the two rows go straight into Find's filter box, so the
+        # window can show them for Sell prices only, and From goes on the
+        # `lead` row beside Within. The saved searches are a menu button in
+        # `actions`, the row with Search on it.
+        self.labels, self.rows, self.parts = {}, [], []
 
         def line():
-            row = ctk.CTkFrame(panel, fg_color="transparent")
-            row.pack(fill="x", pady=(0, 4))
+            row = ctk.CTkFrame(parent, fg_color="transparent")
+            row.pack(fill="x", pady=(0, 8))
+            self.rows.append(row)
+            self.parts.append([])
             return row
 
+        def part(key, *widgets):
+            self.parts[-1].extend((widget, key) for widget in widgets)
+
         one = line()
-        filter_label(one, "From", first=True)
+        home = one if lead is None else lead
+        self.labels["from"] = filter_label(home, "From", first=True)
         self.far_box = filter_combo(
-            one, [n for n, _v in FROM_CHOICES], 96,
+            home, [n for n, _v in FROM_CHOICES], 96,
             "Only rows at least this far away, for when the close ones are no use.",
             self.changed)
-        filter_label(one, "Pad")
+        if lead is None:
+            part("from", self.labels["from"], self.far_box)
+        else:
+            # Spaced like the boxes it sits among.
+            self.labels["from"].pack(side="left")
+            self.far_box.pack(side="left", padx=(6, 14))
+        label = filter_label(one, "Pad", first=lead is not None)
         self.pad_box = filter_combo(
             one, [n for n, _k in FD.PAD_CHOICES], 120,
             "The smallest landing pad that will do. A price that does not say "
             "its pad is hidden once this is on.", self.changed)
-        filter_label(one, "Price age")
+        part("pad", label, self.pad_box)
+        label = filter_label(one, "Price age")
         self.age_box = filter_combo(
             one, [n for n, _s in FD.PRICE_AGES], 110,
             "Only prices read this recently. An undated price is hidden "
             "once this is on.", self.changed)
-        filter_label(one, "Min price")
+        part("price_age", label, self.age_box)
+        label = filter_label(one, "Min price")
         self.price_box = filter_entry(one, 90, "Only prices at least this many "
                                       "credits a tonne. 100k works.", "Cr / t",
                                       self.changed)
-        filter_label(one, "Demand")
+        part("min_price", label, self.price_box)
+        label = filter_label(one, "Demand")
         self.demand_low = filter_entry(one, 80, "Only stations that want at "
                                        "least this many tonnes.", "at least",
                                        self.changed)
-        filter_label(one, "to")
+        to = filter_label(one, "to")
         self.demand_high = filter_entry(one, 80, "Only stations that want no "
                                         "more than this many tonnes.",
                                         "at most", self.changed)
+        part("demand", label, self.demand_low, to, self.demand_high)
         two = line()
-        filter_label(two, "Station", first=True)
+        label = filter_label(two, "Station", first=True)
         self.station_box = filter_combo(
             two, [n for n, _k in FD.STATION_CHOICES], 140,
             "The kind of station. A row that does not say what it is is "
             "hidden once this is on.", self.changed)
+        part("station", label, self.station_box)
         self.carriers_off = ctk.BooleanVar(value=True)
-        tip(ctk.CTkCheckBox(
+        self.carriers_box = tip(ctk.CTkCheckBox(
             two, width=170, text="No fleet carriers", variable=self.carriers_off,
             onvalue=True, offvalue=False, font=F_BODY, checkbox_width=18,
             checkbox_height=18, border_width=2, fg_color=ORANGE,
             hover_color=AMBER, text_color=DIM, command=self.changed),
-            "Leaves fleet carrier markets out.").pack(side="left", padx=(12, 0))
-        filter_label(two, "Powerplay state")
+            "Leaves fleet carrier markets out.")
+        self.carriers_box.pack(side="left", padx=(12, 0))
+        part("carriers", self.carriers_box)
+        label = filter_label(two, "Powerplay state")
         self.power_state_box = filter_combo(
             two, FD.POWER_STATES, 120,
             "Only systems in that Powerplay state, from the systems your "
             "journal has been in. Anywhere you have not been is hidden once "
             "this is on.", self.changed)
-        filter_label(two, "Side")
+        part("power_state", label, self.power_state_box)
+        label = filter_label(two, "Side")
         self.power_side_box = filter_combo(
             two, [n for n, _k in FD.POWER_SIDES], 130,
             "Your Power's systems, another Power's, or nobody's.", self.changed)
-        filter_label(two, "Show")
+        part("power_side", label, self.power_side_box)
+        label = filter_label(two, "Show")
         self.show_box = filter_combo(
             two, [n for n, _k in FD.SHOW_CHOICES], 250,
             "All the rows, or only the five best payers - or the five "
             "nearest buyers - of each commodity.", self.changed)
-        self.saved = SavedRow(panel, window.app, "find", self.snapshot,
-                              self.restore, self.reset)
+        part("show", label, self.show_box)
+        self.saved = SavedMenu(parent if actions is None else actions, window.app,
+                               "find", self.snapshot, self.restore, window.say)
         self._building = False
 
     # -- reading the boxes ---------------------------------------------------
@@ -18882,8 +19868,9 @@ class FindFilters:
         if not self._building:
             self.window._paint()
 
-    def spec(self):
-        """The filters as finder.py takes them."""
+    def spec(self, mode=None):
+        """The filters as finder.py takes them. With a mode (1.10038), only
+        the ones that search shows: a filter out of sight does not act."""
         far = dict(FROM_CHOICES).get(self.far_box.get())
         if far is None:
             far = entry_number(self.far_box)
@@ -18891,7 +19878,7 @@ class FindFilters:
             near = DISTANCE_CHOICES.get(self.window.within.get(), 0)
         except Exception:
             near = 0
-        return FD.find_spec(
+        spec = FD.find_spec(
             from_ly=far or None, to_ly=near or None,
             pad=dict(FD.PAD_CHOICES).get(self.pad_box.get(), ""),
             age_s=dict(FD.PRICE_AGES).get(self.age_box.get(), 0),
@@ -18904,15 +19891,18 @@ class FindFilters:
             else self.power_state_box.get(),
             power=dict(FD.POWER_SIDES).get(self.power_side_box.get(), ""),
             show=dict(FD.SHOW_CHOICES).get(self.show_box.get(), ""))
+        return FD.mode_spec(spec, mode) if mode else spec
 
     def active(self):
         """The filters that are on, in plain words (for the empty-table advice)."""
-        return FD.active_filters(self.spec())
+        win = self.window
+        return FD.active_filters(self.spec(FD.mode_of_kind(win._kind)
+                                           or attr(win, "mode", None)))
 
     def narrow(self, rows, kind):
         """The rows that pass, with the reason for every one that did not
         kept in self.counts for the count line."""
-        spec = self.spec()
+        spec = self.spec(FD.mode_of_kind(kind))
         app = self.window.app
         book = attr(app, "powerbook")
         power_of = book.entry if book is not None else None
@@ -19000,13 +19990,18 @@ class FindFilters:
             "max_age": win.max_age.get(), "within": win.within.get(),
             "text": win._text(),
             "hide_worked": win._flag(win.hide_worked, True),
-            "only_verified": win._flag(win.only_verified), "sort": sort}
+            "only_verified": win._flag(win.only_verified), "sort": sort,
+            # The search it was saved on (1.10038).
+            "mode": attr(win, "mode", None) or FD.DEFAULT_MODE}
 
     def restore(self, state):
         """Put the window back as a saved search had it. Anything the saved
-        search does not mention goes back to how the window opens."""
+        search does not mention goes back to how the window opens - except
+        the search on show, which only a search saved with one changes."""
         state = state or {}
         win = self.window
+        if state.get("mode") and attr(win, "mode", None) is not None:
+            win.set_mode(state["mode"])
         self._building = True
         try:
             for box, key, fallback in (
@@ -19041,7 +20036,7 @@ class FindFilters:
 
     def reset(self):
         self.restore({})
-        self.saved.say("Every filter is back to how the window opens.", GREEN)
+        self.window.say("Every filter is back to how the window opens.", GREEN)
 
 
 BODY_FILTER_HINT = ("Search bodies by type, volcanism, gravity, temperature and "
@@ -19389,7 +20384,8 @@ class GridTable:
             for column, cell in enumerate(cells):
                 text, colour, _key = EarningsWindow._cell(cell)
                 cell_label(self.table, index, column, text, colour,
-                           self.wrap.get(self.headers[column], CELL_WRAP))
+                           self.wrap.get(self.headers[column], CELL_WRAP),
+                           full=cell_full(cell))
             if self.copy is not None:
                 line = self.line_of(cells)
                 row_buttons(self.table, index, [
@@ -19397,8 +20393,7 @@ class GridTable:
 
     @staticmethod
     def line_of(cells):
-        return " | ".join(EarningsWindow._cell(c)[0].replace("\n", " ")
-                          for c in cells)
+        return " | ".join(cell_full(c).replace("\n", " ") for c in cells)
 
     def as_text(self):
         if not self.rows:
@@ -19679,7 +20674,9 @@ class PowerplayWindow(ToolWindow):
                 (r["state"] or "-", None, r["state"]),
                 (r["goal"], self._goal_colour(r["goal"]),
                  PW.COUNTS.index(r["goal"]) if r["goal"] in PW.COUNTS else 9),
-                (r["why"], DIM, r["why"].lower())])
+                # A few words; the sentence is the tooltip and the copy.
+                (r.get("brief") or r["why"], DIM,
+                 (r.get("brief") or r["why"]).lower(), r["why"])])
         self.count_grid.show(
             SYSTEM_HEADERS, cells,
             "No systems in your Powerplay record yet. Jump around with EDSMT "

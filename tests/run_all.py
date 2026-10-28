@@ -55,6 +55,10 @@ CHECKS = [
     ("1.10036: Find past 500, merits earned on Earnings", "test_110036_find.py"),
     ("1.10036: mining bodies near me, galaxy-wide, with ground odds", "test_110036_galaxy.py"),
     ("1.10037: the results box no longer loops itself to death", "test_110037_scroll.py"),
+    ("1.10038: Find one search at a time, and any tool tab pops out", "test_110038_find.py"),
+    ("1.10038: Earnings in four pages, and short Why cells", "test_110038_earnings.py"),
+    ("1.10038: the leaderboard's three views, far from Sol, your standing", "test_110038_board.py"),
+    ("1.10038: the mining location you are in, without targeting it", "test_110038_zone.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
 # More checks kept on this machine only: EDSMT_EXTRA_CHECKS names one or more

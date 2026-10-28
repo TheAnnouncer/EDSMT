@@ -321,10 +321,12 @@ def _find():
     win = app.open_find()
     pump(4)
     try:
-        labels = [b.cget("text") for b in buttons_of(win)]
-        check("a Mining bodies button beside Best sell prices",
+        # 1.10038: the searches are segments of one switch at the top of
+        # Find, Mining bodies the last of them, after Sell prices.
+        labels = [b.cget("text") for b in buttons_of(win.mode_switch)]
+        check("a Mining bodies segment beside Sell prices",
               "Mining bodies" in labels and labels.index("Mining bodies")
-              == labels.index("Best sell prices") + 1, labels)
+              == labels.index("Sell prices") + 1, labels)
         check("its answers are routed to the window", GX.TAG in A.FIND_TAGS)
         win.within.set("250 Ly")
         win.commodity.set("Sapphire, Ruby")

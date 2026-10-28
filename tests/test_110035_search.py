@@ -941,15 +941,17 @@ def _find_window():
           "Stronghold - %s" % POWER in texts_in(finder.table)
           and "Unoccupied - no Power" in texts_in(finder.table))
 
-    # Saved searches: save, reset, load, and on disk.
+    # Saved searches: save, reset, load, and on disk. Since 1.10038 they are
+    # one Saved menu beside Reset: Save asks for the name in a small box,
+    # stood in for here, and what happened goes on the status line.
     pick(filters.pad_box, "L only")
     pick(filters.far_box, "25 Ly")
-    filters.saved.name_box.insert(0, "Big pads far off")
+    filters.saved.ask = lambda: "Big pads far off"
     filters.saved.save()
     pump(2)
     check("Save keeps the filters under the name, and says so",
           "Big pads far off" in app.searches.names("find")
-          and 'Saved "Big pads far off"' in filters.saved.message.cget("text"))
+          and 'Saved "Big pads far off"' in finder.status.cget("text"))
     saved = json.load(open(os.path.join(A.DATA_DIR, FD.SEARCHES_FILE), encoding="utf-8"))
     check("in searches.json beside the other records",
           saved["searches"]["Big pads far off"]["state"]["pad"] == "L only"
@@ -966,8 +968,7 @@ def _find_window():
           filters.pad_box.get() == "L only" and stations() == "FH", (filters.pad_box.get(), stations()))
     check("a saved search survives a restart", FD.Favourites(A.DATA_DIR).get("Big pads far off")["pad"]
           == "L only")
-    filters.saved.pick_box.set("Big pads far off")
-    filters.saved.delete()
+    filters.saved.delete("Big pads far off")
     check("and Delete takes it away", "Big pads far off" not in FD.Favourites(A.DATA_DIR).items)
     filters.reset()
     finder.destroy()

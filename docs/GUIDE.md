@@ -90,8 +90,11 @@ About. Each tab scrolls on its own, and Save and Close are under all of them.
 
 **Find, My sites, Where to land, Earnings, Powerplay and Leaderboard open as
 tabs** of the main window, along the top bar with **Map** to come back. The
-one on show is lit, and it has the window's whole width. Settings → Basics →
-*Tools open as tabs* turns this off, and each opens in a window of its own.
+one on show is lit, and it has the window's whole width. **Pop out**, at the
+right of any tab's header, moves that one tool out to a window of its own as
+it stands, and **Dock** on that window brings it back. To have them all open
+as windows, the first switch on Settings → Basics, *Open Find, Earnings and
+the other tools as tabs*, turns tabs off.
 
 **There is no centre to set and no bearing to work out.** A deposit records
 where it is, and distances and directions are worked out live from wherever
@@ -183,6 +186,14 @@ the session that dug it — trading, hauling, exploration and asteroid mining
 never appear. Restarting EDSMT in the middle of one does not count anything
 twice.
 
+The window is four pages, and each shows only its own: **This session** —
+the session you are on as cards (time, tonnes, t/hr, estimated value,
+Cr/hr, merits earned and merits an hour), the hold line, and Start, Pause,
+End and Multi-session; **Where to sell** — what is aboard and where it
+sells best; **Sessions** — every session, with the all-time totals under
+the table; and **System prices** — the last known prices in a system you
+name. The page you leave it on is the one it opens on next time.
+
 **Delete** on a row takes a session out — a test run, one opened by mistake.
 Press it twice on the same row; the file before is kept as
 `sessions.csv.bak`.
@@ -212,7 +223,7 @@ average, the best in **this system**, and the **best within** the distance —
 so you can see that the station two jumps away pays more before you fly
 there. The strip in the main window quotes the total too.
 
-**Prices in a system** looks up any system you name — or the one you are in,
+**System prices** looks up any system you name — or the one you are in,
 if you leave it blank — and lists the **last known sell price** of each
 commodity at every market there: the station, its type and largest pad, the
 demand, **when** the price was last seen and **whose** reading it is — another
@@ -220,8 +231,8 @@ commander's market read or the market index, whichever is newer. Tick the
 commodities you want (as many as you like) or leave it on **Any** for all
 thirteen. **Best market only** shows the best station for each commodity
 with how many markets there buy it; untick it to see every one. The answer
-opens on the **System prices** view of the table; **Rhino sessions** puts the
-sessions back, and **Copy all** copies whichever is showing.
+opens the **System prices** page; **Copy all** on each page copies that
+page's table.
 
 **Tonnes mined per deposit.** Every tonne refined is counted against the
 marked deposit it came from, and the selected deposit shows what it has given,
@@ -466,7 +477,7 @@ came from there. Your own journal always wins over the public database.
 | Column | Where it comes from |
 |---|---|
 | **Est. value** | the known sites still intact at what they carry, plus each location nobody has shared yet at what a site on that kind of ground usually carries |
-| **Why** | one line: known sites intact, locations nobody has shared, not mapped yet, or nothing found |
+| **Why** | a few words: known sites intact, locations nobody has shared, not mapped yet, or nothing found — rest the mouse on it for the whole sentence, which Copy copies too |
 | **Locations** | the DSS count. *not mapped* until you map it — zero is only zero once the DSS says so |
 | **Best bets** | what sites on this kind of ground have carried, from everyone's shared finds once there are enough of them, from the commodity tables until then — the line under it says which |
 | **Known sites** | what has already been shared on that body, intact and worked out |
@@ -649,15 +660,15 @@ out goes too (see *Shared rig layouts*).
 
 **Leaderboard** on the top bar ranks the commanders who share finds: this
 week (from the Powerplay tick, Thursday 07:00 UTC), this month, last month
-and all time. Points come from finds (more when a find has rigs, amount and
-density), the first find on a body, finds staff confirm, old sites seen
-again, worked-out reports, deposits found grown back and shared rig
-layouts; the window lists them. The merits the game pays you for selling
-cargo you mined go on the board with your Power - beside the points, not
-added to them. **By Powerplay merits** ranks on those instead, and the line
-under the table totals them per Power. Everyone who shares is on it until
-they press **Leave**, and **Join** puts them back.
-
+and all time, in three views. **By points**: finds (more when a find has
+rigs, amount and density), the first find on a body, finds staff confirm,
+old sites seen again, worked-out reports, deposits found grown back and
+shared rig layouts, plus more for finds far from Sol (+5 beyond 500 Ly, +10
+beyond 2,000, +20 beyond 10,000, +30 beyond 25,000). **Powerplay overall**:
+your Power, rank and total merits as the game reports them, read from the
+journal. **Merits from mining**: what the game paid for selling what you
+mined. Each view has its own Powers table. Everyone who shares is on it
+until they press **Leave**; **Join** puts them back.
 ### Mining bodies galaxy-wide
 
 **Find → Mining bodies** lists bodies near you that carry mining
@@ -673,14 +684,19 @@ Mark one of your worked-out deposits full again and the map learns how long
 deposits take to come back; every depleted deposit then says what those
 reports measured. Shared rig layouts also say how close two rigs have gone.
 
-Find is filtered by commodity, minimum rigs, how many different
-commodities sit in one patch, and how recently anybody confirmed it, and it
-lists every match, not the first 500. Every
-row has a **Distance** column — light years from where you are now, whether
-or not you picked a radius.
+Find is one search at a time: the switch at the top chooses **Sites**,
+**Still there**, **Deposits**, **Sell prices** or **Mining bodies**, only that
+search's filters are on screen, and **Search** (or Enter in any box) runs it.
+It opens on the search it was left on. Sites, Still there and Deposits are
+filtered by commodity, minimum rigs, how many different commodities sit in
+one patch, how recently anybody confirmed it and a system or body name, and
+they list every match, not the first 500. Every row has a **Distance** column
+— light years from where you are now, whether or not you picked a radius.
+**Saved**, beside Reset, keeps a set of filters under a name, with the search
+they belong to.
 
 **Tick several commodities.** Every commodity box in a search — Find, Where
-to land, My sites and Prices in a system — opens a list of tick boxes. Click
+to land, My sites and System prices — opens a list of tick boxes. Click
 one, click another, click a ticked one again to take it off; **Any** clears
 them. Or type: `Monazite, Bast` and Enter ticks Bastnäsite beside it. The
 search then finds anything carrying **any** of the ticked commodities.
@@ -690,9 +706,9 @@ not, and Frontier have said they "regenerate at a very slow rate", so a site
 nobody has touched in three months sinks below a smaller one confirmed last
 week.
 
-### Best sell prices
+### Sell prices
 
-**Find → Best sell prices** answers *where does this actually sell*, nearest
+**Find → Sell prices** answers *where does this actually sell*, nearest
 first, with the distance in light years on every row — for every commodity
 you ticked, in one table. It combines live market data with prices read at
 markets in other commanders' games, and says which is which.

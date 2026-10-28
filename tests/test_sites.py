@@ -262,9 +262,13 @@ for _node in _ast.walk(_tree):
 # 1.10036: show_tab brings a tab forward inside EDSMT's own window (from a
 # click on its button, or opening it), and ToolWindow's lift and focus_force
 # only pass the call on to the tool's own window.
+# 1.10038: pop_out runs from a click on Pop out and brings the window it
+# just made forward; _paint_dock_button lifts that button above the tool's
+# own header - a widget's stacking order inside one frame, not a window.
 check("only windows opened by a click, a typed box and the key capture do",
       set(_raisers) == {"open_sites", "open_land", "_capture", "__init__", "show",
-                        "show_tab", "lift", "focus_force"},
+                        "show_tab", "lift", "focus_force", "pop_out",
+                        "_paint_dock_button"},
       _raisers)
 
 print("== every copy goes through the one clipboard writer ==")

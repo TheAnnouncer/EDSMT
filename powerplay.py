@@ -464,28 +464,33 @@ class PowerBook:
     def verdict(self, mine, sell, range_rule=None):
         """What selling goods mined in `mine` in `sell` does for the pledged
         Power: a dict with goal (Expand / Reinforce / Undermine / Nothing /
-        Unknown), why (a sentence), and the numbers it used."""
+        Unknown), why (a sentence), brief (the same in a few words, for a
+        table cell - 1.10038) and the numbers it used."""
         rule = self.range_rule if range_rule is None else bool(range_rule)
-        out = {"goal": UNKNOWN, "why": "", "ly": None, "reach": None,
+        out = {"goal": UNKNOWN, "why": "", "brief": "", "ly": None, "reach": None,
                "mine": str(mine or ""), "sell": str(sell or "")}
         power = self.power
         if not power:
             out["why"] = ("No pledge in your journal yet. The game writes it "
                           "at login - or you are not pledged, and no merits "
                           "are paid.")
+            out["brief"] = "No pledge in your journal"
             return out
         seller = self.entry(sell)
         miner = self.entry(mine)
         if seller is None:
             out["why"] = ("%s is not in your Powerplay record - you have not "
                           "been there with this build." % (sell or "That system"))
+            out["brief"] = "Not in your Powerplay record"
             return out
         if miner is None:
             out["why"] = ("Where the goods were mined (%s) is not in your "
                           "Powerplay record." % (mine or "unknown"))
+            out["brief"] = "Mining system not in record"
             return out
         if not seller.get("state") or not miner.get("state"):
             out["why"] = "The journal gave no Powerplay state for one of them."
+            out["brief"] = "No Powerplay state known"
             return out
         same = key_of(mine) == key_of(sell)
         m_power = str(miner.get("power") or "")
@@ -494,7 +499,8 @@ class PowerBook:
             if m_mine and miner["state"] in CONTROLLED:
                 out.update(goal=REINFORCE, why=(
                     "Mined and sold in %s, which your Power (%s) controls - "
-                    "that reinforces it." % (sell, miner["state"])))
+                    "that reinforces it." % (sell, miner["state"])),
+                    brief="Held by your Power (%s)" % miner["state"])
                 return out
             if m_power and not m_mine and miner["state"] in CONTROLLED:
                 anchor, gap, covered = self.nearest_anchor(sell)
@@ -507,19 +513,25 @@ class PowerBook:
                            (" - %.1f Ly from your %s %s, inside its %g Ly"
                             % (gap, anchor["state"], anchor["system"], reach))
                            if anchor and covered else
-                           " - range rule off")))
+                           " - range rule off")),
+                        brief=("Rival, inside your %s's reach" % anchor["state"]
+                               if anchor and covered else
+                               "Rival system, range rule off"))
                     return out
                 nearest = ("nearest is %s at %.1f Ly, reach %g Ly"
                            % (anchor["system"], gap, REACH_LY[anchor["state"]])
                            if anchor else "none remembered")
                 out.update(goal=NOTHING, why=(
                     "%s is %s's, but none of your Stronghold or Fortified "
-                    "systems is in range (%s)." % (sell, m_power, nearest)))
+                    "systems is in range (%s)." % (sell, m_power, nearest)),
+                    brief="Rival, out of your reach")
                 return out
             out.update(goal=NOTHING, why=(
                 "%s is %s - mined and sold there earns nothing for you." % (
                     sell, ("unoccupied" if miner["state"] == "Unoccupied"
-                           else "not in your Power's hands"))))
+                           else "not in your Power's hands"))),
+                brief=("Unoccupied: earns nothing" if miner["state"] == "Unoccupied"
+                       else "Not your Power's system"))
             return out
         # Different systems: the only thing that counts is Expand.
         if seller["state"] == "Unoccupied":
@@ -528,27 +540,32 @@ class PowerBook:
                     "To expand, mine in a Stronghold or Fortified system of "
                     "your Power. %s is %s."
                     % (mine, "not yours" if not m_mine else
-                       "only %s" % miner["state"])))
+                       "only %s" % miner["state"])),
+                    brief="Mine in Stronghold or Fortified")
                 return out
             gap = self.ly(mine, sell)
             reach = REACH_LY[miner["state"]]
             out.update(ly=gap, reach=reach)
             if gap is None:
                 out["why"] = "The distance cannot be measured: no position."
+                out["brief"] = "No position to measure"
                 out["goal"] = UNKNOWN
             elif gap <= reach:
                 out.update(goal=EXPAND, why=(
                     "%s is %.1f Ly from your %s %s - inside its %g Ly. Selling "
                     "there expands your Power." % (sell, gap, miner["state"],
-                                                   mine, reach)))
+                                                   mine, reach)),
+                    brief="%.1f Ly, inside %g Ly reach" % (gap, reach))
             else:
                 out.update(goal=NOTHING, why=(
                     "%s is %.1f Ly from %s; a %s reaches %g Ly."
-                    % (sell, gap, mine, miner["state"], reach)))
+                    % (sell, gap, mine, miner["state"], reach)),
+                    brief="%.1f Ly, beyond %g Ly reach" % (gap, reach))
             return out
         out.update(goal=NOTHING, why=(
             "Reinforce and undermine need the system you mined in; selling in "
-            "%s (%s) does not count." % (sell, seller["state"].lower())))
+            "%s (%s) does not count." % (sell, seller["state"].lower())),
+            brief="Not where it was mined")
         return out
 
     # -- provenance: will it count --------------------------------------------
@@ -790,7 +807,9 @@ def assess(book, rate, hold, here, sell=None, prices=None, origin=None):
             "everything aboard was bought or has been through a fleet "
             "carrier, and merits are paid on mined cargo only." if not counted
             else "none of what is aboard was mined where selling in %s "
-                 "counts." % sell))
+                 "counts." % sell),
+            brief="Bought or carrier cargo only" if not counted
+            else "None mined where this counts")
     counts = verdict["goal"] in COUNTS
     if not counts:
         elsewhere = []
@@ -846,7 +865,8 @@ def system_rows(book, origin, here=None, limit=300):
         verdict = book.verdict(origin, name)
         out.append({"system": name, "ly": gap, "power": entry.get("power") or "",
                     "state": entry.get("state") or "", "goal": verdict["goal"],
-                    "why": verdict["why"], "gap": verdict.get("ly"),
+                    "why": verdict["why"], "brief": verdict.get("brief") or "",
+                    "gap": verdict.get("ly"),
                     "progress": entry.get("progress"),
                     "seen": entry.get("seen") or ""})
     out.sort(key=lambda r: (r["goal"] not in COUNTS, r["ly"] is None, r["ly"] or 0.0,

@@ -1078,13 +1078,18 @@ check("and what the hold's worth of it fetches there",
       "1,296,000 Cr - stale, unconfirmed" in _cells, _cells)
 check("the price's age and source are given, in neutral words",
       any("days ago (2026-09-23) - market data" in c for c in _cells), _cells)
+# 1.10038: its numbers are the cards on This session, the page it opens on.
 check("the session you are on leads the window (1.10035)",
-      ledger.current.cget("text").startswith("CURRENT SESSION")
-      and "t mined" in ledger.current.cget("text")
-      and "sold so far" in ledger.current.cget("text"), ledger.current.cget("text"))
+      ledger.page == "This session"
+      and ledger.current.cget("text").startswith("CURRENT SESSION")
+      and "sold so far" in ledger.current.cget("text")
+      and ledger.cards["Mined"][1].cget("text").endswith(" t"),
+      (ledger.current.cget("text"), ledger.cards["Mined"][1].cget("text")))
 check("with the Powerplay merits earned, and no estimate until it has been learnt",
-      ledger.current_merits.cget("text") == "Powerplay merits earned: none yet",
-      ledger.current_merits.cget("text"))
+      ledger.cards["Merits earned"][1].cget("text") == "none yet"
+      and ledger.cards["Merits/hr"][1].cget("text") == A.CARD_NONE,
+      (ledger.cards["Merits earned"][1].cget("text"), ledger.cards["Merits/hr"][1].cget("text")))
+ledger.show_page("Sessions"); settle(4)
 check("and the all-time totals sit under the sessions table",
       ledger.summary.cget("text").startswith("All time:")
       and ledger.summary.winfo_y() > ledger.scroller.winfo_y(),
@@ -1195,6 +1200,7 @@ wait(1.0)
 ledger = app.ledger
 pick = ledger.system_pick
 ledger.deiconify(); ledger.lift(); ledger.focus_force(); settle(4)
+ledger.show_page("System prices"); settle(4)
 
 
 def click_into(box):
@@ -1209,7 +1215,7 @@ def click_into(box):
 
 click_into(pick)
 ps = pick.suggest
-check("the commodity box under Prices in a system opens its list on click",
+check("the commodity box on System prices opens its list on click",
       ps.visible() and ps.multi, (ps.visible(), ps.multi))
 # 1.10035: a tick (A.TICK_MARK) on a ticked row, nothing on the rest -
 # "[ ]" beside "[x]" read as a column of empty boxes.
@@ -1304,7 +1310,7 @@ check_wide("Search system is inside the window",
                                if _text_of(w) == "Search system"), ledger),
            lambda: "Search system is off the edge")
 ledger.show_view("sessions"); settle(6)
-check("the Rhino sessions button puts the sessions back",
+check("the Sessions page puts the sessions back (1.10038)",
       "Copy / delete" in texts_in(ledger.table) or
       any("No Rhino sessions" in t or "Rhino" in t for t in texts_in(ledger.table)),
       texts_in(ledger.table)[:6])

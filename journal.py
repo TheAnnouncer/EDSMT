@@ -433,6 +433,12 @@ class JournalWatcher:
         # The mining location the game has targeted, by its number, when
         # Status.json names one - see signal_targeted().
         self.target_signal = ""
+        # The same number, but only while Status.json still carries that
+        # Destination (1.10038): "" once the commander drops the target.
+        # target_signal above is deliberately sticky - it is what picks the
+        # signal once - so the question "is a location targeted right now"
+        # needs its own answer.
+        self.destination_signal = ""
         self._destinations_seen = set()
         # Set when the folder is there but Windows will not let us read it.
         # Said out loud rather than shown as "Elite Dangerous not running",
@@ -811,6 +817,7 @@ class JournalWatcher:
 
         if data.get("BodyName"):
             self.body = str(data["BodyName"])
+        self.destination_signal = ""
         self._read_destination(data.get("Destination"))
         if data.get("PlanetRadius"):
             self.radius_m = float(data["PlanetRadius"])
@@ -899,6 +906,7 @@ class JournalWatcher:
         found = re.search(r"#index=(\d+)", name)
         if found:
             self.target_signal = str(int(found.group(1)))
+            self.destination_signal = self.target_signal
 
     def _log_line(self, name, line):
         """Keep one line in the mining event log, quietly."""

@@ -812,9 +812,12 @@ check("and when there is nothing left to widen it says so instead",
 print("== the window can ask for what is still there ==")
 # /v1/intact is the one question a position generator can never answer, and
 # the app had no method to ask it with. The button did not exist either.
-check("there is a button for it", 'text="Still there"' in src)
+# Since 1.10038 it is a segment of the switch at the top of Find, and the
+# one Search button runs whichever search the switch is on.
+check("there is a segment of the switch for it",
+      ("intact", "Still there") in A.FD.MODES, A.FD.MODES)
 check("wired to the search, not to nothing",
-      "command=self.search_intact" in src)
+      '"intact": self.search_intact' in src)
 
 c = _Comm(); w = _Find(c)
 w.min_rigs.set("4"); w.commodity.set("Ruby")
@@ -1873,7 +1876,8 @@ WAS = {"Overlay": 30, "Find": 30, "Settings": 30, "UPDATE AVAILABLE": 30,
        "Back up now": 28, "Restore from a backup": 28,
        "Open my data folder": 28, "Check for updates": 28,
        "Test connection": 28, "Close": 28, "Copy all": 28,
-       "Search sites": 28, "Individual deposits": 28, "Best sell prices": 28}
+       # 1.10038: one Search and a Saved menu where five search buttons were.
+       "Search": 28, "Saved": 28}
 _shrunk, _measured = [], 0
 for _n in _ast.walk(_tree):
     if not (isinstance(_n, _ast.Call)

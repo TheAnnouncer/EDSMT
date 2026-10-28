@@ -43,7 +43,7 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10037"
+APP_VERSION = "1.10038"
 # The worker tag the bodies of a system come back under.
 BODIES_TAG = "bodies"
 # How a deposit was rigged (#218): sent, and the best ones read back.
@@ -790,8 +790,9 @@ def download_verified(url, dest, sha256, size, progress=None, timeout=30.0):
     digest, got = hashlib.sha256(), 0
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            final = (urllib.parse.urlsplit(response.geturl()).hostname or "").lower()
-            if final not in UPDATE_HOSTS:
+            landed = urllib.parse.urlsplit(response.geturl())
+            final = (landed.hostname or "").lower()
+            if final not in UPDATE_HOSTS or landed.scheme != "https":
                 raise RuntimeError("the download was redirected to %s - refused"
                                    % (final or "somewhere unnamed"))
             with open(part, "wb") as fh:
@@ -1514,8 +1515,8 @@ class CommunityClient:
             params["season"] = str(season)
         if cmdr:
             params["cmdr"] = str(cmdr)
-        if sort == "merits":
-            params["sort"] = "merits"
+        if sort in ("merits", "powerplay"):
+            params["sort"] = sort
         url = f"{self.base_url}/v1/leaderboard?" + urllib.parse.urlencode(params)
         headers = self._headers()
 
@@ -1652,6 +1653,19 @@ class CommunityClient:
             params["state"] = str(state).strip()
         return self._near_search("/v1/powerplay/systems", "systems", params, tag,
                                  "the community server has no Powerplay systems yet")
+
+    def report_standing(self, report: dict, tag: str = "leaderboard-standing") -> bool:
+        """The commander's Powerplay standing as the game reports it, for the
+        board: {"cmdr", "power", "rank", "merits"} (board.standing_report)."""
+        if not (self.can_read and isinstance(report, dict) and report.get("cmdr")
+                and report.get("power")):
+            return False
+        url = f"{self.base_url}/v1/leaderboard/standing"
+        headers = self._headers()
+        payload = {"cmdr": report["cmdr"], "power": report["power"],
+                   "rank": int(report.get("rank") or 0), "merits": int(report.get("merits") or 0)}
+        self.worker.submit(tag, lambda: json.dumps(post_json(url, payload, headers=headers)))
+        return True
 
     def report_merits(self, report: dict, tag: str = "leaderboard-merits") -> bool:
         """Merits the game paid for selling mined cargo, for the board:

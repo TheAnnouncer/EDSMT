@@ -12,10 +12,13 @@ import json
 
 SEASONS = (("This week", "week"), ("This month", ""), ("Last month", "previous"),
            ("All time", "all"))
-VIEWS = (("By points", "points"), ("By Powerplay merits", "merits"))
-HEADERS = ("Rank", "Commander", "Power", "Points", "Merits", "Finds",
-           "First on a body", "Confirmed", "Old sites seen", "Worked-out reports",
-           "Regrowth", "Rig layouts")
+VIEWS = (("By points", "points"), ("Powerplay overall", "powerplay"),
+         ("Merits from mining", "merits"))
+HEADERS = ("Rank", "Commander", "Power", "PP rank", "PP merits", "Points", "Merits",
+           "Finds", "Far from Sol", "First on a body", "Confirmed", "Old sites seen",
+           "Worked-out reports", "Regrowth", "Rig layouts")
+# Finds far from Sol earn more (1.10038): light years from Sol, extra points.
+SOL_BANDS = ((500, 0), (2000, 5), (10000, 10), (25000, 20), (None, 30))
 # The Powerplay week turns at the cycle tick, Thursday 07:00 UTC.
 TICK_WEEKDAY, TICK_HOUR = 3, 7
 ROW_LIMIT = 50
@@ -104,7 +107,10 @@ def points_words(points=None):
             "a site nobody had seen for a week, %(report)d a worked-out report "
             "(+%(agreed)d when another commander agrees), %(regrowth)d for "
             "finding a worked-out deposit grown back, %(layout)d a shared rig "
-            "layout." % p)
+            "layout. Far from Sol: +5 for a find 500 Ly or more out, +10 past "
+            "2,000, +20 past 10,000, +30 past 25,000. Powerplay overall is your "
+            "rank and total merits as the game reports them; Merits from mining "
+            "is what selling mined cargo paid." % p)
 
 
 def parse(message):
@@ -142,9 +148,13 @@ def cells(answer, cmdr=""):
         out.append([("%d" % rank if rank else "-", tone, rank or 10 ** 6),
                     (str(r.get("cmdr") or ""), tone, str(r.get("cmdr") or "").lower()),
                     (str(r.get("power") or "-"), tone, str(r.get("power") or "~").lower()),
+                    ("%d" % _int(r.get("pp_rank")) if _int(r.get("pp_rank")) else "-", tone,
+                     _int(r.get("pp_rank")) or 10 ** 6),
+                    ("{:,}".format(_int(r.get("pp_merits"))), tone, _int(r.get("pp_merits"))),
                     ("{:,}".format(_int(r.get("points"))), tone, _int(r.get("points"))),
                     ("{:,}".format(_int(r.get("merits"))), tone, _int(r.get("merits"))),
                     ("%d" % _int(r.get("finds")), tone, _int(r.get("finds"))),
+                    ("%d" % _int(r.get("far")), tone, _int(r.get("far"))),
                     ("%d" % _int(r.get("first_bodies")), tone, _int(r.get("first_bodies"))),
                     ("%d" % _int(r.get("verified")), tone, _int(r.get("verified"))),
                     ("%d" % _int(r.get("confirmations")), tone, _int(r.get("confirmations"))),
@@ -185,24 +195,46 @@ def board_words(answer, now=None):
         return "Nobody has joined the board yet - %s." % season
     return "%s: %d commander%s on the board, %d %s." % (
         season[:1].upper() + season[1:], on, "" if on == 1 else "s", ranked,
-        "with merits" if answer.get("sort") == "merits" else "with points")
+        {"merits": "with merits from mining", "powerplay": "with a Powerplay standing"
+         }.get(answer.get("sort"), "with points"))
 
 
 def powers_words(answer, now=None):
-    """One line: merits paid for mined cargo this season, per Power."""
+    """One line per view: the Powers by finds and points, by the game's
+    merits (Powerplay overall), or by merits from mining."""
     answer = answer or {}
     if answer.get("missing"):
         return ""
-    powers = [p for p in answer.get("powers") or () if isinstance(p, dict)
-              and _int(p.get("merits")) > 0 and str(p.get("power") or "").strip()]
     season = season_words(answer.get("season"), now, answer.get("week_start"))
+    sort = answer.get("sort") or "points"
+    powers = [p for p in answer.get("powers") or () if isinstance(p, dict)
+              and str(p.get("power") or "").strip()
+              and (_int(p.get("points")) if sort == "points" else _int(p.get("merits"))) > 0]
     if not powers:
-        return "Powers: no merits from mining for %s yet." % season
-    return "Powers, %s, merits from mining: %s." % (season, "  |  ".join(
-        "%s %s (%d CMDR%s)" % (p["power"], "{:,}".format(_int(p.get("merits"))),
-                               _int(p.get("commanders")),
-                               "" if _int(p.get("commanders")) == 1 else "s")
+        return "Powers: %s for %s yet." % ({
+            "powerplay": "no Powerplay standings reported",
+            "points": "no finds with a Power behind them"}.get(
+                sort, "no merits from mining"), season)
+    label = {"powerplay": "by the game's merits", "merits": "merits from mining"
+             }.get(sort, "by finds and points")
+    return "Powers, %s, %s: %s." % (season, label, "  |  ".join(
+        "%s %s (%d CMDR%s)" % (
+            p["power"],
+            ("{:,} pts, {:,} finds".format(_int(p.get("points")), _int(p.get("finds")))
+             if sort == "points" else "{:,}".format(_int(p.get("merits")))),
+            _int(p.get("commanders")), "" if _int(p.get("commanders")) == 1 else "s")
         for p in powers))
+
+
+def standing_report(watcher, cmdr=""):
+    """What goes to the board about the commander's Powerplay standing, from
+    the journal's Powerplay event: None until the game has said."""
+    name = str(cmdr or "").strip()
+    power = str(getattr(watcher, "power", "") or "").strip()
+    rank, merits = getattr(watcher, "power_rank", None), getattr(watcher, "power_merits", None)
+    if not (name and power) or rank is None or merits is None:
+        return None
+    return {"cmdr": name, "power": power, "rank": max(0, _int(rank)), "merits": max(0, _int(merits))}
 
 
 def merits_report(note, power, cmdr):

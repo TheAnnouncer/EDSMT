@@ -415,13 +415,17 @@ check("and Powerplay merits an hour from his own rate, after the merits earned (
 app.merits = SV.MeritRate()
 check("not learnt yet, no estimate - only what was earned",
       A.current_session_lines(app, [], now=NOW)[2] == "Powerplay merits earned: none yet")
-check("the window builds the three lines at the top, merits with its note",
-      "self.current = ctk.CTkLabel(top" in SRC and "MERITS_TIP)" in SRC
-      and SRC.index("self.current = ctk.CTkLabel(top") < SRC.index("self.sell_title"))
+# 1.10038: the line under the title, then the session's numbers as cards -
+# the merits card with its note - before anything about selling.
+_ew = SRC.split("class EarningsWindow")[1].split("\nclass ")[0]
+check("the window leads with the session: its line at the top, then its cards, merits with their note",
+      "self.current = ctk.CTkLabel(top" in _ew and '"Merits/hr": MERITS_TIP' in SRC
+      and _ew.index("self.current = ctk.CTkLabel(top") < _ew.index("self.cards = {}")
+      < _ew.index("self.sell_title"))
 check("and the all-time totals go under the table",
-      'self.summary.pack(side="bottom"' in SRC
-      and SRC.index('self.summary.pack(side="bottom"') < SRC.index(
-          "self.scroller = ScrollTable(self)\n        self.scroller.pack(fill=\"both\", expand=True, padx=12, pady=(0, 4))"))
+      'self.summary.pack(side="bottom"' in _ew
+      and _ew.index('self.summary.pack(side="bottom"') < _ew.index(
+          'self.scroller.pack(fill="both", expand=True, padx=12, pady=(0, 4))'))
 
 # Left open while he mines, the current session moves by itself - it was
 # drawn once, when the window opened, and stood still after that.
@@ -430,22 +434,24 @@ class _Said:
     def configure(self, **kw): self.text = kw.get("text", self.text)
 lw = A.EarningsWindow.__new__(A.EarningsWindow)
 lw.app = app
-lw.current, lw.current_value, lw.current_merits, lw.holding = _Said(), _Said(), _Said(), _Said()
+lw.current, lw.session_note, lw.holding = _Said(), _Said(), _Said()
+lw.cards = {name: (None, _Said()) for name in A.SESSION_CARDS}
 app.merits = rate
 # Opened, or after Refresh: the current session first, then the totals.
 lw._rows, lw.summary, lw._session_buttons = [], _Said(), lambda: None
 lw._summarise()
 check("drawing the window puts the current session at the top, totals as all-time",
       str(lw.current.text).startswith("CURRENT SESSION")
-      and str(lw.current_merits.text).startswith("Powerplay merits earned:")
-      and "/hr (estimated" in str(lw.current_merits.text)
+      and lw.cards["Merits earned"][1].text == "none yet"
+      and str(lw.cards["Merits/hr"][1].text).startswith("~")
       and str(lw.summary.text).startswith("All time:"),
-      (lw.current.text, lw.current_merits.text, lw.summary.text))
-lw.current.text = None
+      (lw.current.text, lw.cards["Merits/hr"][1].text, lw.summary.text))
+lw.current.text = lw.cards["Mined"][1].text = None
 lw.live()
 check("the window's live redraw fills the current session and the hold",
-      str(lw.current.text).startswith("CURRENT SESSION") and "t mined" in lw.current.text
-      and str(lw.holding.text).startswith("Mined, in the hold"), (lw.current.text, lw.holding.text))
+      str(lw.current.text).startswith("CURRENT SESSION") and lw.cards["Mined"][1].text == "120 t"
+      and str(lw.holding.text).startswith("Mined, in the hold"),
+      (lw.current.text, lw.cards["Mined"][1].text, lw.holding.text))
 class _Ledger:
     def __init__(self): self.calls, self.alive = 0, True
     def winfo_exists(self): return self.alive

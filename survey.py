@@ -730,7 +730,7 @@ def rank_bodies(system, bodies, grounds=None, sites=None, prices=None,
                 "known_rigs": 0, "known_types": [], "known_value": 0.0,
                 "yours": 0, "your_deposits": 0, "your_worked": 0,
                 "swept": None, "basis": "", "bets": [], "per_site": 0.0,
-                "value": 0.0, "tier": 3, "note": "",
+                "value": 0.0, "tier": 3, "note": "", "why": "",
             }
         return rows[key]
 
@@ -812,7 +812,7 @@ def rank_bodies(system, bodies, grounds=None, sites=None, prices=None,
         if row["locations"] is not None:
             unshared = max(0, row["locations"] - row["known"])
         row["value"] = round(row["known_value"] + unshared * row["per_site"], 0)
-        row["tier"], row["note"] = _land_verdict(row, unshared)
+        row["tier"], row["note"], row["why"] = _land_verdict(row, unshared)
         out.append(row)
 
     out.sort(key=lambda r: (r["tier"], -r["value"],
@@ -821,23 +821,39 @@ def rank_bodies(system, bodies, grounds=None, sites=None, prices=None,
     return out
 
 
+def _plural(count, word):
+    return "%d %s%s" % (count, word, "" if count == 1 else "s")
+
+
 def _land_verdict(row, unshared):
-    """(tier, one line saying why), tier 0 best. Must not raise."""
+    """(tier, one line saying why, the same in a few words), tier 0 best.
+
+    The few words go in the table's Why cell and the line is its tooltip
+    and what Copy takes (1.10038): a sentence in every cell made each row
+    three or four lines tall. Must not raise."""
     if not row["landable"]:
-        return 3, "Not landable."
+        return 3, "Not landable.", "Not landable"
     if row["intact"]:
         extra = ("; %d more location(s) nobody has shared" % unshared
                  if unshared else "")
+        if unshared:
+            short = "%d intact, %s, %d unshared" % (
+                row["intact"], _plural(row["known_rigs"], "rig"), unshared)
+        else:
+            short = "%s, %s" % (_plural(row["intact"], "intact site"),
+                                _plural(row["known_rigs"], "rig"))
         return 0, ("%d known site(s) still intact, %d rig(s)%s."
-                   % (row["intact"], row["known_rigs"], extra))
+                   % (row["intact"], row["known_rigs"], extra)), short
     if unshared:
         return 0, ("DSS: %d location(s) nobody has shared - first look is yours."
-                   % unshared)
+                   % unshared), "%s nobody has shared" % _plural(unshared, "location")
     if row["locations"] is None:
-        return 1, "Not mapped - map it with the DSS to count its locations."
+        return 1, ("Not mapped - map it with the DSS to count its "
+                   "locations."), "Not mapped with the DSS"
     if row["known"] and row["worked"] == row["known"]:
-        return 2, "Every known site here has been reported worked out."
-    return 2, "The DSS found no mining locations here."
+        return 2, ("Every known site here has been reported worked "
+                   "out."), "Every known site worked out"
+    return 2, "The DSS found no mining locations here.", "DSS found no locations"
 
 
 # ---------------------------------------------------------------------------

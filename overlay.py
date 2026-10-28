@@ -1991,7 +1991,7 @@ class Overlay:
 
     def draw(self, rows, heading, note="", body="", location="", site=None,
              survey=None, rigs=None, guide=None, target=None, only=None,
-             cargo=None, hazard=None, rigplan=None, wing=None):
+             cargo=None, hazard=None, rigplan=None, wing=None, zone=None):
         """Redraw. Called from the same poll that moves the map.
 
         `rows` are Survey.near rows, measured from the commander. The three
@@ -2030,6 +2030,10 @@ class Overlay:
         self._plan = rigplan if isinstance(rigplan, dict) else None
         # The wing link (beta): the other Rhinos on this body and their rigs.
         self._wing = wing if isinstance(wing, dict) else None
+        # The mining location you are in (1.10038): its number and top
+        # finds, worked out by the app from your own and shared finds.
+        # STATUS names it in place of the SITE label.
+        self._zone = zone if isinstance(zone, dict) else None
         # The signal being worked, and nothing else. A body can hold finds
         # thousands of kilometres apart, and the boxes used to list and point
         # at all of them: a scope sized to 50 km with 9,698 km arrows at its
@@ -2623,13 +2627,25 @@ class Overlay:
             base = getattr(self, "_hold_top", height - 6) - 3
             side_room = base - text_box("M", 8)[1] >= max(top + em(30) + em(8),
                                                           readout_end + 2)
-        if side_room and found.get("label") and len(rows):
+        survey = getattr(self, "_survey", None)
+        swept = survey.get("percent") if survey else None
+        zone = getattr(self, "_zone", None)
+        if side_room and zone and str(zone.get("signal") or "").strip():
+            # The location you are in and what is known to be in it, cut to
+            # the room left of the swept figure.
+            text = ("LOC %s  %s" % (zone["signal"], zone.get("summary") or "")).strip()
+            room_left = width - 12
+            if swept is not None:
+                room_left -= text_box("AREA SWEPT 100%", 8)[0] + 8
+            canvas.create_text(6, base, anchor="sw", fill=DIM,
+                               font=("Consolas", 8),
+                               text=fit_text(text, room_left, 8))
+        elif side_room and found.get("label") and len(rows):
             canvas.create_text(6, base, anchor="sw", fill=DIM,
                                font=("Consolas", 8),
                                text="SITE %s" % str(found["label"])[:16])
-        survey = getattr(self, "_survey", None)
-        if side_room and survey and survey.get("percent") is not None:
-            done = survey["percent"]
+        if side_room and swept is not None:
+            done = swept
             canvas.create_text(width - 6, base, anchor="se",
                                fill=AMBER if done < 100 else CYAN,
                                font=("Consolas", 8, "bold"),

@@ -861,7 +861,7 @@ check("the app hands the answer to the Earnings window",
 _ew = SRC.split("class EarningsWindow")[1].split("\nclass ")[0]
 check("the Earnings window has the search, the ticks and both views",
       '"Search system"' in _ew and '"Best market only"' in _ew
-      and '"System prices"' in _ew and '"Rhino sessions"' in _ew
+      and {"System prices", "Sessions"} <= set(A.EARNINGS_PAGES)
       and "system_prices(system, picked" in _ew)
 
 print("== #192: the Rhino on the page, on GitHub and in the app ==")

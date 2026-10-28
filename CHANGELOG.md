@@ -4,6 +4,44 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10038
+
+### New — one search at a time, the location you are at, the leaderboard's three views
+
+- **Find shows one search at a time.** A switch at the top picks Sites,
+  Still there, Deposits, Sell prices or Mining bodies; only that search's
+  filters are on screen, and one Search button (or Enter) runs it. Saved
+  searches are a Saved menu beside Reset and keep their search.
+- **Earnings is four pages** — This session, Where to sell, Sessions, System
+  prices — each with only its own controls. The session you are on is shown
+  as cards, with Start, Pause, End and Multi-session beside it.
+- **Pop out and Dock.** Every tool tab has Pop out at the right of its
+  header; Dock on that window brings it back. The tabs-or-windows switch is
+  first in Settings → Basics.
+- **The mining location you are at.** From the glide down, EDSMT works out
+  which location you are over from your own signals and the finds others
+  have shared, sets the Signal box and says what is in it — no need to
+  target it in the game. The overlay's STATUS box names it too.
+- **Leaderboard.** Three views: by points, Powerplay overall (your rank and
+  total merits as the game reports them) and merits from mining; a Powers
+  table for each. Finds far from Sol earn more: +5 beyond 500 Ly, +10 beyond
+  2,000, +20 beyond 10,000, +30 beyond 25,000.
+- **Where to land** counts a body's mining locations from the FSS as well
+  as the DSS (4.4.2 journals).
+
+### Changed
+
+- Where to land and Powerplay say *Why* in a few words; rest the mouse on
+  the cell for the whole sentence.
+- Powerplay's filters stay on Where it counts only.
+
+### Fixed
+
+- Showing a tab called itself a few hundred times a press before settling.
+- The update download refuses a redirect off HTTPS.
+
+---
+
 ## 1.10037
 
 ### Fixed — Find could hang and close at some window sizes

@@ -59,6 +59,8 @@ hiddenimports += ["finder", "powerplay", "sellplan", "board", "crowd", "presale"
 # 1.10035: importing from other tools, depleted marks and regrowth, the bin
 # and favourites, and the map filters.
 hiddenimports += ["importers", "regrowth", "sitebook", "markerfilter"]
+# 1.10038: which mining location you are in, without targeting it.
+hiddenimports += ["zone"]
 
 a = Analysis([os.path.join(ROOT, "edsmt.py")], pathex=[ROOT],
              binaries=[], datas=datas,
