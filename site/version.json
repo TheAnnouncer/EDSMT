@@ -1,15 +1,15 @@
 {
-  "version": "1.10036",
+  "version": "1.10037",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "New \u2014 tabs, leaderboard, mining bodies galaxy-wide",
+  "headline": "Fixed \u2014 Find could hang and close at some window sizes",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10036",
-    "sha256": "f66b1d0a2fe4e77dc0dead5bf81522500c093afd4c3d0e5fc1b86dd7128f1ea1",
-    "bytes": 18753935
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10037",
+    "sha256": "fcd8b0031ad226284c2ccb0c6ad1d7708dcd24dc1ea2c5fbd42542ab7768153e",
+    "bytes": 18752904
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10036",
-    "sha256": "26655b6f3c22382313c0ce40faebc25ce0285f3e4fe9081ef41e20a3e13c2b1b",
-    "bytes": 24090017
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10037",
+    "sha256": "956e994bc461ca588e237160894a37b2d41688bdd1f6cf63ec49164304fc37c2",
+    "bytes": 24091936
   }
 }

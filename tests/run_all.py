@@ -54,6 +54,7 @@ CHECKS = [
     ("1.10036: the rig button from the game's own binds", "test_110036_binds.py"),
     ("1.10036: Find past 500, merits earned on Earnings", "test_110036_find.py"),
     ("1.10036: mining bodies near me, galaxy-wide, with ground odds", "test_110036_galaxy.py"),
+    ("1.10037: the results box no longer loops itself to death", "test_110037_scroll.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
 # More checks kept on this machine only: EDSMT_EXTRA_CHECKS names one or more

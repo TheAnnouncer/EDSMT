@@ -4,6 +4,16 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10037
+
+### Fixed — Find could hang and close at some window sizes
+
+- At some window sizes and display scalings the results box kept showing
+  and hiding its scrollbar, flashed, stopped answering and closed. It now
+  settles at once, and a scrollbar that cannot decide stays shown.
+
+---
+
 ## 1.10036
 
 ### New — tabs, leaderboard, mining bodies galaxy-wide

@@ -13875,6 +13875,11 @@ def cell_label(table, index, column, text, colour=None, wrap=None):
                         padx=8, pady=2, sticky="w")
 
 
+# A scrollbar decision settles within this many rounds, and a bar shown and
+# hidden SCROLL_FLIPS times inside SCROLL_FLIP_S stays shown (1.10037).
+SCROLL_ROUNDS, SCROLL_FLIPS, SCROLL_FLIP_S, SCROLL_RESIZE_PX = 3, 3, 1.5, 40
+
+
 class ScrollTable(ctk.CTkFrame):
     """A table that scrolls BOTH ways, and never cuts a column off.
 
@@ -13927,6 +13932,13 @@ class ScrollTable(ctk.CTkFrame):
     def _canvas_changed(self, _event=None):
         try:
             self._fit()
+            # Resized by more than a scrollbar's own width: the commander
+            # changed the window, not the bars, so a bar kept showing may go.
+            width = int(self.canvas.winfo_width())
+            if abs(width - getattr(self, "_settled_width", width)) > SCROLL_RESIZE_PX:
+                for bar in (self.vbar, self.hbar):
+                    ScrollTable.settle(bar)
+            self._settled_width = width
         except Exception:
             pass
 
@@ -13963,22 +13975,77 @@ class ScrollTable(ctk.CTkFrame):
         grid() and puts it back whenever it rescales - which Windows makes it
         do at start-up - and only grid_forget clears that memory. With
         grid_remove, every table carried a full-width sideways scrollbar
-        with nothing to scroll to."""
+        with nothing to scroll to.
+
+        1.10037: never inside itself, and never for ever. The toolkit's
+        set() redraws at once, and that redraw reports the scroll position
+        straight back here. At some window sizes the answer flips every
+        time - the bar is needed only while it is hidden - so each decision
+        started the next one from inside itself, until Windows ran out of
+        stack ("the box flashes, then it hangs, then crashes", the Find tab
+        at 1240 x 780). A report that comes in during a decision is settled
+        after it, at most three rounds, and a bar that cannot make up its
+        mind stays shown."""
+        if getattr(bar, "_edsmt_busy", False):
+            bar._edsmt_pending = (low, high)
+            return
+        bar._edsmt_busy = True
         try:
-            bar.set(low, high)
-            if float(low) <= 0.0 and float(high) >= 1.0:
-                if bar.winfo_manager():
-                    bar.grid_forget()
-                # Forgotten between being gridded and being drawn, Tk can
-                # leave it on screen anyway. Handing it to the placer and
-                # straight back takes it off for certain.
-                if bar.winfo_ismapped():
-                    bar.place(x=0, y=0)
-                    bar.place_forget()
-            elif not bar.winfo_manager():
-                bar.grid(**place)
+            rounds, wanted = 0, False
+            while True:
+                bar._edsmt_pending = None
+                bar.set(low, high)
+                needed = not (float(low) <= 0.0 and float(high) >= 1.0)
+                wanted = wanted or needed
+                ScrollTable._place_bar(bar, needed, place)
+                pending = getattr(bar, "_edsmt_pending", None)
+                rounds += 1
+                if pending is None:
+                    break
+                if rounds >= SCROLL_ROUNDS:
+                    if wanted:
+                        bar._edsmt_sticky = True
+                        ScrollTable._place_bar(bar, True, place)
+                    break
+                low, high = pending
         except Exception:
             pass
+        finally:
+            bar._edsmt_busy = False
+            bar._edsmt_pending = None
+
+    @staticmethod
+    def _place_bar(bar, needed, place):
+        """Show or hide one bar, counting the changes. Three in
+        SCROLL_FLIP_S and it stays shown: an unused bar is harmless, a
+        flashing one is not."""
+        now = time.monotonic()
+        flips = [t for t in getattr(bar, "_edsmt_flips", ()) if now - t < SCROLL_FLIP_S]
+        if not needed:
+            if getattr(bar, "_edsmt_sticky", False):
+                bar._edsmt_flips = flips
+                return
+            if bar.winfo_manager():
+                bar.grid_forget()
+                flips.append(now)
+            # Forgotten between being gridded and being drawn, Tk can
+            # leave it on screen anyway. Handing it to the placer and
+            # straight back takes it off for certain.
+            if bar.winfo_ismapped():
+                bar.place(x=0, y=0)
+                bar.place_forget()
+        elif not bar.winfo_manager():
+            bar.grid(**place)
+            flips.append(now)
+            if len(flips) >= SCROLL_FLIPS:
+                bar._edsmt_sticky = True
+        bar._edsmt_flips = flips
+
+    @staticmethod
+    def settle(bar):
+        """Let a bar that was kept showing go again."""
+        bar._edsmt_sticky = False
+        bar._edsmt_flips = []
 
     # -- the wheel ---------------------------------------------------------
 
