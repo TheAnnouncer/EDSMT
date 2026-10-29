@@ -1329,7 +1329,10 @@ fe.focus_force(); settle_until(lambda: app.focus_get() == fe)
 fe.icursor("end")
 for ch, sym in ((",", "comma"), (" ", "space"), ("s", "s"), ("a", "a"), ("p", "p")):
     press(fe, sym, ch)
-settle_until(lambda: fe.get().endswith(", sap"))
+    # One key at a time: on a slow runner the box tidies itself after a
+    # comma a few loops late, and a key typed before that is lost.
+    settle_until(lambda c=ch: fe.get().endswith(c), tries=40)
+settle_until(lambda: fe.get().endswith(", sap"), tries=40)
 check("typing after a comma filters on the new word only",
       fc.suggest._shown and fc.suggest._shown[0] == "Sapphire", fc.suggest._shown[:3])
 press(fe, "Return")
@@ -1342,7 +1345,8 @@ check("a click takes it off again", fc.get() == "Monazite, Ruby", fc.get())
 fe.icursor("end")
 for ch, sym in ((",", "comma"), ("q", "q"), ("q", "q")):
     press(fe, sym, ch)
-settle_until(lambda: fe.get().endswith("qq"))
+    settle_until(lambda c=ch: fe.get().endswith(c), tries=40)
+settle_until(lambda: fe.get().endswith("qq"), tries=40)
 check("a word that matches nothing shows nothing - not a lone Any",
       not fc.suggest.visible(), fc.suggest._shown)
 press(fe, "Return")

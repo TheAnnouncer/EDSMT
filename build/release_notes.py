@@ -21,6 +21,8 @@ FOOTER = """
 **EDSMT-Setup.exe** is the download - a normal installer, no admin needed.
 **EDSMT.exe** is the same program as a single portable file.
 **EDSMT-source.zip** is the source it was built from, as GPL-3.0 requires.
+**EDSMT-linux-x86_64.tar.gz** is the Linux build: unpack it and run `EDSMT`
+(or `bash RUN.sh` from the source). docs/LINUX.md says what differs.
 
 Windows SmartScreen will warn on first run because the build is not code
 signed. More info, then Run anyway. SECURITY.md explains that in full.
