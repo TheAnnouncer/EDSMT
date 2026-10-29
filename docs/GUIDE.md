@@ -250,13 +250,24 @@ twice, its line says which way the price and demand moved, and over how long.
 
 ## Themes
 
-Fourteen, for the app and for the overlay separately, all on a dark ground:
-the Radio Raxxla cockpit, Elite orange, Signal teal, Ice blue, Green
-phosphor, Amber terminal, Crimson alert, Deep space violet, Imperial gold,
-Fleet blue, Xeno green, Nebula pink, High contrast, and a colour-safe blue
-and orange. Every one is held to readable contrast. The overlay changes the
+Settings has a **Theme** tab, second from the left, with a picker for the app
+and one for the overlay and a strip of each theme's colours under them.
+Fourteen themes, all on a dark ground: the Radio Raxxla cockpit, Elite orange,
+Signal teal, Ice blue, Green phosphor, Amber terminal, Crimson alert, Deep
+space violet, Imperial gold, Fleet blue, Xeno green, Nebula pink, High
+contrast, and a colour-safe blue and orange. Then twelve **Powerplay** themes,
+one in each Power's colours - pick a Power and both the app and the overlay
+take it. Every one is held to readable contrast. The overlay changes the
 moment you Save; the app wears a new theme from the next start, and **Save
 and restart now** does that straight away.
+
+**Match my in-game HUD colours** reads the colours your game is actually
+using - the HUD colour matrix in `GraphicsConfigurationOverride.xml`, or
+EDHM's main text colour when that mod is installed - and makes a theme of
+them for the app and the overlay together. It says what it found: the file
+it read, or that the game is on its standard orange. The match is read
+again every time EDSMT starts, so a HUD you recolour tomorrow is matched
+tomorrow.
 
 ---
 
@@ -541,10 +552,27 @@ left on a monitor you have since unplugged comes back onto one you still have,
 with enough of it showing to grab. If a drag goes wrong, **Reset box
 positions** in Settings puts everything back.
 
+### Fitting a box to the cockpit
+
+The boxes are flat rectangles; a canopy frame and a helmet visor are not.
+While unlocked, press **SHAPE** in a box's bar. Four handles appear on the
+corners of what the box draws: drag one and that corner moves, so the box can
+lean the way the canopy does. The **BEND** slider across the middle curves the
+box up or down, for the curve of a visor. The window itself stays a rectangle
+and is still moved by its bar; only what is drawn in it changes shape. Press
+**SHAPE** again to put the handles away (the bottom-right one sits on the
+resize grip). **Flat again** undoes it, and **Reset box positions** flattens
+every box.
+
+A shape is kept as a share of its box, so it follows the box when you move or
+resize it and fits any screen. Words are placed where the shape puts them and
+drawn smaller where it narrows, but never turned, so they stay readable at
+speed. A box with no shape set is drawn exactly as before.
+
 ### Themes and borders
 
-Fourteen themes (see **Themes** above). They change the whole palette,
-background included, and apply to the overlay the moment you Save.
+The themes on the Theme tab (see **Themes** above). They change the whole
+palette, background included, and apply to the overlay the moment you Save.
 You can still type any `#rrggbb` to override the instrument colour on top of a
 theme.
 
@@ -776,6 +804,62 @@ settings back straight away.
 to `EDSMT.exe` and it keeps everything in a `data` folder beside itself
 instead, so the stick carries your finds with it. Copy your existing files
 across first if you have any — it does not move them for you.
+
+---
+
+## Linux
+
+EDSMT runs on Linux from the same code, for Elite Dangerous played through
+Proton (Steam), Lutris, Heroic or Bottles. Two ways to get it:
+
+- **The one-file build.** Each release carries `EDSMT-linux-x86_64.tar.gz`
+  on the GitHub Releases page. Unpack it, make the file executable if your
+  archive tool has not, and run `./EDSMT`. It needs nothing installed.
+- **From source.** Clone the repository and run `bash RUN.sh`. It wants
+  Python 3.10 or newer with tkinter (`python3-tk` on Debian and Ubuntu,
+  `python3-tkinter` on Fedora, `tk` on Arch), makes a `.venv`, installs what
+  `requirements.txt` lists and starts EDSMT. Run it from a terminal the
+  first time so you can read anything it says.
+
+**Your finds live** in `$XDG_DATA_HOME/RadioRaxxla/EDSMT`, which is
+`~/.local/share/RadioRaxxla/EDSMT` on nearly every desktop, with the same
+files as on Windows. `portable.txt` works the same way.
+
+**The game folder is found for you.** Elite's Saved Games folder sits inside
+the game's Wine prefix, and every launcher keeps that somewhere different.
+EDSMT looks in all of them — Steam's `steamapps/compatdata/359320/pfx`
+(including Flatpak Steam and libraries on other drives), Lutris and Heroic
+under `~/Games`, Bottles, a plain `~/.wine`, and whatever `STEAM_COMPAT_DATA_PATH`
+or `WINEPREFIX` names — and where more than one has the folder, the one with
+the newest journal is the one you are playing in. Anywhere else, set
+Settings → Your data → Saved Games folder to the
+`drive_c/users/<user>/Saved Games/Frontier Developments/Elite Dangerous`
+folder inside your prefix.
+
+**What is different on Linux**, and said again in Settings beside the
+switch it touches:
+
+- *The overlay* is the same boxes, dragged, locked and themed the same way,
+  with opacity where the desktop is composited. Two things the X window
+  system does not offer Tk: the dark background cannot be keyed out, so each
+  box is a dark panel; and a locked box cannot be clicked through, so a
+  click that lands on it stays with it. Lock the boxes and keep them clear
+  of where you click in the game.
+- *Hotkeys* are grabbed on the X server, which `RUN.sh` arranges by
+  installing `python-xlib`; the one-file build has it aboard. They work with
+  the game in front, as on Windows, and Settings → Keys says whether each
+  took. On a Wayland session they are off, and Settings says so: use
+  joystick buttons or chat commands there, or log in to an X11 session.
+- *Joystick and HOTAS buttons* come from the kernel's own joystick
+  interface, `/dev/input/js*` — nothing to install, no root. Plug the stick
+  in before you bind a button to it.
+- *The long press of the fire button* is not read on Linux; the rig keys,
+  joystick buttons and chat commands do the same job.
+- *Updates*: EDSMT still tells you when a new version is out, and the
+  button opens the download page. The Linux file is on the release page
+  beside the Windows ones; it is not installed for you.
+
+Run Elite in borderless or windowed mode for the overlay, as on Windows.
 
 ---
 

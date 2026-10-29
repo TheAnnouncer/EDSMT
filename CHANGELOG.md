@@ -4,6 +4,47 @@ The version is in the app's title bar. Quote it on a bug report.
 
 ---
 
+## 1.10039
+
+### New — Linux, a Theme tab with Powerplay and in-game colours, overlay boxes that change shape
+
+- **Linux.** EDSMT runs on Linux from the same code, for Elite played
+  through Proton, Lutris, Heroic or Bottles: `bash RUN.sh` from source, or
+  the `EDSMT-linux-x86_64.tar.gz` file on each release. The game's Saved
+  Games folder is found inside whichever Wine prefix was played in most
+  recently; your data lives in `~/.local/share/RadioRaxxla/EDSMT`.
+  Joystick and HOTAS buttons work from /dev/input, and hotkeys work on an
+  X11 session (off on Wayland, and Settings says so). The overlay keeps its
+  boxes, locking and opacity but cannot be clicked through on Linux, and
+  the long press of the fire button stays Windows only — both said in
+  Settings. The update button on Linux opens the download page rather than
+  fetching a Windows file.
+- **A Theme tab.** Settings has a **Theme** tab, second from the left: the
+  app and overlay theme pickers, a strip of each theme's colours under
+  them, and **Save and restart now** beside the app theme.
+- **Twelve Powerplay themes**, one in each Power's colours. Pick a Power
+  and the app and the overlay both take it.
+- **Match my in-game HUD colours** reads the colours your game is using —
+  the HUD colour matrix in GraphicsConfigurationOverride.xml, or the main
+  text colour of a HUD mod when one is installed — and makes a theme of
+  them for both. It says what it found, and reads it again at every start.
+  Every new theme is held to the same contrast rules as the existing
+  fourteen, which are all still there.
+- **Fit a box to the cockpit.** Unlock the overlay and press **SHAPE** in a
+  box's bar: four corner handles let it lean the way the canopy frame does,
+  and a **BEND** slider curves it for a helmet visor. **Flat again** undoes
+  it. The shape is kept as a share of the box, so it follows the box when it
+  is moved or resized and fits any screen. A box with no shape set is drawn
+  exactly as before.
+
+### Fixed
+
+- The website's FAQ said your CMDR name on a find was your choice. It is
+  not and has not been since the leaderboard: every find carries the
+  finder's name. The page now says so.
+
+---
+
 ## 1.10038
 
 ### New — one search at a time, the location you are at, the leaderboard's three views

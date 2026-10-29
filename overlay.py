@@ -33,10 +33,65 @@ import os
 
 import planview as PV
 import markerfilter as MF
+import warp as WP
+import gametheme as GT
 
 # The window is filled with this colour and Windows is told to treat it as
 # transparent, which is how a rectangular window becomes a floating HUD.
 CHROMA = "#010203"
+
+
+class WindowPlatform:
+    """What this desktop lets an overlay window do (1.10039).
+
+    Windows: the chroma colour is keyed out with -transparentcolor, a
+    locked box is made click-through with the window style, and there is
+    nothing to say. Linux (X11): -transparentcolor raises, and Tk has no
+    way to let a click fall through an X window, so each box is a dark
+    panel at the opacity set and a locked box still takes a click that
+    lands on it - Settings says so, on Linux only.
+
+    `windows` is the answer to give; None asks, at each use, whether
+    user32 is there - which is what the checks stand in for."""
+
+    def __init__(self, windows=None):
+        self._windows = windows
+
+    def windows(self):
+        if self._windows is not None:
+            return bool(self._windows)
+        try:
+            import ctypes
+            return hasattr(ctypes, "windll")
+        except Exception:
+            return False
+
+    @property
+    def click_through(self):
+        return self.windows()
+
+    def attributes(self, opacity):
+        """The see-through attributes to set, in order: the colour key
+        where there is one, then the opacity everywhere."""
+        out = []
+        if self.windows():
+            out.append(("-transparentcolor", CHROMA))
+        out.append(("-alpha", float(opacity)))
+        return out
+
+    def note(self):
+        """What Settings says about the overlay here. "" on Windows."""
+        if self.windows():
+            return ""
+        return ("On Linux a box cannot be clicked through: a locked box "
+                "still takes a click that lands on it, so lock it and keep "
+                "it clear of where you click in the game. The background "
+                "cannot be keyed out either, so each box is a dark panel at "
+                "the opacity set here - which needs a compositing desktop to "
+                "apply at all.")
+
+
+PLATFORM = WindowPlatform()
 
 # The game's own window, as Windows names it. The class is what the
 # community's own key scripts match on; the title is the fallback.
@@ -249,7 +304,57 @@ PALETTES = {
     },
 }
 THEME_NAMES = {"cockpit": "Radio Raxxla cockpit", "elite": "Elite orange", "signal": "Signal teal", "ice": "Ice blue", "phosphor": "Green phosphor", "amber": "Amber terminal", "crimson": "Crimson alert", "violet": "Deep space violet", "gold": "Imperial gold", "fleet": "Fleet blue", "xeno": "Xeno green", "nebula": "Nebula pink", "contrast": "High contrast", "colourblind": "Colour-safe (blue/orange)"}
+# 1.10039 (#287): the game's own HUD colours as a theme, and one theme per
+# Powerplay Power. "game" starts as the standard orange and is re-pointed at
+# every start by set_game_palette, once gametheme has read what the game is
+# really using. Each Power is one line: its key, its name and its accent;
+# the rest of the palette is derived from the accent and pushed to the same
+# contrast rules as every theme above, so a corrected accent is a one-line
+# change. The accents are this project's own picks for how each Power is
+# shown in the galaxy map's Powerplay view - not published values.
+GAME_THEME = "game"
+PALETTES[GAME_THEME] = GT.standard_palette()
+POWERPLAY = (
+    ("pp_aisling", "Aisling Duval", "#ff6ec7"),
+    ("pp_lavigny", "Arissa Lavigny-Duval", "#b36bff"),
+    ("pp_delaine", "Archon Delaine", "#ff4b4b"),
+    ("pp_patreus", "Denton Patreus", "#3fd6c8"),
+    ("pp_mahon", "Edmund Mahon", "#4fd65c"),
+    ("pp_winters", "Felicia Winters", "#8fd3ff"),
+    ("pp_archer", "Jerome Archer", "#5a7dff"),
+    ("pp_yongrui", "Li Yong-Rui", "#e8b931"),
+    ("pp_kaine", "Nakato Kaine", "#ff8a5b"),
+    ("pp_antal", "Pranav Antal", "#f5e663"),
+    ("pp_grom", "Yuri Grom", "#d8506a"),
+    ("pp_torval", "Zemina Torval", "#2ea8e6"),
+)
+for _key, _power, _accent in POWERPLAY:
+    PALETTES[_key] = GT.palette_from_accent(_accent)
+    THEME_NAMES[_key] = "Powerplay - " + _power
+THEME_NAMES[GAME_THEME] = "Match my in-game HUD colours"
 THEME_ORDER = tuple(PALETTES)
+
+
+def set_game_palette(palette):
+    """Make `palette` the "game" theme, in place, for the app and the overlay.
+
+    In place, because anything holding PALETTES["game"] or THEMES["game"]
+    keeps holding the live one. A palette missing a key, or carrying a
+    value that is not a colour, is refused and the last one kept - the
+    game's files are not this app's to trust. Returns the palette worn.
+    """
+    worn = PALETTES[GAME_THEME]
+    try:
+        fresh = {key: str(palette[key]).strip().lower() for key in PALETTE_KEYS}
+    except (KeyError, TypeError, AttributeError):
+        return worn
+    if not all(is_colour(value) and value != CHROMA for value in fresh.values()):
+        return worn
+    worn.clear()
+    worn.update(fresh)
+    THEMES[GAME_THEME].clear()
+    THEMES[GAME_THEME].update(overlay_palette(worn))
+    return worn
 
 
 def _mix(a, b, share):
@@ -1091,6 +1196,11 @@ class Panel:
         self.window = None
         self.canvas = None
         self._drag = None
+        # Whether this box's shape is being edited (1.10039): its corner
+        # handles and bend slider are up. Only while the overlay is
+        # unlocked; a press on SHAPE in the box's bar turns it on and off.
+        self.shaping = False
+        self._shape_drag = None
 
     # -- lifecycle -------------------------------------------------------
 
@@ -1190,11 +1300,16 @@ class Panel:
         if self.overlay.locked:
             return
         width, height = self.size()
+        if self._grab_shape(event, width, height):
+            return
         corner = (event.x >= width - GRIP_PX and event.y >= height - GRIP_PX)
         self._drag = ("resize" if corner else "move", event.x_root, event.y_root,
                       self.window.winfo_x(), self.window.winfo_y(), width, height)
 
     def _move(self, event):
+        if self._shape_drag:
+            self._move_shape(event)
+            return
         if not self._drag:
             return
         how, sx, sy, wx, wy, ww, wh = self._drag
@@ -1206,12 +1321,120 @@ class Panel:
         self.window.geometry("%dx%d+%d+%d" % (max(min_w, ww + dx),
                                               max(min_h, wh + dy), wx, wy))
 
-    def _drop(self, _event):
+    def _drop(self, event):
+        if self._shape_drag:
+            self._drop_shape(event)
+            return
         if not self._drag:
             return
         self._drag = None
         self.remember()
         self.overlay.save_layout()
+
+    # -- being shaped (1.10039) --------------------------------------------
+
+    def shape_controls(self, width, height):
+        """Where the shaping controls are on this box right now: the SHAPE
+        button in its bar and, while the shape is being edited, the corner
+        handles, the BEND slider and FLAT AGAIN (warp.controls). Worked out
+        the same way to draw them and to tell what a click landed on.
+
+        The button goes in the gap the bar leaves between the box's name
+        and "drag to move", measured off the character table and not off
+        Tk, so the answer is the same whether or not a box is being drawn.
+        """
+        title = PANEL_TITLE.get(self.key, self.key)
+        gap = (6 + len(title) * CHAR_PX[9] + 10,
+               width - 6 - len("drag to move") * CHAR_PX[8] - 10)
+        editing = bool(self.shaping) and not self.overlay.locked
+        return WP.controls(width, height, self.overlay.shape(self.key),
+                           editing, gap, HANDLE_PX)
+
+    def _grab_shape(self, event, width, height):
+        """A press on one of the shaping controls, if it is on one. True
+        when it was: the press is then about the box's shape, not its
+        place, and the box does not move or resize."""
+        found = self.shape_controls(width, height)
+        what = WP.hit(found, event.x, event.y)
+        if what is None:
+            return False
+        self._shape_drag = {"what": what, "found": found, "width": width,
+                            "height": height, "at": (event.x, event.y),
+                            # The shape as it was when pressed. Every move
+                            # is worked out from it, so a corner pulled
+                            # somewhere the shape cannot go stays put.
+                            "shape": self.overlay.shape(self.key)}
+        return True
+
+    def _move_shape(self, event):
+        drag = self._shape_drag
+        drag["at"] = (event.x, event.y)
+        if drag["what"] in ("toggle", "flat"):
+            # Buttons act when let go.
+            return
+        self.overlay.set_shape(self.key, WP.drag(
+            drag["shape"], drag["what"], event.x, event.y,
+            drag["width"], drag["height"], drag["found"]))
+        self.overlay.redraw(self.key)
+
+    def _drop_shape(self, event):
+        drag, self._shape_drag = self._shape_drag, None
+        what = drag["what"]
+        if what == "toggle":
+            self.shaping = not self.shaping
+        elif what == "flat":
+            self.overlay.set_shape(self.key, None)
+            self.overlay.save_layout()
+        else:
+            x, y = drag["at"] if event is None else (event.x, event.y)
+            self.overlay.set_shape(self.key, WP.drag(
+                drag["shape"], what, x, y, drag["width"], drag["height"],
+                drag["found"]))
+            self.overlay.save_layout()
+        self.overlay.redraw(self.key)
+
+    def shape_chrome(self, width, height):
+        """The SHAPE button in the bar and, while the shape is being edited,
+        the shape's outline, a handle on each of its corners, the BEND
+        slider and the button that makes the box flat again. Drawn on the
+        box's own canvas, flat, after everything else: the window is still
+        a rectangle and the controls say so. Every mark carries the
+        shapectl tag, so a check can tell them from the box's own marks."""
+        canvas = self.canvas
+        found = self.shape_controls(width, height)
+        on = found["editing"]
+        x0, y0, x1, y1 = found["toggle"]
+        canvas.create_rectangle(x0, y0, x1, y1, fill=CYAN if on else VOID,
+                                outline=CYAN, tags=("shapectl",))
+        canvas.create_text((x0 + x1) / 2.0, (y0 + y1) / 2.0,
+                           fill=VOID if on else CYAN, font=("Consolas", 8, "bold"),
+                           text=WP.TOGGLE_LABEL, tags=("shapectl",))
+        if not on:
+            return
+        canvas.create_polygon(*[c for p in found["quad"] for c in p], fill="",
+                              outline=CYAN, dash=(2, 4), tags=("shapectl",))
+        half = WP.HANDLE_PX / 2.0
+        for hx, hy in found["handles"]:
+            canvas.create_rectangle(hx - half, hy - half, hx + half, hy + half,
+                                    fill=CYAN, outline=VOID,
+                                    tags=("shapectl", "handle"))
+        lx, ly = found["bend_label"]
+        canvas.create_text(lx, ly, anchor="w", fill=CYAN,
+                           font=("Consolas", 8, "bold"), text="BEND",
+                           tags=("shapectl",))
+        tx0, tx1, ty = found["track"]
+        canvas.create_line(tx0, ty, tx1, ty, fill=CYAN, width=2, tags=("shapectl",))
+        mid = (tx0 + tx1) / 2.0
+        canvas.create_line(mid, ty - 5, mid, ty + 5, fill=CYAN, tags=("shapectl",))
+        kx, ky = found["knob"]
+        canvas.create_oval(kx - 5, ky - 5, kx + 5, ky + 5, fill=CYAN,
+                           outline=VOID, tags=("shapectl",))
+        fx0, fy0, fx1, fy1 = found["flat"]
+        canvas.create_rectangle(fx0, fy0, fx1, fy1, fill=VOID, outline=CYAN,
+                                tags=("shapectl",))
+        canvas.create_text((fx0 + fx1) / 2.0, (fy0 + fy1) / 2.0, fill=CYAN,
+                           font=("Consolas", 8, "bold"), text=found["flat_label"],
+                           tags=("shapectl",))
 
     def remember(self):
         """Write this panel's place down, as fractions of this screen."""
@@ -1260,6 +1483,7 @@ class Panel:
             offset = 4 + step * 5
             canvas.create_line(width - 3, height - offset,
                                width - offset, height - 3, fill=CYAN)
+        self.shape_chrome(width, height)
 
 
 class Overlay:
@@ -1294,6 +1518,9 @@ class Overlay:
         self._alarm_canvas = None
         self._alarm_up = False
         self._guide = None
+        # What draw() was last given, so one box can be drawn again at once
+        # when something about the box itself changes - its shape.
+        self._last_draw = None
 
     # -- lifecycle -------------------------------------------------------
 
@@ -1315,6 +1542,12 @@ class Overlay:
     def set_locked(self, value):
         """Lock or unlock every panel at once."""
         self.settings["overlay_click_through"] = bool(value)
+        if value:
+            # Locked, a box's shape is scenery again; the handles come back
+            # only when SHAPE is pressed on the next unlock.
+            for panel in self.panels.values():
+                panel.shaping = False
+                panel._shape_drag = None
         self.apply_click_through()
         return bool(value)
 
@@ -1383,8 +1616,42 @@ class Overlay:
                                            for key, spec in DEFAULT_LAYOUT.items()}
         for key in ("overlay_x", "overlay_y"):
             self.settings.pop(key, None)
+        # And flat again: a box shaped into something unreadable is undone
+        # here too, not by editing JSON.
+        for key in PANEL_ORDER:
+            self.set_shape(key, None)
         self.save_layout()
         self.reposition()
+
+    # -- the shape of a box (1.10039) ------------------------------------
+
+    def shape(self, key):
+        """The shape a box is drawn through (a warp.Shape), or None for a
+        flat one - which is every box nobody has shaped, and any box whose
+        stored shape cannot be drawn into."""
+        return WP.parse(self.settings.get("overlay_shape_%s" % key))
+
+    def set_shape(self, key, shape):
+        """Keep a box's shape, as fractions of the box so it follows the box
+        when it is moved or resized. None, or a flat shape, leaves nothing
+        in settings at all."""
+        name = "overlay_shape_%s" % key
+        kept = WP.stored(shape)
+        if kept is None:
+            self.settings.pop(name, None)
+        else:
+            self.settings[name] = kept
+
+    def redraw(self, key):
+        """Draw one box again with what every box was last drawn with - for
+        a change to the box itself that should not wait for the app's next
+        tick. Nothing to draw with yet, nothing happens."""
+        if not self._last_draw:
+            return
+        args, kw = self._last_draw
+        kw = dict(kw)
+        kw["only"] = (key,)
+        self.draw(*args, **kw)
 
     def active(self):
         """Which panels are switched on.
@@ -1545,14 +1812,11 @@ class Overlay:
         except (TypeError, ValueError):
             opacity = 0.9
         for win in self.windows():
-            try:
-                win.attributes("-transparentcolor", CHROMA)
-            except Exception:
-                pass                              # not Windows; still usable
-            try:
-                win.attributes("-alpha", opacity)
-            except Exception:
-                pass
+            for name, value in PLATFORM.attributes(opacity):
+                try:
+                    win.attributes(name, value)
+                except Exception:
+                    pass                          # an older Tk; still usable
 
     def follow_game(self):
         """Put the boxes up while the game is in front, take them down when
@@ -1742,6 +2006,8 @@ class Overlay:
             canvas.pack(fill="both", expand=True)
         except Exception:
             return None, None
+        if not PLATFORM.click_through:
+            return win, canvas                    # Linux: a plain panel
         try:
             win.attributes("-transparentcolor", CHROMA)
         except Exception:
@@ -1874,22 +2140,23 @@ class Overlay:
         if not windows:
             return
         wanted = self.locked
-        try:
-            import ctypes
-            GWL_EXSTYLE, WS_EX_TRANSPARENT = -20, 0x20
-            user32 = ctypes.windll.user32
-            for win in windows:
-                handle = self.handle(win)
-                if not handle:
-                    continue
-                style = user32.GetWindowLongW(handle, GWL_EXSTYLE)
-                if wanted:
-                    style |= WS_EX_TRANSPARENT
-                else:
-                    style &= ~WS_EX_TRANSPARENT
-                user32.SetWindowLongW(handle, GWL_EXSTYLE, style)
-        except Exception:
-            pass          # not Windows, or the window is not realised yet
+        if PLATFORM.click_through:
+            try:
+                import ctypes
+                GWL_EXSTYLE, WS_EX_TRANSPARENT = -20, 0x20
+                user32 = ctypes.windll.user32
+                for win in windows:
+                    handle = self.handle(win)
+                    if not handle:
+                        continue
+                    style = user32.GetWindowLongW(handle, GWL_EXSTYLE)
+                    if wanted:
+                        style |= WS_EX_TRANSPARENT
+                    else:
+                        style &= ~WS_EX_TRANSPARENT
+                    user32.SetWindowLongW(handle, GWL_EXSTYLE, style)
+            except Exception:
+                pass      # the window is not realised yet
         # Belt and braces: even though the layered bit is untouched now,
         # re-asserting costs nothing and the failure it prevents is silent.
         self.apply_transparency()
@@ -2006,6 +2273,12 @@ class Overlay:
         the app's fast loop redraws the compass and the scope ten times a
         second and everything else at its own pace.
         """
+        # Kept so one box can be drawn again at once (redraw) - every call
+        # carries the full set, whichever boxes `only` names.
+        self._last_draw = ((rows, heading, note), dict(
+            body=body, location=location, site=site, survey=survey, rigs=rigs,
+            guide=guide, target=target, cargo=cargo, hazard=hazard,
+            rigplan=rigplan, wing=wing, zone=zone))
         # The survey area, if one is set: drawn by the scope and summed up
         # by STATUS. Kept rather than threaded through every draw call.
         self._survey = survey if isinstance(survey, dict) else None
@@ -2100,11 +2373,16 @@ class Overlay:
             self._drawing = panel
             set_text_scale(self.text_scale(key))
             set_dpi(tk_dpi(panel.canvas))
-            self.canvas = scaled_canvas(panel.canvas, self.text_scale(key))
+            width, height = panel.size()
+            # A shaped box is drawn through its shape (1.10039); a flat one
+            # is drawn on its own canvas, exactly as before - wrap() hands
+            # back the canvas itself when there is no shape.
+            self.canvas = scaled_canvas(
+                WP.wrap(panel.canvas, self.shape(key), width, height),
+                self.text_scale(key))
             set_measure(self._real_measure)
             try:
                 self.canvas.delete("all")
-                width, height = panel.size()
                 if key == RADAR:
                     self.draw_radar(rows, heading, note, width, height,
                                     body=body, location=location, site=site)

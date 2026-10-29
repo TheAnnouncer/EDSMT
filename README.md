@@ -3,7 +3,7 @@
 ![The Rhino SRV on a planet surface at night, lights on](docs/images/rhino.jpg)
 <sub>The Rhino — screenshot by CMDR TheAnnouncer. Elite Dangerous © Frontier Developments plc.</sub>
 
-A free Windows companion for Rhino surface mining. EDSMT reads the game's
+A free companion for Rhino surface mining, on Windows and Linux. EDSMT reads the game's
 journal as you play, so you never type a coordinate, a system name or a
 distance: it maps the deposits, guides the survey, tracks your rigs, and
 tells you where to sell and what the session earned.
@@ -69,6 +69,17 @@ through winget if there is none.
 `BUILD.bat` makes `EDSMT-Setup.exe` and `EDSMT.exe` the way the downloads
 are made, fetching Inno Setup for the installer if it is missing. The same
 build runs on GitHub from `.github/workflows/build.yml`.
+
+## Linux
+
+The same program, for Elite played through Proton, Lutris, Heroic or
+Bottles. Each release carries `EDSMT-linux-x86_64.tar.gz` on the
+[Releases](https://github.com/TheAnnouncer/EDSMT/releases) page: unpack it
+and run `./EDSMT`. Or run from source with `bash RUN.sh`, which needs
+Python 3.10 or newer with tkinter. The game's Saved Games folder is found
+inside whichever Wine prefix is being played in. Hotkeys need an X11
+session; the overlay cannot be clicked through on Linux. The
+[user guide](docs/GUIDE.md#linux) has the detail.
 
 ---
 

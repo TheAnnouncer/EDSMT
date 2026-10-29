@@ -28,7 +28,7 @@ def read(*parts):
                    errors="replace").read()
 
 SHIPPED = ["edsmt.py", "survey.py", "planview.py", "journal.py", "overlay.py",
-           "edonline.py", "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py", "board.py", "crowd.py", "presale.py", "gamebinds.py", "galaxy.py", "zone.py"]
+           "edonline.py", "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py", "board.py", "crowd.py", "presale.py", "gamebinds.py", "galaxy.py", "zone.py", "warp.py", "gametheme.py", "x11keys.py"]
 
 print("== the batch files run on Windows ==")
 for name in ("BUILD.bat", "RUN.bat"):

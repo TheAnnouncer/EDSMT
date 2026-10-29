@@ -60,6 +60,8 @@ import presale as PS
 import gamebinds as GB
 import galaxy as GX
 import zone as ZN
+import gametheme as GT
+import x11keys as XK
 
 ctk.set_appearance_mode("Dark")
 
@@ -184,6 +186,23 @@ def apply_app_theme(name):
         target.update(values)
     chosen = str(name or "cockpit").strip().lower()
     return chosen if chosen in OV.PALETTES else "cockpit"
+
+
+def refresh_game_theme(**where):
+    """Read what the game's HUD is coloured right now and make it the "game"
+    theme (1.10039, #287). Called before the window is dressed, so a
+    commander on the game theme starts in today's colours, and again from
+    the Theme tab's Match button. `where` names stand-in folders for the
+    checks. Never raises: a broken file leaves the standard orange."""
+    try:
+        found = GT.read_game_theme(**where)
+    except Exception as exc:
+        found = {"source": "standard", "file": "", "matrix": None, "accent": None,
+                 "palette": GT.standard_palette(),
+                 "words": "The game is on its standard colours (the game's files "
+                          "could not be read: %s)." % exc}
+    OV.set_game_palette(found["palette"])
+    return found
 
 
 MAX_RIGS = 6
@@ -657,8 +676,11 @@ def data_dir():
             if _writable(path):
                 return path
     else:
-        path = os.path.join(os.path.expanduser("~"), ".local", "share",
-                            "RadioRaxxla", "EDSMT")
+        # Linux (1.10039): $XDG_DATA_HOME, which the base directory
+        # specification says is ~/.local/share when unset or empty.
+        root = os.environ.get("XDG_DATA_HOME") or os.path.join(
+            os.path.expanduser("~"), ".local", "share")
+        path = os.path.join(root, "RadioRaxxla", "EDSMT")
         if _writable(path):
             return path
     local = os.path.join(here, "data")
@@ -1040,7 +1062,7 @@ ALWAYS_SHARED = ("community_enabled", "community_auto_share", "share_market_pric
                  "verify_my_finds")
 
 
-def build_kind():
+def build_kind(platform=None):
     """Which build this is, for updating: "installed", "portable" or "".
 
     installed  the folder build Setup put down - it has Setup's own
@@ -1048,8 +1070,14 @@ def build_kind():
     portable   the single-file EDSMT.exe - no _internal folder beside it
     ""         running from source, or a folder build nobody installed:
                there is nothing safe to replace, so it gets the web page
+               - and the Linux build (1.10039): the packages version.json
+               names are Windows programs, so it gets the web page too
+
+    `platform` is os.name; the checks pass their own.
     """
     if not getattr(sys, "frozen", False):
+        return ""
+    if (os.name if platform is None else platform) != "nt":
         return ""
     here = app_dir()
     if not os.path.isdir(os.path.join(here, "_internal")):
@@ -1062,6 +1090,36 @@ def build_kind():
 
 def updates_folder():
     return os.path.join(DATA_DIR, "updates")
+
+
+def linux_notes(platform=None):
+    """What Linux does differently, said in Settings and nowhere else
+    (1.10039): one note per section it touches, {} on Windows.
+
+    Each is a plain statement of what works and what does not, so a
+    commander on Linux is never left pressing a dead switch."""
+    platform = os.name if platform is None else platform
+    if platform == "nt":
+        return {}
+    # Asked about Linux from Windows (the checks run there too), the note
+    # is Linux's, not this machine's.
+    here = OV.PLATFORM if platform == os.name else OV.WindowPlatform(windows=False)
+    return {
+        "overlay": here.note(),
+        "long_press": ("On Linux the long press is not read: the mouse and "
+                       "the game's window cannot be watched from outside the "
+                       "game there. The rig keys, joystick buttons and chat "
+                       "commands all still work."),
+        "joystick": ("On Linux the buttons come from the kernel's joystick "
+                     "interface (/dev/input/js*): no root, nothing to "
+                     "install. A stick plugged in while EDSMT runs is found "
+                     "on the next look."),
+        "hotkeys": ("On Linux the keys are grabbed on the X server through "
+                    "python-xlib, which RUN.sh installs; the line below says "
+                    "whether they took. On a Wayland session they are off - "
+                    "use joystick buttons or chat commands there."),
+        "journal": JN.journal_hint(platform),
+    }
 
 
 def tidy_after_update():
@@ -2414,7 +2472,8 @@ class Hotkeys:
 
     Runs a Windows message loop on its own thread and posts key names onto a
     queue; the window drains that queue from the Tk loop, so nothing off the
-    main thread ever touches a widget.
+    main thread ever touches a widget. On Linux (1.10039) the same queue is
+    fed by x11keys, which grabs the keys on the X server.
     """
 
     def __init__(self):
@@ -2426,6 +2485,7 @@ class Hotkeys:
         self._thread_id = 0
         self._wanted = {}
         self._ready = threading.Event()
+        self._x11 = None
 
     def start(self, bindings):
         self.stop()
@@ -2433,7 +2493,10 @@ class Hotkeys:
         self.bound = {}
         self.problem = ""
         if os.name != "nt":
-            self.problem = "global hotkeys are Windows only"
+            self._x11 = XK.X11Hotkeys(events=self.events)
+            self._x11.start(self._wanted)
+            self.bound, self.problem = self._x11.bound, self._x11.problem
+            self.active = self._x11.active
             return
         self._ready = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -2453,6 +2516,9 @@ class Hotkeys:
         taken by another program" - then the old thread quit and unregistered
         everything. Every key was dead from the first Save onwards.
         """
+        x11, self._x11 = self._x11, None
+        if x11 is not None:
+            x11.stop()
         thread = self._thread
         if thread is not None and thread.is_alive():
             self._ready.wait(1.0)
@@ -2529,6 +2595,11 @@ class Hotkeys:
             self._ready.set()
 
     def drain(self):
+        if self._x11 is not None:
+            # The X loop can stop on its own; say so where Settings looks.
+            self.active = self._x11.active
+            if self._x11.problem and not self.problem:
+                self.problem = self._x11.problem
         out = []
         while True:
             try:
@@ -3297,7 +3368,9 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
     def __init__(self):
         # The theme first, before a single widget exists: a Tk widget keeps
         # the colours it was made with, so this is the only moment the whole
-        # window can be dressed at once.
+        # window can be dressed at once. The game's own colours are read
+        # first, so the "game" theme is today's HUD and not yesterday's.
+        self.game_theme = refresh_game_theme()
         self.theme_worn = apply_app_theme(load_settings().get("app_theme", "cockpit"))
         super().__init__()
         # Tk's own hook for exceptions raised inside a callback. Without it
@@ -3684,7 +3757,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.say("Overlay locked. Clicks go to the game again.", GREEN)
         else:
             self.say("Overlay unlocked. Drag each box by its bar, resize it "
-                     "by the bottom-right corner, then lock it again.", AMBER)
+                     "by the bottom-right corner, press SHAPE in its bar to "
+                     "fit it to the cockpit, then lock it again.", AMBER)
 
     def apply_overlay_preset(self, name):
         """A whole overlay layout in one pick (OV.LAYOUT_PRESETS). Returns
@@ -11392,7 +11466,9 @@ class TourWindow(ctk.CTkToplevel):
 
 
 # Settings' tabs, in the order they are read (#142).
-SETTINGS_TABS = ("Basics", "Overlay", "Keys", "Rigs", "Sharing", "Your data", "About")
+SETTINGS_TABS = ("Basics", "Theme", "Overlay", "Keys", "Rigs", "Sharing", "Your data", "About")
+# The colours a theme picker's swatch row shows, in order (1.10039).
+SWATCH_KEYS = ("ORANGE", "AMBER", "TEXT", "MUTED", "GREEN", "RED", "CYAN")
 
 
 class SettingsWindow(ctk.CTkToplevel):
@@ -11439,26 +11515,14 @@ class SettingsWindow(ctk.CTkToplevel):
         # a setting in two places saves whichever copy was built last.
         body = self.pages["Basics"]
         self._section(body, "Basic settings",
-                      "Everything is set to good defaults, so you can start "
-                      "without touching any of it. All of it can be changed "
-                      "at any time, on every tab, and Save keeps it. The keys "
-                      "and the overlay boxes have tabs of their own.")
+                      "Good defaults throughout; all of it can be changed at "
+                      "any time and Save keeps it. Colours are on the Theme "
+                      "tab, the keys and the overlay boxes on theirs.")
         # First on the page (1.10038): the one setting people asked for and
         # could not find. Pop out, on any tab, moves one tool for now.
         self._switch(body, "tools_as_tabs",
                      "Open Find, Earnings and the other tools as tabs "
                      "(off: each in its own window)")
-        themes = [(OV.THEME_NAMES[k], k) for k in OV.THEME_ORDER]
-        self._choice(body, "app_theme", "App theme", themes,
-                     "The main window's colours. Worn from the next start - "
-                     "Restart now does it straight away.")
-        restart_row = ctk.CTkFrame(body, fg_color="transparent")
-        restart_row.pack(fill="x", padx=14, pady=(0, 6))
-        tip(ctk.CTkButton(restart_row, text="Save and restart now", width=190,
-                      height=28, font=F_STRONG, **BTN_SECONDARY,
-                      command=self.save_and_restart), "Saves Settings and starts EDSMT again, so a new app theme shows.").pack(side="left")
-        self._choice(body, "overlay_theme", "Overlay theme", themes,
-                     "The boxes over the game. Changes as soon as you Save.")
         self._switch(body, "overlay_enabled", "Show the overlay while I play")
         self._switch(body, "overlay_rhino_only",
                      "Only while I am driving a Rhino")
@@ -11479,6 +11543,57 @@ class SettingsWindow(ctk.CTkToplevel):
                           height=30, font=F_STRONG, **BTN_SECONDARY,
                           command=lambda: self.app.start_tour(force=True)),
             "The first-run tour of the main window.").pack(side="left")
+
+        # 1.10039 (#287): a tab of its own for the colours, second from the
+        # left so it is seen. Both pickers, a swatch row under each, the
+        # game match in big letters, and the Powers under their own heading.
+        body = self.pages["Theme"]
+        self._section(body, "Theme",
+                      "One look for the main window and the boxes over the "
+                      "game. The app theme is worn from the next start; the "
+                      "overlay theme changes as soon as you Save.")
+        themes = [(OV.THEME_NAMES[k], k) for k in OV.THEME_ORDER]
+        self.swatches = {}
+        self._choice(body, "app_theme", "App theme", themes, "",
+                     command=lambda _v: self.theme_picked("app_theme"))
+        self._swatch_row(body, "app_theme")
+        restart_row = ctk.CTkFrame(body, fg_color="transparent")
+        restart_row.pack(fill="x", padx=14, pady=(0, 8))
+        tip(ctk.CTkButton(restart_row, text="Save and restart now", width=190,
+                      height=28, font=F_STRONG, **BTN_SECONDARY,
+                      command=self.save_and_restart), "Saves Settings and starts EDSMT again, so a new app theme shows.").pack(side="left")
+        self._choice(body, "overlay_theme", "Overlay theme", themes, "",
+                     command=lambda _v: self.theme_picked("overlay_theme"))
+        self._swatch_row(body, "overlay_theme")
+        body = self.pages["Theme"]
+        self._section(body, "Match my in-game HUD colours",
+                      "Reads the colours the game is using - the HUD colour "
+                      "matrix, or EDHM when it is installed - and makes a "
+                      "theme of them for the app and the overlay together.")
+        match_row = ctk.CTkFrame(body, fg_color="transparent")
+        match_row.pack(fill="x", padx=10, pady=(2, 4))
+        tip(ctk.CTkButton(match_row, text="Match my in-game HUD colours",
+                          width=320, height=44, font=F_ACTION, **BTN_PRIMARY,
+                          command=self.match_game_theme),
+            "Reads the game's HUD colours now and sets both themes to match them.").pack(side="left")
+        self.game_line = ctk.CTkLabel(body, text="", font=F_SMALL, text_color=DIM,
+                                      justify="left", anchor="w", wraplength=560)
+        self.game_line.pack(fill="x", padx=10, pady=(0, 6))
+        body = self.pages["Theme"]
+        self._section(body, "Powerplay",
+                      "A theme in the colours of each Power. Pick one and "
+                      "both the app and the overlay take it.")
+        power_row = ctk.CTkFrame(body, fg_color="transparent")
+        power_row.pack(fill="x", padx=10, pady=3)
+        ctk.CTkLabel(power_row, text="Power", width=250, anchor="w",
+                     font=F_BODY, text_color=TEXT).pack(side="left")
+        powers = [power for _key, power, _accent in OV.POWERPLAY]
+        self.power_box = tip(ctk.CTkComboBox(power_row, values=powers, font=F_BODY,
+                                             height=30, **BOX,
+                                             command=self.power_picked),
+                             "Sets the app theme and the overlay theme to this Power's colours.")
+        self.power_box.pack(side="left", fill="x", expand=True)
+        self.power_box.set(powers[0])
 
         # 1.10036: no community map section. Every find goes up with the
         # CMDR name of whoever found it, everybody's finds are on the map,
@@ -11528,6 +11643,7 @@ class SettingsWindow(ctk.CTkToplevel):
                       "Found automatically. Only set this if Elite lives "
                       "somewhere unusual, or you run it through Steam Play.")
         self._entry(body, "journal_dir", "Saved Games folder", "leave blank for automatic")
+        self._linux_note(body, "journal")
 
         settings_now = getattr(self.app, "settings", None)
         body = self.pages["Rigs"]
@@ -11606,6 +11722,7 @@ class SettingsWindow(ctk.CTkToplevel):
                       "half a second to two is neither. The button is read "
                       "from your own binds in the game. Windows only. Nothing "
                       "about a press is written down.")
+        self._linux_note(body, "long_press")
         self._switch(body, "long_press_rig", "Count a long press as a rig placed")
         self._choice(body, "long_press_button", "Rig button",
                      [("Primary fire", "primary"), ("Secondary fire", "secondary")])
@@ -11639,6 +11756,7 @@ class SettingsWindow(ctk.CTkToplevel):
                        "Windows uses Win keys, Steam uses Shift+Tab and "
                        "F12, the game uses F10. EDSMT says so when you "
                        "pick one.") % ((altgr_word(),) * 4))
+        self._linux_note(body, "hotkeys")
         # Labels say what a key does, not which key: the box beside each
         # shows the key actually bound, and a label naming Alt+1 beside a
         # box saying F5 would be wrong the moment somebody changed it.
@@ -11671,12 +11789,15 @@ class SettingsWindow(ctk.CTkToplevel):
         self.hotkey_note.pack(fill="x", padx=10, pady=(2, 0))
         body = self.pages["Keys"]
         self._section(body, "Joystick and HOTAS buttons",
-                      "Each key above has a Joystick button beside it: click "
-                      "it and press the button you want on any joystick, "
-                      "throttle or HOTAS Windows lists - up to 16 devices of "
-                      "32 buttons. EDSMT reads the device itself, so pick a "
-                      "button the game does not use, or it does both. Reset "
-                      "clears it. Windows only.")
+                      ("Each key above has a Joystick button beside it: click "
+                       "it and press the button you want on any joystick, "
+                       "throttle or HOTAS %s lists - up to 16 devices of "
+                       "32 buttons. EDSMT reads the device itself, so pick a "
+                       "button the game does not use, or it does both. Reset "
+                       "clears it.%s")
+                      % (("Windows", " Windows only.") if os.name == "nt"
+                         else ("the system", "")))
+        self._linux_note(body, "joystick")
         body = self.pages["Keys"]
         self._section(body, "Chat commands",
                       "Messages you send in the game's chat that start with "
@@ -11853,6 +11974,7 @@ class SettingsWindow(ctk.CTkToplevel):
                      "Only used by the radar scope.")
         self._switch(body, "overlay_click_through",
                      "Lock the boxes in place (clicks pass through to the game)")
+        self._linux_note(body, "overlay")
         self._switch(body, "overlay_only_over_game",
                      "Only show the boxes while the game is in front")
         self._switch(body, "overlay_flash",
@@ -12006,6 +12128,14 @@ class SettingsWindow(ctk.CTkToplevel):
                      justify="left", wraplength=560, anchor="w").pack(fill="x", padx=10,
                                                                      pady=(0, 6))
 
+    def _linux_note(self, parent, key):
+        """The Linux-only note for a section, where there is one."""
+        text = linux_notes().get(key, "")
+        if text:
+            ctk.CTkLabel(parent, text=text, font=F_SMALL, text_color=AMBER,
+                         justify="left", wraplength=560, anchor="w").pack(
+                fill="x", padx=10, pady=(0, 6))
+
     def _switch(self, parent, key, label):
         var = ctk.BooleanVar(value=False)
         tip(ctk.CTkSwitch(parent, text=label, variable=var, font=F_BODY,
@@ -12098,26 +12228,109 @@ class SettingsWindow(ctk.CTkToplevel):
             except Exception:
                 pass
 
-    def _choice(self, parent, key, label, options, hint=""):
+    def _choice(self, parent, key, label, options, hint="", command=None):
         """A named choice, stored as its value rather than its label.
 
         The box shows what a person reads; settings.json holds what the
         code tests. Renaming a label then never silently changes a stored
-        setting.
+        setting. `command`, when given, runs with the label picked from the
+        list (1.10039: the theme pickers repaint their swatches).
         """
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=10, pady=3)
         ctk.CTkLabel(row, text=label, width=250, anchor="w",
                      font=F_BODY, text_color=TEXT).pack(side="left")
         box = ctk.CTkComboBox(row, values=[name for name, _v in options],
-                              font=F_BODY, height=30, **BOX)
+                              font=F_BODY, height=30, **BOX,
+                              **({"command": command} if command else {}))
         tip(box, SETTING_TIPS.get(key)).pack(side="left", fill="x", expand=True)
-        Suggest(box, [name for name, _v in options])
+        Suggest(box, [name for name, _v in options], on_pick=command)
         self.choices[key] = (box, list(options))
         if hint:
             ctk.CTkLabel(parent, text=hint, font=F_SMALL,
                          text_color=DIM, justify="left", anchor="w",
                          wraplength=560).pack(fill="x", padx=10, pady=(0, 4))
+
+    # 1.10039 (#287): the Theme tab.
+    def _swatch_row(self, parent, key):
+        """A strip of the chosen theme's colours under a theme picker: the
+        accent, the highlight, the text ranks and the OK, warning and
+        telemetry colours, on that theme's panel. Painted by load() and
+        repainted whenever the picker changes."""
+        strip = ctk.CTkFrame(parent, fg_color=PANEL, corner_radius=0,
+                             border_width=1, border_color=RULE, height=34)
+        strip.pack(fill="x", padx=14, pady=(0, 6))
+        strip.pack_propagate(False)
+        patches = {"_strip": strip}
+        for name in SWATCH_KEYS:
+            patch = ctk.CTkFrame(strip, width=44, height=22, fg_color=ORANGE,
+                                 corner_radius=0)
+            patch.pack(side="left", padx=(6, 0), pady=5)
+            patch.pack_propagate(False)
+            patches[name] = patch
+        self.swatches[key] = patches
+
+    def _theme_key(self, key):
+        """The theme key the picker `key` shows, or the cockpit."""
+        try:
+            box, options = self.choices[key]
+            shown = str(box.get() or "").strip()
+            return next((value for name, value in options if name == shown), "cockpit")
+        except (KeyError, AttributeError):
+            return "cockpit"
+
+    def _paint_swatches(self, key):
+        patches = (attr(self, "swatches", None) or {}).get(key)
+        if not patches:
+            return
+        palette = OV.theme_palette(self._theme_key(key))
+        try:
+            patches["_strip"].configure(fg_color=palette["PANEL"], border_color=palette["RULE"])
+            for name in SWATCH_KEYS:
+                patches[name].configure(fg_color=palette[name])
+        except Exception:
+            pass        # the window has gone; there is nothing left to paint
+
+    def theme_picked(self, key):
+        """A theme picker changed: repaint its swatches."""
+        self._paint_swatches(key)
+
+    def _pick_theme(self, theme):
+        """Put one theme in both pickers, and paint both swatch rows."""
+        for key in ("app_theme", "overlay_theme"):
+            box, options = self.choices[key]
+            box.set(next((name for name, value in options if value == theme), options[0][0]))
+            self._paint_swatches(key)
+
+    def power_picked(self, power):
+        """A Power picked: its theme for the app and the overlay together."""
+        theme = next((key for key, name, _accent in OV.POWERPLAY
+                      if name == str(power or "").strip()), None)
+        if theme is None:
+            return
+        self._pick_theme(theme)
+        self.say("%s for the app and the overlay. Save keeps it; Save and restart "
+                 "now shows the app in it straight away." % OV.THEME_NAMES[theme], GREEN)
+
+    def match_game_theme(self, **where):
+        """The big button: read the game's HUD colours now, make them the game
+        theme, pick it for both, and say what was found."""
+        found = refresh_game_theme(**where)
+        self.app.game_theme = found
+        self._pick_theme(OV.GAME_THEME)
+        self._show_game_line()
+        self.say("Matched. Save keeps it; Save and restart now shows the app in it "
+                 "straight away.", GREEN)
+
+    def _show_game_line(self):
+        line = attr(self, "game_line", None)
+        found = getattr(self.app, "game_theme", None) or {}
+        if line is None:
+            return
+        try:
+            line.configure(text=str(found.get("words") or ""))
+        except Exception:
+            pass
 
     def _colour(self, parent, key, label, options, hint=""):
         """A colour, picked by name or typed as a hex.
@@ -12228,7 +12441,7 @@ class SettingsWindow(ctk.CTkToplevel):
             return
         watcher = IM.state(self.app).joystick
         if not watcher.available():
-            return self.say("Joystick buttons are read on Windows only.", AMBER)
+            return self.say("Joystick buttons are read on Windows and Linux only.", AMBER)
         if not watcher.rebase():
             return self.say("No joystick or HOTAS found. Plug it in, then "
                             "click again.", AMBER)
@@ -12379,6 +12592,9 @@ class SettingsWindow(ctk.CTkToplevel):
             box.set(next((name for name, value in options if value == current),
                          current or options[0][0]))
             self._show_colour(key)
+        for key in list(attr(self, "swatches", None) or {}):
+            self._paint_swatches(key)
+        self._show_game_line()
         # The bindings were seeded with the hardcoded fallback when the row
         # was built and load() never touched them again, so Settings showed
         # F9/F10 whatever you had bound - and save() wrote that lie back.

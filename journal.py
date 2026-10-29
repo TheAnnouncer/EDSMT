@@ -38,6 +38,7 @@ JOURNAL-NOTES.md. The four that cost a release each:
 import os
 import re
 import json
+import glob
 import ctypes
 from pathlib import Path
 
@@ -350,23 +351,155 @@ def _known_saved_games():
         return None
 
 
-def find_journal_dir(override=None):
+def find_journal_dir(override=None, home=None, platform=None, environ=None):
+    """The game's Saved Games folder, or None.
+
+    `home`, `platform` (os.name) and `environ` are for the checks; left
+    out, they are this machine's. On Windows the order is what it always
+    was. On Linux (1.10039) every launcher's place is looked in - see
+    linux_journal_dirs - and where several hold the folder, the one with
+    the newest journal is the one being played in."""
     if override and os.path.isdir(override):
         return override
-    home = str(Path.home())
+    this_machine = home is None
+    home = str(Path.home()) if home is None else home
+    platform = os.name if platform is None else platform
+    environ = os.environ if environ is None else environ
     tries = []
-    known = _known_saved_games()
-    if known:
-        tries.append(os.path.join(known, ED_SUBPATH))
+    if platform == "nt" and this_machine:
+        # Windows' own answer for where Saved Games is - this PC's, so a
+        # check with a made-up home never gets it.
+        known = _known_saved_games()
+        if known:
+            tries.append(os.path.join(known, ED_SUBPATH))
     tries.append(os.path.join(home, "Saved Games", ED_SUBPATH))
     tries.append(os.path.join(home, "OneDrive", "Saved Games", ED_SUBPATH))
-    for prefix in (".steam/steam", ".local/share/Steam"):
-        tries.append(os.path.join(home, prefix, "steamapps/compatdata/359320/pfx",
-                                  "drive_c/users/steamuser/Saved Games", ED_SUBPATH))
-    for path in tries:
-        if os.path.isdir(path):
-            return path
-    return None
+    if platform == "nt":
+        for prefix in (".steam/steam", ".local/share/Steam"):
+            tries.append(os.path.join(home, prefix, "steamapps/compatdata/359320/pfx",
+                                      "drive_c/users/steamuser/Saved Games", ED_SUBPATH))
+        for path in tries:
+            if os.path.isdir(path):
+                return path
+        return None
+    found = [p for p in tries if os.path.isdir(p)]
+    found += [p for p in linux_journal_dirs(home, environ) if p not in found]
+    return newest_journal_dir(found)
+
+
+# Steam's app id for Elite Dangerous; Proton keeps the game's Windows side
+# under steamapps/compatdata/<id>/pfx, with the Windows user "steamuser".
+STEAM_APP_ID = "359320"
+PROTON_SAVED = os.path.join("drive_c", "users", "steamuser", "Saved Games", ED_SUBPATH)
+# Anything made by plain Wine (Lutris, Heroic without Proton, Bottles, a
+# bare ~/.wine) names the Windows user after the Linux one, so the user
+# folder is a wildcard.
+WINE_SAVED = os.path.join("drive_c", "users", "*", "Saved Games", ED_SUBPATH)
+# Where each launcher keeps its prefixes, relative to home. Steam entries
+# are the root of a Steam install; the rest are Wine prefixes, or folders
+# of them (one wildcard per level of launcher layout).
+STEAM_ROOTS = (
+    os.path.join(".steam", "steam"),
+    os.path.join(".steam", "root"),
+    os.path.join(".steam", "debian-installation"),
+    os.path.join(".local", "share", "Steam"),
+    os.path.join(".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"),
+    os.path.join(".var", "app", "com.valvesoftware.Steam", "data", "Steam"),
+)
+WINE_PREFIX_GLOBS = (
+    os.path.join("Games", "*"),                                     # Lutris
+    os.path.join("Games", "Heroic", "Prefixes", "*"),               # Heroic (shared)
+    os.path.join("Games", "Heroic", "Prefixes", "*", "*"),          # Heroic (per game)
+    os.path.join(".var", "app", "com.heroicgameslauncher.hgl", "Games", "Heroic", "Prefixes", "*"),
+    os.path.join(".var", "app", "com.heroicgameslauncher.hgl", "Games", "Heroic", "Prefixes", "*", "*"),
+    os.path.join(".local", "share", "bottles", "bottles", "*"),     # Bottles
+    os.path.join(".var", "app", "com.usebottles.bottles", "data", "bottles", "bottles", "*"),
+    os.path.join(".var", "app", "net.lutris.Lutris", "data", "lutris", "games", "*"),
+    ".wine",
+)
+
+
+def steam_libraries(root):
+    """Every Steam library a Steam install knows of: its own folder first,
+    then the paths in steamapps/libraryfolders.vdf, which is how a library
+    on another drive is found. Never raises."""
+    out = [root]
+    path = os.path.join(root, "steamapps", "libraryfolders.vdf")
+    try:
+        text = open(path, "r", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return out
+    for match in re.finditer(r'"path"\s+"((?:[^"\\]|\\.)*)"', text):
+        library = match.group(1).replace("\\\\", "\\")
+        if library and library not in out:
+            out.append(library)
+    return out
+
+
+def linux_journal_dirs(home, environ=None):
+    """Every folder on this machine that is the game's Saved Games folder,
+    in the order the launchers are looked in. Only folders that exist."""
+    environ = os.environ if environ is None else environ
+    patterns = []
+    compat = environ.get("STEAM_COMPAT_DATA_PATH")
+    if compat:
+        patterns.append(os.path.join(compat, "pfx", PROTON_SAVED))
+    prefix = environ.get("WINEPREFIX")
+    if prefix:
+        patterns.append(os.path.join(prefix, WINE_SAVED))
+    for root in STEAM_ROOTS:
+        for library in steam_libraries(os.path.join(home, root)):
+            patterns.append(os.path.join(library, "steamapps", "compatdata",
+                                         STEAM_APP_ID, "pfx", PROTON_SAVED))
+    for pattern in WINE_PREFIX_GLOBS:
+        patterns.append(os.path.join(home, pattern, WINE_SAVED))
+        patterns.append(os.path.join(home, pattern, "pfx", PROTON_SAVED))
+    out = []
+    for pattern in patterns:
+        for path in sorted(glob.glob(pattern)):
+            real = os.path.realpath(path)
+            if os.path.isdir(path) and real not in [os.path.realpath(p) for p in out]:
+                out.append(path)
+    return out
+
+
+def newest_journal(folder):
+    """The modification time of the newest Journal*.log in a folder, or 0."""
+    newest = 0.0
+    try:
+        for name in os.listdir(folder):
+            if name.startswith("Journal") and name.endswith(".log"):
+                try:
+                    newest = max(newest, os.path.getmtime(os.path.join(folder, name)))
+                except OSError:
+                    continue
+    except OSError:
+        return 0.0
+    return newest
+
+
+def newest_journal_dir(folders):
+    """Of several Saved Games folders, the one played in most recently; a
+    folder with any journal beats one with none; ties keep the order
+    given. None for no folders."""
+    if not folders:
+        return None
+    return max(enumerate(folders), key=lambda p: (newest_journal(p[1]), -p[0]))[1]
+
+
+def journal_hint(platform=None):
+    """One sentence for Settings on Linux saying where the folder is
+    looked for, so a commander whose launcher is not listed knows what to
+    point the box at. "" on Windows, whose blurb already says it."""
+    platform = os.name if platform is None else platform
+    if platform == "nt":
+        return ""
+    return ("On Linux the folder is inside the game's Wine prefix: Steam "
+            "keeps it under steamapps/compatdata/359320/pfx/drive_c/users/"
+            "steamuser/Saved Games (also for Flatpak Steam and libraries on "
+            "other drives), Lutris and Heroic under ~/Games, Bottles under "
+            "its bottles folder, Wine under ~/.wine - all looked in, and "
+            "the one played most recently is used. Anywhere else, set it here.")
 
 
 SHARED_MEAN_PLACEHOLDER = 3

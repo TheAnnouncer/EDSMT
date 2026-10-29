@@ -874,8 +874,9 @@ check("the answer is routed", "self.take_layouts(ok, message)" in method("EDSMT"
 
 print("== Settings in tabs (#142) ==")
 built = method("SettingsWindow", "__init__")
-check("seven tabs, in reading order", A.SETTINGS_TABS ==
-      ("Basics", "Overlay", "Keys", "Rigs", "Sharing", "Your data", "About"))
+# 1.10039 put Theme second, so the colours are seen (#287).
+check("eight tabs, in reading order", A.SETTINGS_TABS ==
+      ("Basics", "Theme", "Overlay", "Keys", "Rigs", "Sharing", "Your data", "About"))
 check("built as a tab view, a scroller in each", "ctk.CTkTabview(" in built
       and "self.tabs.add(name)" in built and "ctk.CTkScrollableFrame(" in built)
 sections = re.findall(r'body = self\.pages\["([^"]+)"\]\n\s+self\._section\(body, "([^"]+)"', built)

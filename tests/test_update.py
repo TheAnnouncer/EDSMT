@@ -284,14 +284,16 @@ check("downloads for this version or older are removed, a newer one is kept",
       SAME not in left and OLDER not in left and NEWER_NAME in left, left)
 
 print("== which build this is ==")
+# 1.10039: these are Windows answers, asked for as such - on Linux a frozen
+# build is neither (test_110039_linux.py), so the check runs there too.
 A.build_kind = _real_kind
 FOLDER = os.path.join(TMP, "installed"); os.makedirs(os.path.join(FOLDER, "_internal"))
 sys.executable = os.path.join(FOLDER, "EDSMT.exe")
-check("a folder build nobody installed is not updated in place", A.build_kind() == "")
+check("a folder build nobody installed is not updated in place", A.build_kind("nt") == "")
 open(os.path.join(FOLDER, "unins000.exe"), "wb").close()
-check("with Setup's uninstaller beside it, it is the installed build", A.build_kind() == "installed")
+check("with Setup's uninstaller beside it, it is the installed build", A.build_kind("nt") == "installed")
 sys.executable = EXE
-check("a single exe with no _internal is the portable build", A.build_kind() == "portable")
+check("a single exe with no _internal is the portable build", A.build_kind("nt") == "portable")
 del A.sys.frozen
 check("running from source is neither", A.build_kind() == "")
 

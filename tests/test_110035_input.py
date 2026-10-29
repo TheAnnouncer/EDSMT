@@ -375,9 +375,12 @@ def _joy_poll():
     watcher.poll(bindings)
     reader.masks[0] = (1 << 7) | (1 << 6)
     check("and the press that was listened for is gone after", watcher.poll(bindings) == ["deposit"])
+    # 1.10039: Linux reads /dev/input/js* instead, so only a machine that
+    # is neither has no joystick.
     check("a machine with no winmm has no joystick and says so, quietly",
           IND.JoystickWatcher(None).available() is (IND.default_reader() is not None)
-          and (os.name == "nt" or IND.default_reader() is None))
+          and (os.name == "nt" or sys.platform.startswith("linux")
+               or IND.default_reader() is None))
     gone = IND.JoystickWatcher(); gone.reader = None
     check("and reads nothing", gone.read() == {} and gone.new_presses() == [] and gone.poll({(1, 1): "x"}) == [])
 
@@ -597,8 +600,11 @@ def _winmouse():
     src = open(os.path.join(REPO, "inputdev.py"), encoding="utf-8").read()
     check("the module has no way of reading a window's title",
           "GetWindowText" not in src and "GAME_TITLE" not in src)
+    # 1.10039: the one open is the Linux joystick device, read-only.
     check("nothing about a press is ever written: the module opens no file and imports no logging",
-          "open(" not in src.replace("opens no file", "") and "import logging" not in src
+          "open(" not in src.replace("opens no file", "").replace("os.open(", "")
+          and "O_WRONLY" not in src and "O_RDWR" not in src
+          and "import logging" not in src
           and "write(" not in src and "print(" not in src)
 
 
@@ -1416,7 +1422,8 @@ def _settings():
         st.joystick = IND.JoystickWatcher(None)
         st.joystick.reader = None
         win._capture_joy("joy_rig1")
-        check("no winmm (not Windows): clean refusal", win._joy_capturing is None and "Windows only" in said[-1], said[-1])
+        check("no winmm (not Windows): clean refusal", win._joy_capturing is None
+              and "Windows" in said[-1] and "only" in said[-1], said[-1])   # 1.10039: "Windows and Linux only"
         # Save.
         win.save()
         check("Save keeps the joystick buttons in settings, in the stored spelling",

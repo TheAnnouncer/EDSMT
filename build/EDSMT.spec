@@ -61,6 +61,10 @@ hiddenimports += ["finder", "powerplay", "sellplan", "board", "crowd", "presale"
 hiddenimports += ["importers", "regrowth", "sitebook", "markerfilter"]
 # 1.10038: which mining location you are in, without targeting it.
 hiddenimports += ["zone"]
+# 1.10039: the shape of an overlay box - a keystone and a bend.
+hiddenimports += ["warp"]
+# 1.10039: the game's own HUD colours as a theme.
+hiddenimports += ["gametheme"]
 
 a = Analysis([os.path.join(ROOT, "edsmt.py")], pathex=[ROOT],
              binaries=[], datas=datas,

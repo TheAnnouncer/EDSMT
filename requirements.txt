@@ -10,3 +10,7 @@ customtkinter>=5.2.2,<6
 # FreeType in its wheel, so it needs no Ghostscript and no system fonts.
 # 10.1 is the first with a sized default font; 13 is not tested.
 Pillow>=10.1,<13
+# Linux (1.10039): the work keys are grabbed on the X server through
+# python-xlib. Pure Python, Linux only - pip skips the line everywhere else.
+# EDSMT runs without it; the keys are then off and Settings says why.
+python-xlib>=0.33,<1; sys_platform == "linux"

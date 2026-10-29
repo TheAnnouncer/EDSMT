@@ -171,7 +171,7 @@
       </div>
       <p class="note">Free &middot; Windows &middot; No account &middot; GPL-3.0</p>
       <p class="build">
-        <span>Build <b><!--VERSION-->1.10038<!--/VERSION--></b></span>
+        <span>Build <b><!--VERSION-->1.10039<!--/VERSION--></b></span>
         <span>Elite Dangerous <b>4.4.2.0</b></span>
         <span><a href="#whatsnew">What changed</a></span>
         <span>Source: <a href="https://github.com/TheAnnouncer/EDSMT">github.com/TheAnnouncer/EDSMT</a></span>
@@ -300,7 +300,7 @@
         rigs, by how many commodities share a patch, and by how recently
         somebody stood on them, with the distance in light years on every
         row.</p>
-        <p><b class="w">Best sell prices</b> answers where it sells, nearest
+        <p><b class="w">Sell prices</b> answers where it sells, nearest
         first, for every commodity you tick. Each price says how old it is and
         where it came from &mdash; your own read of a market, another EDSMT
         user's, or market data &mdash; and a price more than a day old is
@@ -446,7 +446,7 @@
       <div>
         <ul>
           <li><b>What goes on the community map</b>: the deposits you mark &mdash; system, body, commodity, position, rigs and how rich &mdash; and the prices at markets you open.</li>
-          <li><b>Your CMDR name is your choice.</b> Share anonymously if you prefer.</li>
+          <li><b>Every find carries your CMDR name</b>, so the leaderboard and the credit for a find are always right.</li>
           <li><b>Inara and Discord send nothing</b> until you switch them on and add your own key or webhook.</li>
           <li><b>It is GPL-3.0.</b> The source is on <a href="https://github.com/TheAnnouncer/EDSMT">GitHub</a>, so you can read what it sends and when.</li>
         </ul>
@@ -490,14 +490,12 @@
   </section>
 
   <section class="section" id="whatsnew">
-    <div class="sec-head"><div><span class="label on">Latest build &middot; <!--VERSION-->1.10038<!--/VERSION--></span><h2>What changed</h2></div></div>
+    <div class="sec-head"><div><span class="label on">Latest build &middot; <!--VERSION-->1.10039<!--/VERSION--></span><h2>What changed</h2></div></div>
     <!--WHATSNEW-->
-    <h3>New — one search at a time, the location you are at, the leaderboard&#x27;s three views</h3>
-    <ul><li><b>Find shows one search at a time.</b> A switch at the top picks Sites, Still there, Deposits, Sell prices or Mining bodies; only that search&#x27;s filters are on screen, and one Search button (or Enter) runs it. Saved searches are a Saved menu beside Reset and keep their search.</li><li><b>Earnings is four pages</b> — This session, Where to sell, Sessions, System prices — each with only its own controls. The session you are on is shown as cards, with Start, Pause, End and Multi-session beside it.</li><li><b>Pop out and Dock.</b> Every tool tab has Pop out at the right of its header; Dock on that window brings it back. The tabs-or-windows switch is first in Settings → Basics.</li><li><b>The mining location you are at.</b> From the glide down, EDSMT works out which location you are over from your own signals and the finds others have shared, sets the Signal box and says what is in it — no need to target it in the game. The overlay&#x27;s STATUS box names it too.</li><li><b>Leaderboard.</b> Three views: by points, Powerplay overall (your rank and total merits as the game reports them) and merits from mining; a Powers table for each. Finds far from Sol earn more: +5 beyond 500 Ly, +10 beyond 2,000, +20 beyond 10,000, +30 beyond 25,000.</li><li><b>Where to land</b> counts a body&#x27;s mining locations from the FSS as well as the DSS (4.4.2 journals).</li></ul>
-    <h3>Changed</h3>
-    <ul><li>Where to land and Powerplay say <i>Why</i> in a few words; rest the mouse on the cell for the whole sentence.</li><li>Powerplay&#x27;s filters stay on Where it counts only.</li></ul>
+    <h3>New — Linux, a Theme tab with Powerplay and in-game colours, overlay boxes that change shape</h3>
+    <ul><li><b>Linux.</b> EDSMT runs on Linux from the same code, for Elite played through Proton, Lutris, Heroic or Bottles: <code>bash RUN.sh</code> from source, or the <code>EDSMT-linux-x86_64.tar.gz</code> file on each release. The game&#x27;s Saved Games folder is found inside whichever Wine prefix was played in most recently; your data lives in <code>~/.local/share/RadioRaxxla/EDSMT</code>. Joystick and HOTAS buttons work from /dev/input, and hotkeys work on an X11 session (off on Wayland, and Settings says so). The overlay keeps its boxes, locking and opacity but cannot be clicked through on Linux, and the long press of the fire button stays Windows only — both said in Settings. The update button on Linux opens the download page rather than fetching a Windows file.</li><li><b>A Theme tab.</b> Settings has a <b>Theme</b> tab, second from the left: the app and overlay theme pickers, a strip of each theme&#x27;s colours under them, and <b>Save and restart now</b> beside the app theme.</li><li><b>Twelve Powerplay themes</b>, one in each Power&#x27;s colours. Pick a Power and the app and the overlay both take it.</li><li><b>Match my in-game HUD colours</b> reads the colours your game is using — the HUD colour matrix in GraphicsConfigurationOverride.xml, or the main text colour of a HUD mod when one is installed — and makes a theme of them for both. It says what it found, and reads it again at every start. Every new theme is held to the same contrast rules as the existing fourteen, which are all still there.</li><li><b>Fit a box to the cockpit.</b> Unlock the overlay and press <b>SHAPE</b> in a box&#x27;s bar: four corner handles let it lean the way the canopy frame does, and a <b>BEND</b> slider curves it for a helmet visor. <b>Flat again</b> undoes it. The shape is kept as a share of the box, so it follows the box when it is moved or resized and fits any screen. A box with no shape set is drawn exactly as before.</li></ul>
     <h3>Fixed</h3>
-    <ul><li>Showing a tab called itself a few hundred times a press before settling.</li><li>The update download refuses a redirect off HTTPS.</li></ul>
+    <ul><li>The website&#x27;s FAQ said your CMDR name on a find was your choice. It is not and has not been since the leaderboard: every find carries the finder&#x27;s name. The page now says so.</li></ul>
     <!--/WHATSNEW-->
     <p class="note" style="margin-top:18px">Every earlier build: <a href="https://github.com/TheAnnouncer/EDSMT/blob/HEAD/CHANGELOG.md">the full changelog</a></p>
   </section>
@@ -516,7 +514,7 @@
       <details><summary>Alt+3 will not mark the deposit.</summary>
         <p>All four boxes have to be filled in: commodity, rigs, amount and density. The scanner's density counts when the game names one. A find on the shared map needs the two things somebody deciding whether to fly there wants most.</p></details>
       <details><summary>Can I keep my finds to myself, or share them only with my squadron?</summary>
-        <p>No. Every find goes on the community map for everybody, and everybody's comes back to you under Find. A map only some people can see never gets filled in. Your CMDR name on your finds is your choice.</p></details>
+        <p>No. Every find goes on the community map for everybody, and everybody's comes back to you under Find. A map only some people can see never gets filled in. Every find carries your CMDR name, so the leaderboard and the credit for a find are always right; Leave in the Leaderboard window takes your name off the board, not off your finds.</p></details>
       <details><summary>When does an earnings session start and stop?</summary>
         <p>It starts with your first rig down, or your first tonne refined in the Rhino, or Start session. It ends when every rig is back up, when the Rhino comes back aboard, or on End session. Pause stops the clock for a break or the drive to a station.</p></details>
       <details><summary>Where do the sell prices come from?</summary>

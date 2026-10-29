@@ -15,12 +15,16 @@ Nothing about a press is written down: the watcher holds a start time in
 memory for as long as the button is down, and nothing else.
 
 Both are polled, never hooked: no driver, no message hook, nothing that sees
-a key. Off Windows both are quietly unavailable. Every call into Windows goes
-through an object that can be replaced, so all of it is tested without it.
+a key. On Linux (1.10039) the buttons come from the kernel's joystick
+interface, /dev/input/js*, through a reader with the same interface; the
+long press stays Windows only. Every call into Windows goes through an
+object that can be replaced, so all of it is tested without it.
 """
 import ctypes
 import os
 import re
+import struct
+import sys
 
 # ---------------------------------------------------------------------------
 # Joystick buttons
@@ -133,10 +137,102 @@ class WinmmReader:
         return int(info.dwButtons)
 
 
+# The kernel's joystick interface (1.10039, Linux): /dev/input/jsN hands out
+# struct js_event records - u32 time, s16 value, u8 type, u8 number, eight
+# bytes - and on open a run of them flagged JS_EVENT_INIT with the state as
+# it is. Read non-blocking; nothing pending is EAGAIN. Readable by the
+# logged-in user, no root and nothing to install.
+JS_EVENT = struct.Struct("@IhBB")
+JS_EVENT_BUTTON = 0x01
+JS_EVENT_INIT = 0x80
+JS_FOLDER = "/dev/input"
+JS_READ_BYTES = JS_EVENT.size * 64
+
+
+class JsReader:
+    """The buttons held on each /dev/input/js* device. None when nothing is
+    there. The same interface as WinmmReader, so the JoystickWatcher does
+    not know which it has.
+
+    `folder` is where the device nodes are; the checks give a folder of
+    ordinary files written in the kernel's format."""
+
+    def __init__(self, folder=JS_FOLDER):
+        self.folder = folder
+        self._open = {}          # device number -> file descriptor
+        self._mask = {}          # device number -> buttons down
+        self._held = {}          # device number -> a torn record's bytes
+
+    def devices(self):
+        """How many device numbers to ask: one past the highest jsN there."""
+        highest = -1
+        try:
+            names = os.listdir(self.folder)
+        except OSError:
+            return 0
+        for name in names:
+            found = re.fullmatch(r"js(\d+)", name)
+            if found:
+                highest = max(highest, int(found.group(1)))
+        return max(0, min(MAX_DEVICES, highest + 1))
+
+    def _drop(self, device):
+        handle = self._open.pop(device, None)
+        if handle is not None:
+            try:
+                os.close(handle)
+            except OSError:
+                pass
+        self._mask.pop(device, None)
+        self._held.pop(device, None)
+
+    def __call__(self, device):
+        """The bit mask of buttons down on device number `device` (from 0)."""
+        device = int(device)
+        path = os.path.join(self.folder, "js%d" % device)
+        if device not in self._open:
+            try:
+                # O_NONBLOCK is Linux's; a check on Windows reads a plain file.
+                self._open[device] = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+            except OSError:
+                return None
+            self._mask[device] = 0
+            self._held[device] = b""
+        elif not os.path.exists(path):
+            self._drop(device)            # unplugged
+            return None
+        handle = self._open[device]
+        data = self._held[device]
+        while True:
+            try:
+                chunk = os.read(handle, JS_READ_BYTES)
+            except BlockingIOError:
+                break                     # nothing pending: the real device
+            except OSError:
+                self._drop(device)        # gone mid-read
+                return None
+            if not chunk:
+                break                     # an ordinary file at its end
+            data += chunk
+        whole = len(data) - len(data) % JS_EVENT.size
+        mask = self._mask[device]
+        for time_ms, value, kind, number in JS_EVENT.iter_unpack(data[:whole]):
+            if not kind & JS_EVENT_BUTTON or number >= MAX_BUTTONS:
+                continue
+            if value:
+                mask |= 1 << number
+            else:
+                mask &= ~(1 << number)
+        self._mask[device] = mask
+        self._held[device] = data[whole:]
+        return mask
+
+
 def default_reader():
-    """The reader for this machine, or None where there is no winmm."""
+    """The reader for this machine: winmm on Windows, the kernel's joystick
+    interface on Linux, None anywhere else."""
     if os.name != "nt":
-        return None
+        return JsReader() if sys.platform.startswith("linux") else None
     try:
         return WinmmReader()
     except (AttributeError, OSError):

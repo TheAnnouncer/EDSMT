@@ -1,15 +1,15 @@
 {
-  "version": "1.10038",
+  "version": "1.10039",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "New \u2014 one search at a time, the location you are at, the leaderboard's three views",
+  "headline": "New \u2014 Linux, a Theme tab with Powerplay and in-game colours, overlay boxes that change shape",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10038",
-    "sha256": "d53d237469da1e97fcacfee25c06ac1fd64d7427d5503a3961bc2c65d53ca44a",
-    "bytes": 18778547
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10039",
+    "sha256": "56647f27abcac178df7c4a4f62a6e139af11bb60c1eb286e315c725f64fbd589",
+    "bytes": 18848700
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10038",
-    "sha256": "9833b2d9ebe5cdf18ef4d1d3331795d2feedf0b4cac1263da25c6a690dd488a2",
-    "bytes": 24150195
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10039",
+    "sha256": "920c0a69e5cddfc7aa02de8d1ad4afe9c8063824ffa36c7dd3b4cb4fbf666a1e",
+    "bytes": 24231017
   }
 }

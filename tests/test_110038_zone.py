@@ -328,6 +328,12 @@ app.geometry("1600x1000+0+0")
 app.updates.check = lambda *args, **kwargs: None
 app.community.enabled = False
 app.community = Link()
+# A settings file with no keys in it earns the "New keys" notice, which lands
+# on the status line 2.5 s after start - on a slow runner, on top of the
+# one-line prompts checked below. Let it come and go first.
+_settled = time.time() + 3.0
+while time.time() < _settled:
+    app.update_idletasks(); app.update(); time.sleep(0.02)
 
 
 def pump(times=3):

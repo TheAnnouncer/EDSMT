@@ -15,6 +15,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # build (fixed in 1.10034); this is the net under all of them.
 os.environ["LOCALAPPDATA"] = os.path.join(
     tempfile.mkdtemp(prefix="edsmt-checks-"), "appdata")
+# The same net on Linux (1.10039), where the data folder follows
+# $XDG_DATA_HOME.
+os.environ["XDG_DATA_HOME"] = os.path.join(os.environ["LOCALAPPDATA"], "xdg")
 CHECKS = [
     ("survey model and plan view", "test_core.py"),
     ("a full session on Ega 1", "test_app.py"),
@@ -59,6 +62,10 @@ CHECKS = [
     ("1.10038: Earnings in four pages, and short Why cells", "test_110038_earnings.py"),
     ("1.10038: the leaderboard's three views, far from Sol, your standing", "test_110038_board.py"),
     ("1.10038: the mining location you are in, without targeting it", "test_110038_zone.py"),
+    ("1.10039: the overlay boxes change shape - a keystone and a bend", "test_110039_warp.py"),
+    ("1.10039: Powerplay themes, match my in-game HUD colours, the Theme tab", "test_110039_theme.py"),
+    ("1.10039: Linux - the journal in a Wine prefix, joystick, hotkeys, overlay, packaging", "test_110039_linux.py"),
+    ("1.10039: a release tells the Radio Raxxla Discord about itself", "test_110039_discord_post.py"),
     ("the real toolkit, on a real display", "test_gui.py"),
 ]
 # More checks kept on this machine only: EDSMT_EXTRA_CHECKS names one or more

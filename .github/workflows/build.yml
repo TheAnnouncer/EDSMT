@@ -2,7 +2,8 @@
 # without anyone having to build one.
 #
 # Push a tag and the installer plus the portable exe are attached to a
-# GitHub release, ready to be uploaded to radioraxxla.com/EDSMT/:
+# GitHub release, ready to be uploaded to radioraxxla.com/EDSMT/, with the
+# Linux file beside them (1.10039):
 #
 #     git tag v1.10035
 #     git push origin v1.10035
@@ -131,11 +132,63 @@ jobs:
           path: upload/*
           retention-days: 30
 
+  # The same program as one Linux file, from the same spec (1.10039). Its
+  # own job, so a Linux problem shows as one and the Windows build above is
+  # what it always was. The checks run here too, on a virtual display.
+  linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Tk's shared libraries, which the runner's Python links against, and
+      # a virtual X server for the checks that open a window.
+      - name: Install Tk and a virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb libtk8.6 libtcl8.6
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.0,<7"
+
+      - name: Run the tests
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" python tests/run_all.py --quiet
+
+      - name: Build the single file
+        run: pyinstaller build/EDSMT-onefile.spec --noconfirm --distpath dist --workpath build/work
+
+      # One folder in one archive: the program, the README and the licence.
+      - name: Pack the download
+        run: |
+          mkdir -p upload/EDSMT-linux-x86_64
+          cp dist/EDSMT README.md LICENSE upload/EDSMT-linux-x86_64/
+          tar -C upload -czf upload/EDSMT-linux-x86_64.tar.gz EDSMT-linux-x86_64
+          rm -r upload/EDSMT-linux-x86_64
+          sha256sum upload/EDSMT-linux-x86_64.tar.gz
+          ls -l upload
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: EDSMT-linux
+          path: upload/EDSMT-linux-x86_64.tar.gz
+          retention-days: 30
+
   # Its own job so that write access to the repository exists only on a tag,
-  # and never in a build triggered by a pull request.
+  # and never in a build triggered by a pull request. It waits for both
+  # builds but needs only the Windows one: a Linux job that fails on the
+  # runner must not hold back the installer, so the release is made from
+  # what exists and the Linux file is added by hand once its build is fixed.
   release:
-    needs: windows
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, linux]
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -155,6 +208,12 @@ jobs:
           name: EDSMT-windows
           path: upload
 
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: EDSMT-linux
+          path: upload
+
       # The downloads and the source only. The web page and version.json
       # are for radioraxxla.com and go there, not on the release.
       - name: Attach to the release
@@ -164,4 +223,14 @@ jobs:
             upload/EDSMT-Setup.exe
             upload/EDSMT.exe
             upload/EDSMT-source.zip
+            upload/EDSMT-linux-x86_64.tar.gz
           body_path: release-notes.md
+
+      # Then tell the Radio Raxxla Discord, in the words of the same patch
+      # notes. Only when the webhook secret is set: a fork, or a build with
+      # no webhook, posts nothing and says so.
+      - name: Tell the Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_ROLE: ${{ secrets.DISCORD_ROLE }}
+        run: python3 build/discord_post.py "${GITHUB_REF_NAME}" --send

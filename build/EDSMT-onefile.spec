@@ -13,6 +13,7 @@
 #   pyinstaller build/EDSMT-onefile.spec --noconfirm
 
 import os
+import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
@@ -56,6 +57,17 @@ hiddenimports += ["finder", "powerplay", "sellplan", "board", "crowd", "presale"
 hiddenimports += ["importers", "regrowth", "sitebook", "markerfilter"]
 # 1.10038: which mining location you are in, without targeting it.
 hiddenimports += ["zone"]
+# 1.10039: the shape of an overlay box - a keystone and a bend.
+hiddenimports += ["warp"]
+# 1.10039: the game's own HUD colours as a theme.
+hiddenimports += ["gametheme"]
+# 1.10039: the same spec builds the Linux file (dist/EDSMT, no extension).
+# The work keys there go through python-xlib, imported inside a function
+# and loading its keysym tables by name, so the whole package is named.
+# Windows gets none of this, and its build is the same as before.
+LINUX = sys.platform.startswith("linux")
+if LINUX:
+    hiddenimports += ["x11keys"] + collect_submodules("Xlib")
 
 a = Analysis([os.path.join(ROOT, "edsmt.py")], pathex=[ROOT],
              binaries=[], datas=datas,
@@ -69,7 +81,10 @@ a = Analysis([os.path.join(ROOT, "edsmt.py")], pathex=[ROOT],
 
 pyz = PYZ(a.pure)
 
+# The .ico and the version resource are Windows things; on Linux neither
+# applies, so neither is asked for.
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, [],
           name="EDSMT", debug=False, strip=False, upx=False,
-          runtime_tmpdir=None, console=False, icon=ICON,
-          version=os.path.join(SPECPATH, "version_info.txt"))
+          runtime_tmpdir=None, console=False,
+          icon=None if LINUX else ICON,
+          version=None if LINUX else os.path.join(SPECPATH, "version_info.txt"))
