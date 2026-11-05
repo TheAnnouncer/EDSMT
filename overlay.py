@@ -32,6 +32,7 @@ import math
 import os
 
 import planview as PV
+import planring as PRG
 import markerfilter as MF
 import warp as WP
 import gametheme as GT
@@ -1629,6 +1630,9 @@ class Overlay:
         self.app = app
         self.tk = tk_module
         self.settings = settings
+        # The planning circle (1.10040, #215): its centre as (east, north)
+        # metres from the commander, set by the app before each draw.
+        self.planning_ring = None
         self.window = None
         self.canvas = None
         self._drag = None
@@ -3365,6 +3369,7 @@ class Overlay:
         self._map_marks(viewport, plan, origin)
         self._guidance_marks(viewport, plan, origin)
         self._scanner(viewport, plan)
+        self._planning_ring(viewport, plan, origin)
         if patch:
             self._patch(patch)
         if rich and (not patch or (rich["x"], rich["y"]) != (patch["x"], patch["y"])):
@@ -3969,6 +3974,29 @@ class Overlay:
                   for a in (-60, -120, -30, -150, 0, 180, 30, 150, 60, 120)]
         self._later(4, x, y - radius + 2, "SCAN %s" % format_range(PV.SCANNER_RANGE_M),
                     CYAN, 8, 6, False, points=around)
+
+    def _planning_ring(self, viewport, plan, origin):
+        """The planning circle: its edge when the scope reaches it, and
+        always how much room is left to it."""
+        centre = self.planning_ring
+        if not centre:
+            return
+        try:
+            east, north = float(centre[0]) - origin[0], float(centre[1]) - origin[1]
+        except (TypeError, ValueError, IndexError):
+            return
+        if abs(math.hypot(east, north) - PRG.RADIUS_M) <= plan["extent_m"]:
+            x, y = viewport.to_canvas(east, north)
+            radius = viewport.radius_px(PRG.RADIUS_M)
+            self.canvas.create_oval(x - radius, y - radius, x + radius, y + radius,
+                                    outline=GREEN_OK, dash=(6, 4), tags=("planring",))
+        room = PRG.room_m((float(centre[0]), float(centre[1])))
+        words = ("PLAN %s" % PRG.distance_text(room)) if room >= 0 else \
+            ("PLAN OUT %s" % PRG.distance_text(-room))
+        cx, cy = viewport.centre
+        outer = viewport.radius_px(plan["extent_m"])
+        self._later(5, cx, cy + outer - 10, words, GREEN_OK if room >= 0 else RED,
+                    8, 4, False)
 
     def _patch(self, patch):
         """Bracket the richest tight knot - the surface triple hotspot."""

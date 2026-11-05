@@ -131,7 +131,7 @@ def _state():
     check("and nothing about this one but the name", set(state) == {
         "app", "cmdr", "system", "body", "session", "tonnes", "tonnes_total", "mining", "cr_hr",
         "cr_hr_text", "merits", "merits_estimated", "rigs_down", "nearest", "last_find", "colours",
-        "updated"}, sorted(state))
+        "updated", "schema", "version"}, sorted(state))
 
 
 @section("streamout: when there is less to show")

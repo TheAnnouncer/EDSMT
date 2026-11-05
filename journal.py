@@ -49,6 +49,7 @@ import powerplay as PW
 import squadshare as SQ
 import eddnsend as ED
 import survey as SV
+import voicecues as VC
 import wingmates as WM
 
 # Frontier's own list, owned by edonline so the app, the uploader and the
@@ -578,11 +579,13 @@ def read_names():
     return (set(PW.POWER_EVENTS) | set(WM.WING_EVENTS) | set(WM.RESET_EVENTS)
             | set(IDENTITY_EVENTS) | set(BODY_EVENTS) | set(SRV_EVENTS)
             | set(RUN_EVENTS) | set(SYSTEM_EVENTS) | set(OTHER_READ_EVENTS)
-            | set(SQ.EVENTS) | set(ED.EVENTS))
+            | set(SQ.EVENTS) | set(ED.EVENTS) | set(VC.EVENTS))
 
 
 _READ_NAMES = None
 _SKIPPED = {}
+# Celestia's cues want only what is happening now: a backlog is cut short.
+VOICE_EVENTS_MOST = 60
 
 
 def skipped(name):
@@ -666,6 +669,10 @@ class JournalWatcher:
         # for the squadron share (1.10040, #301) until the app takes them.
         self.squadron = None
         self.squad_events = []
+        # The events Celestia's cues read (1.10040, #335), and Status.json's
+        # flags as last read, kept until the app takes them.
+        self.voice_events = []
+        self.flags = self.flags2 = 0
         # Mining-location messages for EDDN (1.10040, #159), made as the
         # events are read and kept until the app takes them.
         self.eddn = ED.Tracker()
@@ -958,6 +965,12 @@ class JournalWatcher:
         out, self.squad_events = self.squad_events, []
         return out
 
+    def take_voice_events(self):
+        """The events Celestia's cues read, since last asked; the list is
+        emptied."""
+        out, self.voice_events = self.voice_events, []
+        return out
+
     def take_eddn(self):
         """The EDDN messages made since last asked; the list is emptied."""
         out, self.eddn_items = self.eddn_items, []
@@ -1009,6 +1022,7 @@ class JournalWatcher:
 
         flags = whole(data.get("Flags"))
         flags2 = whole(data.get("Flags2"))
+        self.flags, self.flags2 = flags, flags2
         self.running = True
         self.landed = bool(flags & FLAG_LANDED)
         self.in_srv = bool(flags & FLAG_IN_SRV)
@@ -1294,6 +1308,10 @@ class JournalWatcher:
                     self.squad_events.append(picked)
                     if len(self.squad_events) > SQ.MOST:
                         del self.squad_events[:-SQ.MOST]
+            if name in VC.EVENTS:
+                self.voice_events.append(event)
+                if len(self.voice_events) > VOICE_EVENTS_MOST:
+                    del self.voice_events[:-VOICE_EVENTS_MOST]
             if name in ED.EVENTS:
                 made = self.eddn.see(event)
                 if made is not None:

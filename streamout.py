@@ -50,6 +50,10 @@ COLOURS = {"orange": "#ff7a18", "amber": "#ffb545", "text": "#e9dccd",
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 
+# The shape of /state.json, for the tools that read it (docs/LOCAL-DATA.md).
+SCHEMA = 1
+
+
 def _whole(value, low=0):
     """A whole number not below `low`, or `low` for anything that is not one."""
     try:
@@ -164,7 +168,8 @@ def _colours(given):
 
 def stream_state(cmdr="", system="", body="", mined=None, seconds=0, running=False,
                  paused=False, cr_hr=0, merits=None, merits_estimated=False,
-                 rigs_down=0, near=None, find=None, colours=None, hide=None, now=None):
+                 rigs_down=0, near=None, find=None, colours=None, hide=None, now=None,
+                 version=""):
     """What /state.json says, from plain values. Never raises.
 
     `mined` is {commodity: tonnes} this session, `seconds` the session's
@@ -192,6 +197,10 @@ def stream_state(cmdr="", system="", body="", mined=None, seconds=0, running=Fal
         found["where"] = str(hide(str(found["where"] or "")) or "")
     return {
         "app": "EDSMT",
+        # Other tools read this too (docs/LOCAL-DATA.md): what changes the
+        # meaning of a field changes the schema number; a new field does not.
+        "schema": SCHEMA,
+        "version": str(version or ""),
         "cmdr": str(cmdr or "").strip(),
         "system": str(hide(str(system or "").strip()) or ""),
         "body": str(hide(str(body or "").strip()) or ""),

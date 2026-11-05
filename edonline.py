@@ -42,6 +42,10 @@ import urllib.parse
 import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
+import installkey as IK
+
+HEALTH_TAG = "health"
+
 APP_NAME = "EDSMT"
 APP_VERSION = "1.10040"
 # The worker tag the bodies of a system come back under.
@@ -1041,6 +1045,9 @@ class CommunityClient:
         self.token = ""
         self.enabled = False
         self.share_name = True
+        # This copy's own key (1.10040, audit finding 3): sent with every
+        # request to the map once the map has given one. Never shown.
+        self.install_key = ""
 
     # Where the community map lives. Used when a settings file carries a
     # blank URL - which every settings.json written before the address
@@ -1089,7 +1096,31 @@ class CommunityClient:
         return bool(self.base_url and self.token)
 
     def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
+        headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
+        if self.install_key:
+            headers[IK.HEADER] = self.install_key
+        return headers
+
+    def ask_health(self) -> bool:
+        """The map's /v1/health in the background, under HEALTH_TAG: which
+        build it is and what it offers (the Discord application id for Rich
+        Presence among it)."""
+        if not self.base_url:
+            return False
+        url = f"{self.base_url}/v1/health"
+        headers = self._headers()
+        self.worker.submit(HEALTH_TAG, lambda: json.dumps(get_json(url, headers=headers)))
+        return True
+
+    def ask_install_key(self) -> bool:
+        """Ask the map for this copy's own key, once, in the background. The
+        answer comes back under installkey.TAG. Allowed with sharing off:
+        a key is not sharing anything."""
+        if not self.base_url:
+            return False
+        url = f"{self.base_url}/v1/install"
+        self.worker.submit(IK.TAG, lambda: json.dumps(post_json(url, {}, headers={})))
+        return True
 
     @staticmethod
     def envelope(cmdr: str, deposits: list[dict], share_name: bool = True) -> dict:

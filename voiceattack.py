@@ -35,6 +35,68 @@ COMMANDS = ((("mark signal", "hotkey_location"),
                ("overlay", "hotkey_overlay"),
                ("lock overlay", "hotkey_lock")))
 
+# Where VoiceAttack keeps its Sounds folder unless it is moved in VoiceAttack's
+# Options: "Sounds" under VoiceAttack's own folder (VoiceAttack's guide,
+# {VA_SOUNDS}). Its guide has a sound pack as a folder inside it - which is
+# how Celestia's voice-pack reminders know to switch on by themselves.
+VA_FOLDERS = ("VoiceAttack", "VoiceAttack 2")
+
+
+def steam_libraries(vdf_text):
+    """Every library path in Steam's libraryfolders.vdf, in the order there."""
+    out = []
+    for line in str(vdf_text or "").splitlines():
+        parts = line.strip().split('"')
+        if len(parts) >= 4 and parts[1].lower() == "path":
+            out.append(parts[3].replace("\\\\", "\\"))
+    return out
+
+
+def sounds_folders(env, libraries=()):
+    """Where VoiceAttack's Sounds folder is by default: under VoiceAttack in
+    Program Files, or in a Steam library."""
+    bases = [env.get(name) for name in ("ProgramFiles(x86)", "ProgramFiles", "ProgramW6432")]
+    places = []
+    for base in [b for b in bases if b]:
+        places += ["%s\\%s\\Sounds" % (base.rstrip("\\/"), name) for name in VA_FOLDERS]
+    for library in libraries or ():
+        places += ["%s\\steamapps\\common\\%s\\Sounds" % (str(library).rstrip("\\/"), name)
+                   for name in VA_FOLDERS]
+    seen = []
+    for place in places:
+        if place.lower() not in [p.lower() for p in seen]:
+            seen.append(place)
+    return seen
+
+
+def has_sound_packs(folders):
+    """True when any of these Sounds folders holds a folder: a sound pack.
+    Never raises - a folder that cannot be read is no pack."""
+    for folder in folders or ():
+        try:
+            if any(os.path.isdir(os.path.join(folder, name)) for name in os.listdir(folder)):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def find_sound_packs(env=None, read=None):
+    """Whether VoiceAttack has a sound pack on this computer, from its usual
+    places and Steam's libraries. False away from Windows or on any fault."""
+    env = os.environ if env is None else env
+    libraries = []
+    steam = env.get("ProgramFiles(x86)")
+    if steam:
+        vdf = os.path.join(steam, "Steam", "steamapps", "libraryfolders.vdf")
+        try:
+            with (read or open)(vdf, encoding="utf-8", errors="replace") as handle:
+                libraries = steam_libraries(handle.read())
+        except (OSError, TypeError):
+            libraries = [os.path.join(steam, "Steam")]
+    return has_sound_packs(sounds_folders(env, libraries))
+
+
 # A binding's modifiers, as Windows' RegisterHotKey numbers them (the bits
 # EDSMT's own keys are registered with), and the left-hand key pressed for
 # each: Windows virtual-key codes. Ctrl+Alt - AltGr - is both.

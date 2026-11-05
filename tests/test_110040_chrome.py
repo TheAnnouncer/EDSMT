@@ -359,6 +359,13 @@ if HAVE_DISPLAY:
     def _status():
         state = State(cmdr="Jameson", ship_type="cutter", system="Ega", body="Ega 1",
                       landed=True)
+        # The app's own tick redraws the strip from the real (empty) game
+        # state; on a busy machine it landed inside the pump below and the
+        # check read its dashes. Held off while this section looks.
+        try:
+            app.after_cancel(app._tick_job)
+        except Exception:
+            pass
         app.show_status_strip(state)
         pump(2)
         shown = app.status_strip.shown
@@ -379,6 +386,7 @@ if HAVE_DISPLAY:
         app.show_overlay_state()
         pump(2)
         check("and off", dict((c.label, c.value) for c in app.status_strip.shown)["OVERLAY"] == "OFF")
+        app._tick_job = app.after(400, app.tick)
 
     @section("the shortcut bar: F-keys, rig keys, spacing and the theme arrows")
     def _bar():

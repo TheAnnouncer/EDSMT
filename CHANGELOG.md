@@ -169,6 +169,9 @@ The version is in the app's title bar. Quote it on a bug report.
   editor, in chat tags and in imports (asked on the Discord). The Rhino
   itself is unchanged: six rigs, the rig keys 1 to 6, "rigs full" at the
   sixth; a wing's second Rhino still takes 7 to 12.
+- **A key of its own**: each copy of EDSMT asks the community map once for
+  its own key and sends it with every request, kept in a file of its own in
+  the data folder and never shown.
 - **Signed updates**: each release's version.json is signed on the build
   machine, and EDSMT checks the signature before it downloads a build - a
   checksum proves the file matches the list, the signature proves who wrote
@@ -223,6 +226,54 @@ The version is in the app's title bar. Quote it on a bug report.
   the body, no credits. Only what the game reports as you play — never an
   old journal read back — and only when the system it names is the one
   the game last said you were in.
+
+### New — Celestia, the main voice
+
+- **Celestia** — the Celestial Event Liaison & Tactical Information
+  Algorithm, Radio Raxxla's voice of the Void — is the first voice of the
+  Basic voice line pack, and the one a new install uses. Her comms sound
+  different in the ship, in the Rhino and on foot, picked from where the
+  game says you are. The Ship computer, Flight controller and Radio Raxxla
+  on-air stay in the list.
+- **Answer length** for Celestia: Short, Normal or Chatty. Chatty has more
+  than one take of many lines, a word about what the journal shows - the
+  Rhino going out, a big sale, heat - and now and then, when nothing is going
+  on, an aside about the galaxy.
+- **Voice-pack reminders.** For commanders who fly by voice through a
+  VoiceAttack voice pack, Celestia says the phrase to use when the journal
+  shows the moment - "Deploy the SRV" after landing, "Recall the ship" when
+  every rig is up, and so on - and stays quiet when it is already done. On
+  by itself when VoiceAttack has a voice pack; one switch in Settings.
+
+### New — Rich Presence
+
+- **Your Rhino session on your Discord profile**: "Playing EDSMT", what you
+  are mining, Cr/hr and rigs down, through the Discord app on your PC.
+  Settings → Discord, off to start with; streamer mode keeps the body and
+  system off it. Until it is ready at our end, the switch says it is not
+  available yet.
+
+### New — your session as data for other tools
+
+- **/state.json**, on the streaming server on this PC, now carries a schema
+  number and EDSMT's version, and every field is written up in
+  docs/LOCAL-DATA.md - for a Stream Deck button, a dashboard or your own
+  overlay. Read-only, this PC only, no position on a body.
+
+### New — the planning circle
+
+- **Right-click the map: Planning circle here (4.5 km).** Rig and drive
+  inside the ring and no rig is left far enough behind for the game to take
+  it. It stays put as you drive, shows on the map and the scope with the
+  room left to its edge, and clears from the same menu. Recentre is still
+  the first thing on the right-click.
+
+### New — one signal as a CSV file
+
+- **Export CSV** in a signal's edit window saves everything about that
+  signal in one file: where it was logged, the survey centre and border, its
+  deposits, each traced deposit edge with its rig pins, and the drive. One
+  row per thing, the first column saying which.
 
 ### New — best to mine, good and bad marks, your own marker colour, the materials the lists offer
 

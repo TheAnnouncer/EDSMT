@@ -234,30 +234,31 @@ RIGS = ["rig_%s_%d" % (kind, n) for kind in ("down", "up") for n in range(1, 7)]
 @section("the line table: every line in all three voices")
 def _lines():
     check("it is the Basic voice line pack", VO.PACK_NAME == "Basic voice line pack")
-    check("three voices: Ship computer, Flight controller, Radio Raxxla on-air",
-          [name for _k, name in VO.THEMES] == ["Ship computer", "Flight controller",
+    check("four voices: Celestia, Ship computer, Flight controller, Radio Raxxla on-air",
+          [name for _k, name in VO.THEMES] == ["Celestia", "Ship computer", "Flight controller",
                                                 "Radio Raxxla on-air"], VO.THEMES)
     check("every approved line is there, and nothing else",
           sorted(VO.LINES) == sorted(FIXED + RIGS), sorted(set(VO.LINES) ^ set(FIXED + RIGS)))
     short = [(line_id, theme) for line_id, words in VO.LINES.items()
              for theme in VO.THEME_KEYS if not str(words.get(theme) or "").strip()]
-    check("every line has all three voices", not short and all(
+    check("every line has all four voices", not short and all(
         set(words) == set(VO.THEME_KEYS) for words in VO.LINES.values()), short[:6])
     check("the words as approved, in each voice",
           [VO.line_text("signal_logged", t) for t in VO.THEME_KEYS]
-          == ["Signal logged. Survey centre set.", "Signal marked. Centre locked.",
+          == ["Signal logged. That's our centre, Commander. Don't wander off.",
+              "Signal logged. Survey centre set.", "Signal marked. Centre locked.",
               "Signal's in the book. That's our centre."])
     check("rig three, down and up",
           [VO.line_text("rig_down_3", t) for t in VO.THEME_KEYS]
-          == ["Rig three deployed.", "Rig three down.", "Rig three's down."]
+          == ["Rig three, down.", "Rig three deployed.", "Rig three down.", "Rig three's down."]
           and [VO.line_text("rig_up_3", t) for t in VO.THEME_KEYS]
-          == ["Rig three recovered.", "Rig three up.", "Rig three picked up."])
+          == ["Rig three, back aboard.", "Rig three recovered.", "Rig three up.", "Rig three picked up."])
     check("the test line, for the button", VO.line_text("voice_test", "flight_controller")
           == "Radio check. Loud and clear.")
     check("a theme by its name reads the same as by its key",
           VO.line_text("online", "Radio Raxxla on-air") == VO.line_text("online", "on_air"))
-    check("a theme that is not one is the Ship computer",
-          VO.clean_theme("bogus") == "ship_computer" and VO.clean_theme(None) == "ship_computer")
+    check("a theme that is not one is Celestia, the main voice (5 Nov 2026)",
+          VO.clean_theme("bogus") == "celestia" and VO.clean_theme(None) == "celestia")
     check("a line not in the pack says nothing", VO.line_text("nope") == "")
     check("rig lines by number, and none past six",
           VO.rig_line("down", 4) == "rig_down_4" and VO.rig_line("up", 6) == "rig_up_6"
@@ -677,8 +678,9 @@ class FakeSpeaker:
     def set_rate(self, rate):
         self.rates.append(rate)
 
-    def say_line(self, line_id, theme=None):
+    def say_line(self, line_id, theme=None, place=None, detail=None):
         self.lines.append((line_id, theme))
+        self.details = getattr(self, "details", []) + [detail]
         return True
 
     def say_text(self, text):
@@ -1047,6 +1049,10 @@ if HAVE_DISPLAY:
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _fh:
         json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS,
                    "welcome_seen_version": A.APP_VERSION}, _fh)
+    # What VoiceAttack has on this machine is the test's to say, not the PC's:
+    # the app looks 3 s after start, which on a slow machine lands mid-test.
+    _PACKS = [False]
+    A.VA.find_sound_packs = lambda *a, **k: _PACKS[0]
     APP = A.EDSMT()
     APP.geometry("1400x900+0+0")
     APP.updates.check = lambda *args, **kwargs: None
@@ -1105,9 +1111,10 @@ if HAVE_DISPLAY:
                       var is not None and var.get() is False and switch is not None
                       and getattr(switch, "_edsmt_tip", ""), (var, switch))
             box, options = win.choices["voice_theme"]
-            check("the voice: the three of the pack", [n for n, _v in options]
-                  == ["Ship computer", "Flight controller", "Radio Raxxla on-air"]
-                  and box.get() == "Ship computer", (options, box.get()))
+            check("the voice: the four of the pack, Celestia first and picked",
+                  [n for n, _v in options]
+                  == ["Celestia", "Ship computer", "Flight controller", "Radio Raxxla on-air"]
+                  and box.get() == "Celestia", (options, box.get()))
             rate, rates = win.choices["voice_rate"]
             check("the rate, Normal to begin with", rate.get() == "Normal" and len(rates) == 5)
             entry = win.fields["voice_directions_s"]
@@ -1150,6 +1157,31 @@ if HAVE_DISPLAY:
             win.load()
             check("and shown again as saved", box.get() == "Flight controller"
                   and rate.get() == "Quick" and win.toggles["sonar"].get() is True)
+            detail, details = win.choices["voice_detail"]
+            check("answer length: Short, Normal, Chatty, Normal to begin with",
+                  [n for n, _v in details] == ["Short", "Normal", "Chatty"] and detail.get() == "Normal",
+                  (details, detail.get()))
+            hints = win.toggles.get("voice_pack_hints")
+            switch = next((w for w in walk(win.pages["Basics"])
+                           if isinstance(w, A.ctk.CTkSwitch) and w.cget("text") == "Voice-pack reminders"), None)
+            note = getattr(switch, "_edsmt_tip", "") or ""
+            check("voice-pack reminders: a switch with its note, naming no pack",
+                  hints is not None and switch is not None and note
+                  and not any(word in note.lower() for word in ("hcs", "hcspack")), note)
+            _PACKS[0] = True
+            APP.pack_hints_found = True
+            win.load()
+            check("left alone, the switch shows on when a voice pack was found", hints.get() is True)
+            win.save()
+            check("saved as shown, it keeps following what is found",
+                  saved().get("voice_pack_hints", "absent") is None, saved().get("voice_pack_hints", "absent"))
+            hints.set(False)
+            detail.set("Chatty")
+            win.save()
+            data = saved()
+            check("turned off, it stays off; Chatty saved",
+                  data.get("voice_pack_hints") is False and data.get("voice_detail") == "chatty",
+                  (data.get("voice_pack_hints"), data.get("voice_detail")))
         finally:
             win.destroy()
             pump(2)

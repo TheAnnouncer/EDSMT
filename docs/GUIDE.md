@@ -178,6 +178,16 @@ number that no longer exists. Deleting a signal does *not* delete its
 deposits: they stay on the map, and the window tells you how many before you
 commit.
 
+**Export CSV**, in the same window, saves everything EDSMT knows about that
+signal in one file a spreadsheet or a map tool opens: where it was logged
+and what it offers, the survey centre and border (the border as its radius
+in metres), every deposit with its density, amount, rigs and who found it,
+each traced deposit edge with its rig pins, and the line the Rhino drove.
+One row per thing; the first column, `kind`, says which (`export`,
+`signal`, `centre`, `border`, `deposit`, `trace`, `pin`, `drive`), and
+`group` ties a trace to its pins. The first row says the EDSMT version and
+the file's format number.
+
 The position and the timestamp are shown but not editable. If a deposit
 really is in the wrong place, delete it and mark it again. Editing is local:
 a correction to something already shared does not change the shared copy.
@@ -348,6 +358,15 @@ until you drive into another. The map and the scope are sized to that signal:
 its finds, its border and its rigs. If the Signal box still names a signal
 somewhere else on the body, the views show the ground round the SRV instead,
 and say where that signal is.
+
+**The planning circle.** Right-click the map for **Planning circle here
+(4.5 km)**: a ring of 4.5 km round the spot you clicked. Put your rigs down
+and drive inside it and none of them is ever far enough behind for the game
+to take it (it does at 5 km). The ring stays where you put it as you drive,
+shows on the map and the scope, and the map's footer and the scope say how
+much room is left to its edge - or how far outside it you are. **Clear
+planning circle** on the same menu takes it away; **Recentre** is still the
+first thing on it.
 
 **Other commanders' finds are on it too.** Arrive on a body and EDSMT asks
 the community map for everything already shared there. Those finds are drawn
@@ -693,19 +712,50 @@ recorded, rig three down, all rigs recovered, update ready, backup complete,
 the session starting, pausing and ending, a rig plan ready, on the pin,
 half the survey area swept and all of it (once each for an area), a
 high-gravity world, the wing link up, a wingmate joining or leaving, a chat
-command not understood, and the rest. The words are the **Basic voice line pack**, in one of three
-voices: **Ship computer**, **Flight controller** or **Radio Raxxla
-on-air**. **Speaking rate** sets how quickly they are read, and **Test
+command not understood, and the rest. The words are the **Basic voice line pack**, in one of four
+voices: **Celestia**, **Ship computer**, **Flight controller** or **Radio
+Raxxla on-air**. **Speaking rate** sets how quickly they are read, and **Test
 voice** says the test line in the voice and rate in the boxes, saved or not.
 
-The **Ship computer** voice comes recorded: every line of the pack is a
-recording made for EDSMT, shipped with it. The other two are read by
+**Celestia** - the Celestial Event Liaison & Tactical Information
+Algorithm, Radio Raxxla's voice of the Void - is the main voice and the one
+a new install uses. She talks to you over comms, and the comms sound
+different in the ship, in the Rhino and on foot: EDSMT picks the right one
+from where the game says you are, with nothing to set.
+
+**Answer length** (Celestia only, for now): **Short** is a few words -
+"Deposit logged." - **Normal** is her usual lines, and **Chatty** adds to
+them: a different take of a line now and then, a word about what the
+journal shows (the Rhino going out and coming home, a touchdown, a big sale,
+mining locations found, heat, low fuel, a jump) and, when nothing has been
+said or done for a while and nothing is dangerous, an aside about the
+galaxy. None of it comes again inside a few minutes.
+
+**Voice-pack reminders.** If you drive the game by voice through a
+VoiceAttack voice pack, Celestia reminds you of the phrase to say at the
+moment the journal shows it is needed: **"Deploy the SRV"** after you land,
+**"Dismiss the ship"** once the Rhino is out and the ship is still sat
+there, **"Recall the ship"** when every rig is up, **"Transfer cargo"** with
+a full Rhino by the ship, **"Board the ship"** when it is all done, and
+**"Apply handbrake"** on a rig pin. Each waits a few seconds first and is
+dropped if the journal shows it done in that time, and none is said again
+inside ten minutes. The switch is on by itself when VoiceAttack has a voice
+pack (a folder in VoiceAttack's Sounds folder); turn it on or off and it
+stays as you set it. Your voice pack still does the work - EDSMT only
+reminds you what to say.
+
+**Celestia** and the **Ship computer** come recorded: every line of the pack
+is a recording made for EDSMT, shipped with it. The other two are read by
 Windows' own speech until their recordings follow. A recording is played in
 place of the spoken line when there is one: a `.wav` named after the line,
 in a `voice` folder beside EDSMT or in the data folder, under the voice it
-belongs to - for example `voice\ship_computer\signal_logged.wav`. The
-voices are `ship_computer`, `flight_controller` and `on_air`. Spoken
-directions (the distance and the clock face) are always read live.
+belongs to - for example `voice\ship_computer\signal_logged.wav`, or for a
+voice with comms, under the place as well:
+`voice\celestia\srv\signal_logged.wav` (`ship`, `srv` or `foot`). A
+recording made for a place is played as it is; otherwise Celestia's own
+recording is given that place's comm sound. The voices are `celestia`,
+`ship_computer`, `flight_controller` and `on_air`. Spoken directions (the
+distance and the clock face) are always read live.
 
 **Spoken directions** are for a headset, where the overlay cannot be seen.
 In the Rhino, EDSMT says how far and which way to go on a clock face -
@@ -833,6 +883,11 @@ and the prices at markets you open, with your CMDR name. Your notes,
 sessions and settings never leave your PC — sessions go to your own Discord
 channels only if you set them up. When your rigs come up, how they were laid
 out goes too (see *Shared rig layouts*).
+
+Each copy of EDSMT asks the community map once for a key of its own and
+sends it with everything it asks the map for. It is kept in a file of its
+own in the data folder (`install.key`), never shown and never in your
+settings, so a settings file you pass on never carries it.
 
 ### The leaderboard
 
@@ -974,6 +1029,14 @@ nowhere else — not into a support bundle or crash.log. Nothing in a post can
 ping anyone: an `@everyone` typed into a note is just text. Your commander
 name is on the posts, since they are your channels.
 
+**Show your Rhino session on your Discord profile** (Settings → Discord, off
+to start with) is Rich Presence: your profile says you are playing EDSMT,
+what you are mining, the Cr/hr and the rigs down, with how long the session
+has run, and buttons to get EDSMT and join the Radio Raxxla Discord. It goes
+through the Discord app on this PC, at most once every 15 seconds, and comes
+off your profile when EDSMT closes or the switch goes off. In streamer mode
+the body and system are left off it.
+
 ### Streamer mode
 
 **Settings → Sharing → Streamer mode**, for when you are live. While it is
@@ -1012,6 +1075,9 @@ without a screen capture of EDSMT.
   needed.
 - `http://127.0.0.1:8765/card.png` is the latest session card (below), for
   an Image or Browser Source.
+- `http://127.0.0.1:8765/state.json` is what the pages show, as data, for
+  other tools on your PC - a Stream Deck button, a dashboard. Every field
+  and how its schema number works is in docs/LOCAL-DATA.md.
 - **Streamer mode** applies to all of it: while it hides the names on
   screen, the pages read "a system N Ly from Sol" and "a body" too, and so
   does the session card they show. Nothing on them says where on a body you

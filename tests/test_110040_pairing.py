@@ -125,6 +125,9 @@ if HAVE_DISPLAY:
           and A.DEFAULT_SETTINGS.get("portal_device") == "")
 
     app = A.EDSMT()
+    # The install key is asked for 4 s after start (1.10040); on a slow machine
+    # that lands inside this test. Pairing is what is checked here.
+    app._install_key_asked = True
     app.geometry("1600x1000+0+0")
     app.updates.check = lambda *args, **kwargs: None
 

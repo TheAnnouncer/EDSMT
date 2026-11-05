@@ -71,11 +71,15 @@ import hubmanifest as HM
 import tabstrip as TS
 import uichrome as UC
 import pairing as PR
+import installkey as IK
+import planring as PRG
+import richpresence as DRP
 import sitecard as SCD
 import shipview as SHV
 import weekcard as WC
 import squadshare as SQ
 import eddnsend as ED
+import signalcsv as SCV
 import bestmine as BM
 import sitemarks as SM
 import materials as MT
@@ -87,6 +91,7 @@ import sessioncard as SC
 import sonar as SN
 import voice as VO
 import voiceattack as VA
+import voicecues as VC
 import tableview as TV
 import catchup as CU
 import journalrows as JR
@@ -1046,6 +1051,16 @@ DEFAULT_SETTINGS = {
     "voice_mode": False,
     "voice_theme": VO.DEFAULT_THEME,
     "voice_rate": VO.DEFAULT_RATE,
+    # Celestia's answer length (Short / Normal / Chatty), and her reminders
+    # of what to say to a VoiceAttack voice pack: None follows whether a
+    # voice pack is on this computer, until the switch is changed (#334, #335).
+    "voice_detail": VO.DEFAULT_DETAIL,
+    "voice_pack_hints": None,
+    # The planning circle put down on the map (1.10040, #215): a place on a
+    # body, or None.
+    "planning_ring": None,
+    # Discord Rich Presence (1.10040, #312): off until switched on.
+    "discord_presence": False,
     "voice_directions": False,
     "voice_directions_s": VO.DIRECTIONS_EVERY_S,
     "sonar": False,
@@ -2832,11 +2847,19 @@ class PlanView(tk.Canvas):
     actually wait for.
     """
 
-    def __init__(self, parent, on_select=None, on_edit=None, on_edit_rig=None):
+    def __init__(self, parent, on_select=None, on_edit=None, on_edit_rig=None,
+                 on_plan_ring=None):
         super().__init__(parent, bg=VOID, highlightthickness=0, bd=0)
         self.on_select = on_select
         self.on_edit = on_edit
         self.on_edit_rig = on_edit_rig
+        # The planning circle (1.10040, #215): the app is told where one is
+        # put down, as (east, north) metres from you, or None to clear it;
+        # it hands the centre back in `planning_ring` before each draw.
+        self.on_plan_ring = on_plan_ring
+        self.planning_ring = None
+        self.last_viewport = None
+        self._menu_at = None
         self._rig_hits = []
         self._pan = [0.0, 0.0]
         self._drag_from = None
@@ -2867,7 +2890,7 @@ class PlanView(tk.Canvas):
         self.bind("<B1-Motion>", self._dragged)
         self.bind("<ButtonRelease-1>", self._released)
         self.bind("<Double-Button-1>", self._double_clicked)
-        self.bind("<Button-3>", lambda e: self.recentre())
+        self.bind("<Button-3>", self._context)
         self.bind("<MouseWheel>", self._wheel)
         self.bind("<Button-4>", lambda e: self._zoom_by(1 / 1.25))
         self.bind("<Button-5>", lambda e: self._zoom_by(1.25))
@@ -2964,6 +2987,68 @@ class PlanView(tk.Canvas):
         self._extent = None
         self.redraw()
 
+    def context_menu(self):
+        """The right-click menu: Recentre first, as right-click always was,
+        then the planning circle."""
+        menu = tk.Menu(self, tearoff=0, bg=PANEL, fg=TEXT, activebackground=ORANGE,
+                       activeforeground=VOID)
+        menu.add_command(label="Recentre", command=self.recentre)
+        menu.add_command(label="Planning circle here (%s)" % PRG.distance_text(PRG.RADIUS_M),
+                         command=lambda: self.plan_ring_at(*(self._menu_at or (0, 0))))
+        menu.add_command(label="Clear planning circle", command=self.clear_plan_ring,
+                         state="normal" if self.planning_ring else "disabled")
+        return menu
+
+    def _context(self, event):
+        self._menu_at = (event.x, event.y)
+        menu = self.context_menu()
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def plan_ring_at(self, x, y):
+        """Put the planning circle down where (x, y) is on the map."""
+        viewport = self.last_viewport
+        if viewport is None or not self.on_plan_ring:
+            return None
+        where = viewport.to_metres(x, y)
+        self.on_plan_ring(where)
+        return where
+
+    def clear_plan_ring(self):
+        if self.on_plan_ring:
+            self.on_plan_ring(None)
+
+    def _planning(self, viewport):
+        """The planning circle: a dashed ring and its centre, labelled."""
+        centre = self.planning_ring
+        if not centre:
+            return
+        x, y = viewport.to_canvas(float(centre[0]), float(centre[1]))
+        r = viewport.radius_px(PRG.RADIUS_M)
+        self.create_oval(x - r, y - r, x + r, y + r, outline=GREEN, width=2,
+                         dash=(8, 5), tags=("planring",))
+        self.create_line(x - 6, y, x + 6, y, fill=GREEN, tags=("planring",))
+        self.create_line(x, y - 6, x, y + 6, fill=GREEN, tags=("planring",))
+        bounds = (0, 0, viewport.width, viewport.height)
+        # On the ring wherever the ring is in view - top first, then round -
+        # else beside its centre.
+        spots = [(x + r * math.sin(math.radians(a)), y - r * math.cos(math.radians(a)) - 4)
+                 for a in (0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180)]
+        spots.append((x, y - 10))
+        for lx, ly in spots:
+            if not (20 <= lx <= viewport.width - 20 and 20 <= ly <= viewport.height - 30):
+                continue
+            label = self.create_text(lx, ly, text="Planning circle %s" % PRG.distance_text(PRG.RADIUS_M),
+                                     anchor="s", fill=GREEN, font=F_MICRO,
+                                     tags=("planringlabel",))
+            box = self.bbox(label)
+            if box and PV.label_spot([box], self._taken, bounds=bounds) is not None:
+                self._taken.append(box)
+                break
+            self.delete(label)
+
     def _clicked(self, event):
         if not self._plan:
             return
@@ -3019,6 +3104,7 @@ class PlanView(tk.Canvas):
         extent = self._extent or self._auto_extent
         shown = self.rows if self.zoomed_out else view["here"]
         viewport = PV.Viewport(width, height, extent, pan=self._pan)
+        self.last_viewport = viewport
         self._plan = PV.layout(shown, viewport, heading=self.heading)
         self._plan["elsewhere"] = 0 if self.zoomed_out else len(view["away"])
         self._plan["far"] = view["far"]
@@ -3032,6 +3118,7 @@ class PlanView(tk.Canvas):
             self._survey(viewport, survey)
         self._wing_layer(viewport, survey)
         self._rings(viewport, self._plan)
+        self._planning(viewport)
         self._rig_hits = []
         if rigs:
             self._rig_marks(viewport, rigs)
@@ -3047,7 +3134,7 @@ class PlanView(tk.Canvas):
             # printed through the legend and the body's facts.
             self.create_text(width / 2, top - 4, anchor="s", fill=AMBER,
                              font=F_SMALL,
-                             text="dragged off centre - right-click to recentre")
+                             text="dragged off centre - right-click, Recentre")
 
     def _rig_marks(self, viewport, rigs):
         """Each rig as a numbered square in its commodity's colour, with the
@@ -3543,6 +3630,8 @@ class PlanView(tk.Canvas):
             parts.append("%d beyond the edge" % away)
         if self.hidden_labels:
             parts.append("%d unlabelled - scroll in" % self.hidden_labels)
+        if self.planning_ring:
+            parts.append(PRG.words(self.planning_ring).lower().replace("planning circle:", "planning circle"))
         elsewhere = plan.get("elsewhere") or 0
         if elsewhere:
             parts.append("%d elsewhere on this body - scroll out"
@@ -3902,6 +3991,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                                  self.settings.get("community_token", ""),
                                  self.settings.get("community_enabled", False),
                                  self.settings.get("community_share_cmdr_name", True))
+        # This copy's own key for the map (1.10040, audit finding 3): read
+        # back now, asked for a few seconds in when there is none.
+        self.load_install_key()
+        self.after(4000, self.ask_install_key)
         self.updates = EDO.UpdateCheck(self.worker)
         # A newer build: what the check said, the package for this kind of
         # build, and - once downloaded and checked - where it is.
@@ -3979,7 +4072,17 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         # 1.10040 (#145, #146, #153): the voice and the sonar. Neither starts
         # anything until it is first wanted; both go with the window.
         self.voice = VO.Speaker(folders=voice_folders(),
-                                rate=self.settings.get("voice_rate", VO.DEFAULT_RATE))
+                                rate=self.settings.get("voice_rate", VO.DEFAULT_RATE),
+                                cache_dir=os.path.join(DATA_DIR, "voice-cache"))
+        # Celestia's own lines, cued by the journal; whether VoiceAttack has
+        # a voice pack is looked for a few seconds in, off the start-up path.
+        self.cues = VC.Cues()
+        self.pack_hints_found = False
+        # Discord Rich Presence (#312): its sender runs on a thread of its
+        # own once switched on; the application id comes from the map.
+        self.presence = DRP.Presence()
+        self.presence_threaded = True
+        self.after(3000, self.find_voice_packs)
         self.sonar = SN.Sonar()
         self.directions = VO.DirectionsTimer(
             VO.directions_every(self.settings.get("voice_directions_s")))
@@ -4374,6 +4477,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         site = self.site_offset(system, body, location, centre, radius_m)
         self.overlay.map_prefs = self.map_prefs()
         self.overlay.guidance = self.guidance_view(attr(self, "game", None), centre, radius_m)
+        self.overlay.planning_ring = self.planning_offset(system, body, centre, radius_m)
         self.overlay.draw(rows, heading, note, body=self.hide_names(body),
                           location=location, site=site, survey=survey,
                           rigs=rigs, guide=self.guide_card(),
@@ -4630,7 +4734,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self._cards_at = 0.0
         self.plan = PlanView(centre, on_select=self.picked_on_map,
                              on_edit=self.edit_deposit,
-                             on_edit_rig=self.edit_rig)
+                             on_edit_rig=self.edit_rig,
+                             on_plan_ring=self.place_planning_ring)
         self.plan.grid(row=1, column=0, sticky="nsew", padx=10, pady=(6, 10))
         bracket(centre, colour=ORANGE)
         self.show_marker_colour()
@@ -5450,6 +5555,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 self.follow_voice()
             except Exception as exc:
                 self.trouble("Voice", exc)
+            self.follow_presence()
             self._tick_job = self.after(700, self.tick)
 
     def trace_rewrite(self, name, raw):
@@ -6989,6 +7095,9 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.plan.guidance = self.guidance_view(state, centre, radius) if live else None
         # The map's title, as streamer mode lets a stream see it.
         caption = self.hide_names(caption)
+        # Where the map is drawn from, for a planning circle put down on it.
+        self._map_here = (system, body, centre, radius) if live else None
+        self.plan.planning_ring = self.planning_offset(system, body, centre, radius) if live else None
         self.plan.show(rows, heading=heading, caption=caption, survey=survey,
                        rigs=rigs, signal=self.signal(),
                        anchor=self.site_offset(system, body, self.signal(),
@@ -7210,6 +7319,42 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             EditLocationWindow(self, row)
         except Exception as exc:
             self.say("Could not open that signal: %s" % exc, RED)
+
+    def export_signal(self, row, path=None, parent=None):
+        """Export CSV (1.10040, #216): everything known about one signal in
+        one file - where it was logged, the survey centre and border, its
+        deposits, traced edges with their rig pins, and the drive. Asks
+        where to save unless `path` is given. True when the file is there."""
+        if not row:
+            return False
+        try:
+            deposits = self.store.at(row.get("system"), row.get("body"), row.get("location"))
+            book = attr(self, "survey_book", None)
+            maps = book.maps_on(row.get("system"), row.get("body")) if book is not None else []
+            plans = list(getattr(attr(self, "plan_book", None), "plans", None) or [])
+            table = SCV.rows(row, deposits, maps=maps, plans=plans, version=APP_VERSION)
+        except Exception as exc:
+            self.trouble("Exporting the signal", exc)
+            return False
+        if path is None:
+            try:
+                from tkinter import filedialog
+                path = filedialog.asksaveasfilename(
+                    parent=parent or self, title="Export this signal as CSV",
+                    initialdir=os.path.join(DATA_DIR, "exports"),
+                    initialfile=SCV.file_name(row), defaultextension=".csv",
+                    filetypes=[("CSV file", "*.csv")])
+            except Exception:
+                path = os.path.join(DATA_DIR, "exports", SCV.file_name(row))
+            if not path:
+                return False
+        if not SCV.write(path, table):
+            self.say("Could not write %s." % path, RED)
+            return False
+        kept = sum(1 for r in table if r["kind"] == "deposit")
+        self.say("Signal %s exported, %d deposit%s: %s"
+                 % (row.get("location"), kept, "" if kept == 1 else "s", path), GREEN)
+        return True
 
     def refresh_deposits(self):
         """Everything marked inside the signal that is selected."""
@@ -8094,6 +8239,12 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         """A rig going down or the last one coming up, handed to the books:
         the first rig down starts an Earnings session, the last one up ends
         it. Never raises - the rig is marked whatever the books make of it."""
+        cues = attr(self, "cues", None)
+        if cues is not None:
+            try:
+                cues.app({"RigDown": "rig_down", "RigsUp": "rigs_all_up"}.get(what, ""), time.time())
+            except Exception:
+                pass
         try:
             system, body = self.here()
             line = self.earnings.observe({
@@ -9445,10 +9596,55 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             speaker.folders = voice_folders()
             speaker.set_rate(settings.get("voice_rate", VO.DEFAULT_RATE)
                              if rate is None else rate)
-            return bool(speaker.say_line(line_id, settings.get("voice_theme")
-                                         if theme is None else theme))
+            said = bool(speaker.say_line(line_id, settings.get("voice_theme")
+                                         if theme is None else theme,
+                                         place=VO.place_from(attr(self, "game", None)),
+                                         detail=settings.get("voice_detail")))
         except Exception:
             return False
+        cues = attr(self, "cues", None)
+        if said and cues is not None:
+            cues.spoke(time.time())
+        return said
+
+    def find_voice_packs(self):
+        """Once, a few seconds in: does VoiceAttack have a voice pack here?
+        Celestia's reminders follow the answer until their switch is changed."""
+        try:
+            self.pack_hints_found = bool(VA.find_sound_packs())
+        except Exception:
+            self.pack_hints_found = False
+        return self.pack_hints_found
+
+    def follow_cues(self, now=None, busy=False):
+        """Once a tick (1.10040, #334, #335): the journal's events and
+        Status.json's flags into Celestia's cues, and the one line of her own
+        that is due, said. Only her lines, only with Voice Mode on. Never
+        raises; the line said, or ""."""
+        cues = attr(self, "cues", None)
+        if cues is None:
+            return ""
+        now = time.time() if now is None else now
+        settings = attr(self, "settings", None) or {}
+        try:
+            watcher = attr(self, "watcher", None)
+            take = getattr(watcher, "take_voice_events", None)
+            for event in (take() if take else []):
+                if VC.fresh(event, now):
+                    cues.see(event, now)
+            if watcher is not None:
+                cues.status(getattr(watcher, "flags", 0), now)
+            if not settings.get("voice_mode") or VO.clean_theme(settings.get("voice_theme")) != "celestia":
+                cues.due(now, hints=False, chatty=False)
+                return ""
+            line = cues.due(now, hints=VC.hints_wanted(settings.get("voice_pack_hints"),
+                                                       attr(self, "pack_hints_found", False)),
+                            chatty=VO.clean_detail(settings.get("voice_detail")) == "chatty", busy=busy)
+            if line:
+                self.speak(line)
+            return line
+        except Exception:
+            return ""
 
     def follow_voice(self, now=None):
         """Once a tick: the session's clock said as it starts, pauses and
@@ -9489,6 +9685,11 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                     pin["key"] != attr(self, "_pin_said", None):
                 self._pin_said = pin["key"]
                 self.speak("pin_reached")
+                cues = attr(self, "cues", None)
+                if cues is not None:
+                    cues.app("pin_reached", now)
+        self.follow_cues(now, busy=bool(view.get("rhino") and (settings.get("voice_directions")
+                                                              or settings.get("sonar"))))
         return self.say_directions(view, now)
 
     def sweep_key(self, cmap=None):
@@ -11033,9 +11234,9 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 rigs_down=len((attr(self, "rigs_at", None) or {}).get("rigs") or []),
                 near=self.stream_near(),
                 find=SO.last_find(getattr(store, "deposits", None) or [], hide=hide, now=now),
-                colours=self.stream_colours(), hide=hide, now=now)
+                colours=self.stream_colours(), hide=hide, now=now, version=APP_VERSION)
         except Exception:
-            return SO.stream_state(now=now)
+            return SO.stream_state(now=now, version=APP_VERSION)
 
     def card_map(self, row, picture=None):
         """The session's map picture, as a Pillow image for its card, or
@@ -11273,6 +11474,142 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         open_path(path)
         self.say("Your week's card is saved: %s - post it, or share %s"
                  % (os.path.basename(path), WC.page_url(self.board_cmdr())), GREEN)
+
+    def planning_offset(self, system, body, centre, radius_m):
+        """The planning circle's centre from `centre` (lat, lon), as (east,
+        north) metres, or None when there is none on this body."""
+        if not centre or not radius_m:
+            return None
+        settings = attr(self, "settings", None) or {}
+        return PRG.offset(settings.get("planning_ring"), system, body,
+                          centre[0], centre[1], radius_m)
+
+    def place_planning_ring(self, where):
+        """The map's right-click: put the planning circle down `where`
+        (east, north metres from you), or clear it with None."""
+        if where is None:
+            self.settings["planning_ring"] = None
+            save_settings(self.settings)
+            self.say("Planning circle cleared.", DIM)
+            self.redraw()
+            return None
+        here = attr(self, "_map_here", None)
+        ring = None
+        if here:
+            system, body, centre, radius = here
+            ring = PRG.place_at(system, body, where[0], where[1], centre[0], centre[1], radius)
+        if ring is None:
+            self.say("A planning circle needs your position on a surface - "
+                     "it is put down from where you are.", AMBER)
+            return None
+        self.settings["planning_ring"] = ring
+        save_settings(self.settings)
+        self.say("Planning circle put down: %s across. Rig and drive inside it "
+                 "and no rig is left behind." % PRG.distance_text(2 * PRG.RADIUS_M), GREEN)
+        self.redraw()
+        return ring
+
+    def follow_presence(self, now=None):
+        """Once a tick (1.10040, #312): the Rhino session on the Discord
+        profile while the switch is on - the newest state handed to the
+        sender, which sends it when Discord allows - and taken away when it
+        goes off. Never raises."""
+        presence = attr(self, "presence", None)
+        if presence is None:
+            return False
+        now = time.time() if now is None else now
+        settings = attr(self, "settings", None) or {}
+        try:
+            if not settings.get("discord_presence"):
+                if attr(self, "_presence_on", False):
+                    self._presence_on = False
+                    presence.clear(now)
+                    self._presence_send(now)
+                return False
+            self._presence_on = True
+            if not presence.client_id:
+                asked = attr(self, "_health_asked_at", None)
+                if asked is None or now - asked >= 600:
+                    self._health_asked_at = now
+                    community = attr(self, "community", None)
+                    if community is not None:
+                        community.ask_health()
+                return False
+            hidden = bool(self.streamer_names(now))
+            presence.update(DRP.activity(self.stream_now(now), now, hidden=hidden), now)
+            return self._presence_send(now)
+        except Exception:
+            return False
+
+    def _presence_send(self, now):
+        """Send what is due: here in the tests, on the sender's own thread
+        in the app, so a Discord slow to answer never holds the window."""
+        presence = attr(self, "presence", None)
+        if presence is None:
+            return False
+        if not attr(self, "presence_threaded", False):
+            return presence.tick(now)
+        thread = attr(self, "_presence_thread", None)
+        if thread is None or not thread.is_alive():
+            def loop():
+                while not attr(self, "_closing", False):
+                    presence.tick(time.time())
+                    time.sleep(1.0)
+            self._presence_thread = threading.Thread(target=loop, name="EDSMT presence",
+                                                     daemon=True)
+            self._presence_thread.start()
+        return True
+
+    def take_health(self, ok, message):
+        """The community map's /v1/health: the Discord application id for
+        Rich Presence, when it has one."""
+        if not ok:
+            return False
+        try:
+            found = str(json.loads(message).get("discord_app_id") or "").strip()
+        except (ValueError, AttributeError, TypeError):
+            return False
+        presence = attr(self, "presence", None)
+        if presence is not None and found.isdigit() and 15 <= len(found) <= 21:
+            presence.client_id = found
+            return True
+        return False
+
+    def load_install_key(self):
+        """This copy's key, read back from the data folder into the
+        community client. Never raises."""
+        community = attr(self, "community", None)
+        if community is not None:
+            community.install_key = IK.load(DATA_DIR)
+        return bool(community is not None and community.install_key)
+
+    def ask_install_key(self, now=None):
+        """Ask the map for a key when there is none - once a run, and not
+        again for a while after it said no. True when it asked."""
+        community = attr(self, "community", None)
+        if community is None or attr(self, "_install_key_asked", False):
+            return False
+        now = time.time() if now is None else now
+        if not IK.due(community.install_key, attr(self, "_install_key_refused_at", None), now):
+            return False
+        self._install_key_asked = True
+        try:
+            return bool(community.ask_install_key())
+        except Exception:
+            return False
+
+    def take_install_key(self, ok, message):
+        """The map's answer: the key kept and used, in silence. A refusal is
+        tried again another time; nothing is ever said about the key."""
+        community = attr(self, "community", None)
+        key = IK.from_reply(message) if ok else ""
+        if not key or community is None:
+            self._install_key_refused_at = time.time()
+            self._install_key_asked = False
+            return False
+        IK.save(DATA_DIR, key)
+        community.install_key = key
+        return True
 
     def take_pairing(self, ok, message):
         """The member page's answer: the token kept and written, or why not
@@ -12248,6 +12585,13 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if tag == PR.TAG:
                 # Never the catch-all below: that would show the token.
                 self.take_pairing(ok, message)
+                continue
+            if tag == IK.TAG:
+                # Nor this: the answer is the key.
+                self.take_install_key(ok, message)
+                continue
+            if tag == EDO.HEALTH_TAG:
+                self.take_health(ok, message)
                 continue
             if tag == WC.TAG:
                 self.take_weekcard(ok, message)
@@ -13290,6 +13634,15 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         return True
 
     def on_close(self):
+        self._closing = True
+        presence = attr(self, "presence", None)
+        if presence is not None and attr(self, "_presence_on", False):
+            # Off the profile as EDSMT closes, not left saying it is mining.
+            try:
+                presence.clear(time.time())
+                presence.tick(time.time())
+            except Exception:
+                pass
         self._save_on_exit()
         # 1.10040 (#323): no longer running, as far as a launcher can see.
         HM.withdraw(attr(self, "hub_file", None))
@@ -13524,10 +13877,24 @@ SETTING_TIPS = {
     "rig_sound_profane": "The rude version of the rig warning.",
     "voice_mode": "Says what each key and event just did - signal logged, rig two down, "
                   "update ready - in the voice picked below. Windows only.",
-    "voice_theme": "Which voice of the Basic voice line pack: Ship computer, Flight "
-                   "controller or Radio Raxxla on-air.",
+    "voice_theme": "Which voice of the Basic voice line pack: Celestia, Ship computer, "
+                   "Flight controller or Radio Raxxla on-air. Celestia's comms sound "
+                   "different in the ship, in the Rhino and on foot, on their own.",
     "voice_rate": "How quickly Windows' speech reads the lines. A recording plays at "
                   "its own speed.",
+    "discord_presence": "Rich Presence: your Discord profile says you are playing EDSMT and "
+                        "what you are mining, with Cr/hr and rigs down, through the "
+                        "Discord app on this PC. Streamer mode keeps the body and "
+                        "system off it. Off to begin with.",
+    "voice_detail": "Celestia's answer length. Short: a few words. Normal: her usual "
+                    "lines. Chatty: a different take now and then, a word about what the "
+                    "journal shows - the Rhino going out, a big sale, heat - and, when "
+                    "nothing is going on, an aside about the galaxy.",
+    "voice_pack_hints": "Celestia reminds you what to say to a VoiceAttack voice pack at "
+                        "the moment it is needed - \"Deploy the SRV\" after you land, "
+                        "\"Recall the ship\" when every rig is up - and stays quiet when "
+                        "the journal shows it done. On by itself when VoiceAttack has a "
+                        "voice pack; this switch either way.",
     "voice_directions": "For a headset, where the overlay cannot be seen: how far and which "
                         "way, on a clock face, to the next pin, waypoint, the target "
                         "deposit or the nearest rig. Windows only.",
@@ -13978,6 +14345,9 @@ class SettingsWindow(ctk.CTkToplevel):
         self._choice(body, "voice_theme", "Voice",
                      [(name, key) for key, name in VO.THEMES])
         self._choice(body, "voice_rate", "Speaking rate", list(VO.RATES))
+        self._choice(body, "voice_detail", "Answer length (Celestia)",
+                     [(name, key) for key, name in VO.DETAILS])
+        self._switch(body, "voice_pack_hints", "Voice-pack reminders")
         voice_row = ctk.CTkFrame(body, fg_color="transparent")
         voice_row.pack(fill="x", padx=10, pady=(2, 4))
         self.voice_test = tip(ctk.CTkButton(
@@ -14092,6 +14462,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self.hook_add.pack(side="left")
         self._switch(body, "discord_edit_after_sale",
                      "Update the same message when the cargo is sold")
+        self._switch(body, "discord_presence",
+                     "Show your Rhino session on your Discord profile")
 
         body = self.pages["Sharing"]
         self._section(body, "Radio Raxxla account",
@@ -15358,6 +15730,11 @@ class SettingsWindow(ctk.CTkToplevel):
         self.hide_secrets()
         for key, var in self.toggles.items():
             var.set(bool(data.get(key, DEFAULT_SETTINGS.get(key, False))))
+        if "voice_pack_hints" in self.toggles:
+            # Left alone, the switch shows what it is doing: following
+            # whether VoiceAttack has a voice pack.
+            self.toggles["voice_pack_hints"].set(VC.hints_wanted(
+                data.get("voice_pack_hints"), attr(self.app, "pack_hints_found", False)))
         for key, entry in self.fields.items():
             entry.delete(0, "end")
             value = data.get(key, DEFAULT_SETTINGS.get(key, ""))
@@ -15573,6 +15950,11 @@ class SettingsWindow(ctk.CTkToplevel):
                                                     VO.DIRECTIONS_MAX_S), RED)
         data["voice_directions_s"] = every
         data["voice_theme"] = VO.clean_theme(data.get("voice_theme"))
+        data["voice_detail"] = VO.clean_detail(data.get("voice_detail"))
+        if "voice_pack_hints" in self.toggles:
+            data["voice_pack_hints"] = VC.kept_auto(self.app.settings.get("voice_pack_hints"),
+                                                    data.get("voice_pack_hints"),
+                                                    attr(self.app, "pack_hints_found", False))
         port = SO.parse_port(data.get("stream_port"))
         if port is None:
             return self.say(STREAM_PORT_WRONG, RED)
@@ -16278,6 +16660,12 @@ class EditLocationWindow(ctk.CTkToplevel):
         tip(ctk.CTkButton(buttons, text="Cancel", width=90, height=32,
                       font=F_STRONG, **BTN_SECONDARY,
                       command=self.destroy), "Closes without changing anything.").pack(side="right")
+        tip(ctk.CTkButton(buttons, text="Export CSV", width=110, height=32,
+                      font=F_STRONG, **BTN_SECONDARY,
+                      command=lambda: app.export_signal(row, parent=self)),
+            "Saves everything about this signal as one CSV file: where it was "
+            "logged, the survey centre and border, its deposits, traced edges "
+            "with rig pins, and the drive.").pack(side="right", padx=8)
 
         body_frame = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0)
         body_frame.pack(fill="both", expand=True, padx=12, pady=(12, 6))

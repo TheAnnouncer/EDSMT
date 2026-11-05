@@ -31,11 +31,13 @@ datas += [(os.path.join(ROOT, "images", name), "images")
           for name in ("rhino-about.png", "edsmt-badge-256.png", "edsmt-badge-512.png")]
 # The patch notes: the welcome window lists this version's headlines.
 datas += [(os.path.join(ROOT, "CHANGELOG.md"), ".")]
-# The Basic voice line pack's Ship computer theme (1.10040): one .wav per
-# line, found by voice.recording() under voice/ship_computer in the bundle.
+# The Basic voice line pack (1.10040): one .wav per line, found by
+# voice.recording() under voice/<theme>/ in the bundle - voice/ship_computer
+# for the Ship computer, voice/celestia/<ship|srv|foot> for Celestia - each
+# kept in its own folder.
 import glob as _glob
-datas += [(path, os.path.join("voice", "ship_computer"))
-          for path in sorted(_glob.glob(os.path.join(ROOT, "voice", "ship_computer", "*.wav")))]
+datas += [(path, os.path.dirname(os.path.relpath(path, ROOT)))
+          for path in sorted(_glob.glob(os.path.join(ROOT, "voice", "**", "*.wav"), recursive=True))]
 
 hiddenimports = collect_submodules("customtkinter")
 hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",
@@ -45,7 +47,7 @@ hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",
 # Guided survey and the pointers (1.10035): the window imports both.
 hiddenimports += ["waypoints", "guidance"]
 # 1.10040: the welcome window, the logo, the chrome and the hub manifest.
-hiddenimports += ["welcome", "logo", "hubmanifest", "tabstrip", "uichrome", "pairing", "sitecard", "shipview", "signing", "weekcard", "squadshare", "eddnsend"]
+hiddenimports += ["welcome", "logo", "hubmanifest", "tabstrip", "uichrome", "pairing", "sitecard", "shipview", "signing", "weekcard", "squadshare", "eddnsend", "signalcsv", "commfx", "voicecues", "installkey", "planring", "richpresence"]
 # Map pictures (1.10035) are drawn with Pillow. It is imported inside
 # functions, so name it: a build that left it out would still start, and
 # every picture button would then say the library is missing.
