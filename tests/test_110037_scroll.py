@@ -99,7 +99,7 @@ A.SETTINGS_FILE = os.path.join(A.DATA_DIR, "settings.json")
 JOURNALS = os.path.join(TMP, "journals")
 os.makedirs(JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-    json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS}, _f)
+    json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "tour_done": True, "journal_dir": JOURNALS}, _f)
 app = A.EDSMT()
 app.updates.check = lambda *a, **k: None
 app.geometry("1240x780+0+0")

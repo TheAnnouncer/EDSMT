@@ -1731,7 +1731,7 @@ check("no widget is handed a colour typed in place", not _colour_kw, _colour_kw[
 _allowed_lines = set()
 for _n in _tree.body:
     if isinstance(_n, _ast.Assign) and getattr(_n.targets[0], "id", "") in \
-            PALETTE + ("COMMODITY_COLOURS",):
+            PALETTE + ("COMMODITY_COLOURS", "MARKER_COLOURS"):
         for _s in _ast.walk(_n):
             if isinstance(_s, _ast.Constant):
                 _allowed_lines.add(_s.lineno)

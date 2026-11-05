@@ -152,6 +152,11 @@ class GuidanceMixin:
 
     def wp_said(self, guide, before=None):
         if guide.done:
+            # 1.10040: Voice Mode says the survey is done too - once for the
+            # area, so the swept figure reaching 100% does not say it again.
+            speak = _get(self, "speak_sweep", None) or _get(self, "speak", None)
+            if callable(speak):
+                speak("swept_done")
             left = len(guide.skipped)
             if left:
                 self.flash("SURVEY COMPLETE", "%d skipped" % left)

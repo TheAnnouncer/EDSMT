@@ -46,6 +46,10 @@ REFINE_M = 1000.0
 # Closer than this, a second deposit of the same commodity is the first one
 # again (the app's own "standing on it" distance).
 SAME_SPOT_M = 100.0
+# A Rhino carries six rigs - the rig keys go 1 to 6 - but a site can take
+# two Rhinos' worth, so a rig count in a message goes to 12 (1.10040).
+RHINO_RIGS = 6
+SITE_RIGS = 12
 
 RANGED_NOTE = "Placed from range"
 REFINED_NOTE = "Refined at the spot"
@@ -283,8 +287,8 @@ def _deposit_words(tokens):
         if re.fullmatch(r"\d+", token):
             if rigs:
                 return {"why": "Two rig counts: %s and %s." % (rigs, token)}
-            if not 1 <= int(token) <= 6:
-                return {"why": "The Rhino carries 6 rigs, so 1 to 6."}
+            if not 1 <= int(token) <= SITE_RIGS:
+                return {"why": "A site takes up to %d rigs, so 1 to %d." % (SITE_RIGS, SITE_RIGS)}
             rigs = str(int(token))
             continue
         words.append(token)
@@ -330,8 +334,8 @@ def parse_command(message, prefix=DEFAULT_PREFIX):
         if len(numbers) > 1:
             return {"action": "error", "why": "One rig at a time."}
         rig = int(numbers[0]) if numbers else None
-        if rig is not None and not 1 <= rig <= 6:
-            return {"action": "error", "why": "No rig %d - the Rhino carries 6." % rig}
+        if rig is not None and not 1 <= rig <= RHINO_RIGS:
+            return {"action": "error", "why": "No rig %d - the Rhino carries %d." % (rig, RHINO_RIGS)}
         if "down" in words:
             return {"action": "rig_down", "rig": rig}
         if "up" in words:

@@ -19,17 +19,25 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 # project root - and this spec lives in build/. Anchoring on SPECPATH removes
 # the whole class of bug.
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
-ICON = os.path.join(ROOT, "radioraxxla.ico")
+ICON = os.path.join(ROOT, "edsmt.ico")
 
 datas = collect_data_files("customtkinter")
-datas += [(ICON, ".")]
+# The EDSMT logo, and the old Radio Raxxla icon as the fallback.
+datas += [(ICON, "."), (os.path.join(ROOT, "radioraxxla.ico"), ".")]
 # The rig warning sounds. A folder of their own inside the bundle, found
 # at run time through sys._MEIPASS like the icon.
 datas += [(os.path.join(ROOT, "sounds", name), "sounds")
           for name in ("rig-warning.wav", "rig-warning-profane.wav")]
-# The Rhino on the first-run window and in Settings > About.
+# The EDSMT badge on the welcome window and in Settings > About, and the Rhino.
 datas += [(os.path.join(ROOT, "images", name), "images")
-          for name in ("rhino-banner.png", "rhino-about.png")]
+          for name in ("rhino-about.png", "edsmt-badge-256.png", "edsmt-badge-512.png")]
+# The patch notes: the welcome window lists this version's headlines.
+datas += [(os.path.join(ROOT, "CHANGELOG.md"), ".")]
+# The Basic voice line pack's Ship computer theme (1.10040): one .wav per
+# line, found by voice.recording() under voice/ship_computer in the bundle.
+import glob as _glob
+datas += [(path, os.path.join("voice", "ship_computer"))
+          for path in sorted(_glob.glob(os.path.join(ROOT, "voice", "ship_computer", "*.wav")))]
 
 hiddenimports = collect_submodules("customtkinter")
 hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",
@@ -38,6 +46,8 @@ hiddenimports += ["survey", "planview", "journal", "edonline", "overlay",
                   "chattags", "inputdev", "inputmix"]
 # Guided survey and the pointers (1.10035): the window imports both.
 hiddenimports += ["waypoints", "guidance"]
+# 1.10040: the welcome window, the logo, the chrome and the hub manifest.
+hiddenimports += ["welcome", "logo", "hubmanifest", "tabstrip", "uichrome", "pairing", "sitecard", "shipview", "signing", "weekcard", "squadshare", "eddnsend"]
 # Map pictures (1.10035) are drawn with Pillow. It is imported inside
 # functions, so name it: a build that left it out would still start, and
 # every picture button would then say the library is missing.
@@ -65,6 +75,23 @@ hiddenimports += ["zone"]
 hiddenimports += ["warp"]
 # 1.10039: the game's own HUD colours as a theme.
 hiddenimports += ["gametheme"]
+# 1.10040: several Discord webhooks of your own, and streamer mode.
+hiddenimports += ["webhooks", "streamer"]
+# 1.10040: the session on a stream - the OBS page, and the session card.
+hiddenimports += ["streamout", "sessioncard"]
+# 1.10040: best to mine and what each kind of ground carries, good and bad
+# marks on shared sites, and the materials the lists offer.
+hiddenimports += ["bestmine", "sitemarks", "materials"]
+# 1.10040: the wing - your in-game wing, one shared survey, pins split.
+hiddenimports += ["wingmates"]
+# 1.10040: Find's Powerplay search.
+hiddenimports += ["ppsearch"]
+# 1.10040: Voice Mode and spoken directions, the proximity sonar, and the
+# VoiceAttack profile.
+hiddenimports += ["voice", "sonar", "voiceattack"]
+# 1.10040: the big tables on the tree view, the journal read in chunks
+# off the window's thread, and the journal's own checks on a session.
+hiddenimports += ["tableview", "catchup", "journalrows"]
 
 a = Analysis([os.path.join(ROOT, "edsmt.py")], pathex=[ROOT],
              binaries=[], datas=datas,

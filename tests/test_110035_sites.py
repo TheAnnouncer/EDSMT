@@ -191,7 +191,7 @@ def _database():
     store = fresh_store("db")
     rows = [
         (spot("Platinum", 0, 800), None),                                  # new
-        (spot("Monazite", 45, 1500, rigs=9), None),                         # new, rigs not a number the game can give
+        (spot("Monazite", 45, 1500, rigs=13), None),                        # new, rigs past what a site takes (12)
         (spot("Painite", 90, 400, amount="High"), "2026-10-18T08:00:00+00:00"),   # new, depleted
         (spot("Platinum", 0, 650), None),                                  # 50 m from the held one: known
         (dict(spot("Osmium", 10, 300), _null=True), None),                  # no record: unreadable
@@ -638,6 +638,9 @@ def texts_of(canvas, tag=None):
 def words_in(widget):
     """Every piece of text shown anywhere under a widget."""
     out = []
+    # A table on the tree view (1.10040) says what its rows show.
+    if callable(getattr(widget, "texts", None)):
+        out.extend(widget.texts())
     try:
         out.append(str(widget.cget("text")))
     except Exception:
@@ -688,7 +691,7 @@ if HAVE_DISPLAY:
     JOURNALS = os.path.join(TMP, "journals")
     os.makedirs(JOURNALS, exist_ok=True)
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-        json.dump({"asked_to_share": True, "journal_dir": JOURNALS}, _f)
+        json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "journal_dir": JOURNALS}, _f)
     app = A.EDSMT()
     app.geometry("1400x900+0+0")
     app.updates.check = lambda *args, **kwargs: None
@@ -735,10 +738,15 @@ def _sites_window():
           not A.site_cells(next(r for r in win._rows if r["body"] == "Wyrd 3"), ("", ""), PRICES)[3][0].startswith("best:"))
     check("without prices the cells are as they were",
           not A.site_cells(wyrd2, ("", ""))[3][0].startswith("best:"))
-    labels = words_in(win.table)
+    # 1.10040 (#308): a row's buttons are on the line under the table while
+    # it is picked, so each row is asked for its own.
+    labels = [b[0] for i in range(win.scroller.row_count()) for b in win.scroller.actions_for(i)]
     check("every row has a star and a remove button", labels.count("☆") >= 2 and labels.count("remove") >= 2, labels[-20:])
     book = app.site_book()
     win.toggle_star(wyrd2)
+    pump()
+    win.scroller.pick(win._rows.index(next(r for r in win._rows if r["body"] == "Wyrd 2")))
+    pump()
     check("a click on the star stars the site", SBK.key_of(wyrd2) in book.favourites() and "★" in words_in(win.table))
     win.fav_only.set(True)
     win._paint()

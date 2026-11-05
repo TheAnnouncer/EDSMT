@@ -399,8 +399,11 @@ if HAVE_DISPLAY:
     JOURNALS = os.path.join(TMP, "journals")
     os.makedirs(JOURNALS, exist_ok=True)
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-        json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS,
-                   "app_theme": "gold", "overlay_theme": "gold"}, _f)
+        json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "tour_done": True, "journal_dir": JOURNALS,
+                   "app_theme": "gold", "overlay_theme": "gold",
+                   # The two pickers apart, as they were in 1.10039; following
+                   # the app is test_110040_overlay_theme's.
+                   "overlay_follows_app": False}, _f)
     app = A.EDSMT()
     app.geometry("1600x1000+0+0")
     app.updates.check = lambda *args, **kwargs: None

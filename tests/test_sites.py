@@ -164,8 +164,9 @@ check("Last there sorts by age, not by the words",
       sorted(range(3), key=lambda i: keys[i])[0] == 0, keys)
 
 print("== the window ==")
-check("the top bar has a My sites button (a tab since 1.10036)",
-      '("sites", "My sites", 92, self.open_sites)' in open(A.__file__, encoding="utf-8").read())
+check("the main window has a My sites tab (a tab since 1.10036, a chevron since 1.10040)",
+      ("sites", "My sites", "F4") in A.TS.TABS
+      and '"sites": self.open_sites' in open(A.__file__, encoding="utf-8").read())
 app = _ctkstub.ctk.CTk()
 app.store = store
 app.settings = dict(A.DEFAULT_SETTINGS)
@@ -265,10 +266,14 @@ for _node in _ast.walk(_tree):
 # 1.10038: pop_out runs from a click on Pop out and brings the window it
 # just made forward; _paint_dock_button lifts that button above the tool's
 # own header - a widget's stacking order inside one frame, not a window.
+# 1.10040: the welcome window holds the keyboard for itself (_hold_keyboard),
+# as the first-run notice did in its __init__, and show_welcome brings an
+# open one forward when it is asked for again. By itself it never opens over
+# the game (test_110040_welcome).
 check("only windows opened by a click, a typed box and the key capture do",
-      set(_raisers) == {"open_sites", "open_land", "_capture", "__init__", "show",
+      set(_raisers) == {"open_sites", "open_land", "open_materials", "_capture", "show",
                         "show_tab", "lift", "focus_force", "pop_out",
-                        "_paint_dock_button"},
+                        "_paint_dock_button", "show_welcome", "_hold_keyboard"},
       _raisers)
 
 print("== every copy goes through the one clipboard writer ==")

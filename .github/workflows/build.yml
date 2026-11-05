@@ -1,9 +1,10 @@
 # Builds EDSMT-Setup.exe on a real Windows machine, so an installer exists
 # without anyone having to build one.
 #
-# Push a tag and the installer plus the portable exe are attached to a
-# GitHub release, ready to be uploaded to radioraxxla.com/EDSMT/, with the
-# Linux file beside them (1.10039):
+# Push a tag and the Linux file is attached to the GitHub release;
+# build/publish_release.py on the desk adds the Windows files the website
+# offers, so both places carry one build (1.10040). The Radio Raxxla
+# Discord hears about a new release on its own, from the release page:
 #
 #     git tag v1.10035
 #     git push origin v1.10035
@@ -31,13 +32,13 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
           # Nothing in this job pushes, so the checkout token does not need
           # to stay in .git/config where a build step could read it.
           persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
 
@@ -126,7 +127,7 @@ jobs:
           Copy-Item site\*.jpg upload\ -Force
           Get-ChildItem upload | Format-Table Name, Length
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
         with:
           name: EDSMT-windows
           path: upload/*
@@ -139,11 +140,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
 
@@ -175,20 +176,26 @@ jobs:
           sha256sum upload/EDSMT-linux-x86_64.tar.gz
           ls -l upload
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
         with:
           name: EDSMT-linux
           path: upload/EDSMT-linux-x86_64.tar.gz
           retention-days: 30
 
   # Its own job so that write access to the repository exists only on a tag,
-  # and never in a build triggered by a pull request. It waits for both
-  # builds but needs only the Windows one: a Linux job that fails on the
-  # runner must not hold back the installer, so the release is made from
-  # what exists and the Linux file is added by hand once its build is fixed.
+  # and never in a build triggered by a pull request.
+  #
+  # One build per version (1.10040): the Windows files on the release are
+  # the desk's - the ones BUILD.bat made, that passed the suite on a real
+  # desktop and that version.json and the website describe - put there by
+  # build/publish_release.py. This job adds only the Linux file, names the
+  # release and tells the Discord. It needs the Linux build alone, so a
+  # Windows runner having a bad day never holds a release back; the Windows
+  # job above still builds and tests every push. Nothing here posts to
+  # Discord: the Radio Raxxla bot watches the release page and does that.
   release:
-    needs: [windows, linux]
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.windows.result == 'success' }}
+    needs: [linux]
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -196,41 +203,28 @@ jobs:
     steps:
       # Read-only checkout, for CHANGELOG.md: the release page carries the
       # same patch notes as the website, taken from the same entry.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
           persist-credentials: false
 
       - name: Patch notes for this version
-        run: python3 build/release_notes.py "${GITHUB_REF_NAME}" > release-notes.md
+        run: |
+          python3 build/release_notes.py "${GITHUB_REF_NAME}" > release-notes.md
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v7
-        with:
-          name: EDSMT-windows
-          path: upload
-
-      - uses: actions/download-artifact@v7
-        continue-on-error: true
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7
         with:
           name: EDSMT-linux
           path: upload
 
-      # The downloads and the source only. The web page and version.json
+      # The Linux file only. The Windows downloads and the source come from
+      # the desk (build/publish_release.py); the web page and version.json
       # are for radioraxxla.com and go there, not on the release.
       - name: Attach to the release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
+          name: EDSMT ${{ env.VERSION }}
           files: |
-            upload/EDSMT-Setup.exe
-            upload/EDSMT.exe
-            upload/EDSMT-source.zip
             upload/EDSMT-linux-x86_64.tar.gz
           body_path: release-notes.md
 
-      # Then tell the Radio Raxxla Discord, in the words of the same patch
-      # notes. Only when the webhook secret is set: a fork, or a build with
-      # no webhook, posts nothing and says so.
-      - name: Tell the Discord
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          DISCORD_ROLE: ${{ secrets.DISCORD_ROLE }}
-        run: python3 build/discord_post.py "${GITHUB_REF_NAME}" --send

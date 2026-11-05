@@ -34,8 +34,11 @@ import math
 import time
 import shutil
 import calendar
+import functools
 import itertools
 import threading
+
+import journalrows as JR
 
 DEPOSIT_FIELDS = [
     "id",
@@ -344,9 +347,18 @@ def fold(text):
     Bastnäsite, Bastnasite, BASTNASITE and $bastnasite_name; all have to land
     on the same commodity, or half a shared database files under a second
     name and no search ever finds it.
+
+    Remembered (1.10040, #254): a journal names the same few commodities
+    hundreds of thousands of times, and folding each afresh was a quarter of
+    the time it took to read one.
     """
+    return _fold_text(str(text or ""))
+
+
+@functools.lru_cache(maxsize=8192)
+def _fold_text(text):
     import unicodedata
-    raw = unicodedata.normalize("NFKD", str(text or ""))
+    raw = unicodedata.normalize("NFKD", text)
     raw = "".join(c for c in raw if not unicodedata.combining(c))
     return "".join(c for c in raw.lower() if c.isalnum())
 
@@ -914,15 +926,18 @@ class Survey:
     # -- locations -------------------------------------------------------
 
     def location(self, system, body, number):
+        # The names asked for are tidied once, not once a row (1.10040, #254).
+        system, body, number = _key(system), _key(body), _key(number)
         for row in self.locations:
-            if (_same(row["system"], system) and _same(row["body"], body)
-                    and _same(row["location"], number)):
+            if (_key(row["system"]) == system and _key(row["body"]) == body
+                    and _key(row["location"]) == number):
                 return row
         return None
 
     def locations_on(self, system, body):
+        system, body = _key(system), _key(body)
         out = [r for r in self.locations
-               if _same(r["system"], system) and _same(r["body"], body)]
+               if _key(r["system"]) == system and _key(r["body"]) == body]
         return sorted(out, key=lambda r: _natural(r["location"]))
 
     def set_location(self, system, body, number, lat=None, lon=None,
@@ -1316,6 +1331,10 @@ SESSION_FIELDS = [
     "ended_by",        # rigs, button, docked, lost, moved, quiet
     # Added in 1.10033. Old rows read this as blank.
     "rhinos",          # JSON: the session split per Rhino - see rhino_split()
+    # Added in 1.10040. Old rows read these as blank.
+    "ship_hold",       # the ship's tonnes as the Rhino went out and after it
+                       # came aboard, "0>1239" - journalrows.hold_check
+    "lost",            # same shape as mined: cargo thrown out in the session
 ]
 
 # The letters a session's Rhinos are shown under, in the order each was
@@ -1384,7 +1403,15 @@ REFINED_WITHIN_M = 250.0
 # never replayed, because the first sight of a hold is always a baseline.
 REPLAYED_EVENTS = {"Touchdown", "Liftoff", "Docked", "Undocked", "MarketSell",
                    "Shutdown", "Location", "SRVLaunch", "SRVDock", "SRVLost",
-                   "Refined", "CargoTransfer"}
+                   "Refined", "CargoTransfer", "Ejected"}
+
+# The game's own mining statistics, one block a login (1.10040, #257), and
+# what they came to against the sessions between two logins.
+STATS_FILE = "mining-check.json"
+AUDITS_KEPT = 20
+# The ship's hold stated this long after a session closed with the Rhino
+# coming aboard still belongs to that session (#256).
+SHIP_HOLD_WITHIN_S = 120
 
 
 def pack_counts(counts):
@@ -1673,8 +1700,36 @@ class Earnings:
         # One session across several trips, for hauling back and forth to a
         # station: set from the Earnings window's box, kept in settings.
         self.multi = False
+        # The ship's hold when the commander's Rhino last went out (#256).
+        self._launch_hold = None
+        # The game's own count at the last login, and how the sessions since
+        # compared with it at each login after (#257).
+        self.stats_path = os.path.join(folder, STATS_FILE)
+        self.stats_last, self.audits = None, []
+        self._load_stats()
         self._load_seen()
         self.load()
+
+    def _load_stats(self):
+        try:
+            with open(self.stats_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            return
+        if isinstance(data, dict):
+            last = data.get("last")
+            self.stats_last = last if isinstance(last, dict) else None
+            self.audits = [a for a in data.get("audits") or [] if isinstance(a, dict)][-AUDITS_KEPT:]
+
+    def _save_stats(self):
+        try:
+            os.makedirs(self.folder, exist_ok=True)
+            temp = self.stats_path + ".tmp"
+            with open(temp, "w", encoding="utf-8") as handle:
+                json.dump({"last": self.stats_last, "audits": self.audits[-AUDITS_KEPT:]}, handle)
+            os.replace(temp, self.stats_path)
+        except OSError:
+            pass
 
     def _load_seen(self):
         try:
@@ -1752,6 +1807,8 @@ class Earnings:
             if note.get("player", True):
                 self._in_rhino = bool(note.get("rhino"))
                 self._srv_id = note.get("srv_id")
+                if note.get("rhino"):
+                    self._launch_hold = note.get("ship_t")
                 if note.get("rhino") and note.get("srv_id") is not None:
                     self._out.add(str(note.get("srv_id")))
         elif name == "SRVEmbark":
@@ -1874,6 +1931,9 @@ class Earnings:
                     "trips": "1" if self._in_rhino else "0",
                     "credits": "0", "cost": "0", "sales": "0", "cr_hr": "0",
                     "paused": "0", "started_by": str(by or "")})
+        # The ship's hold as the Rhino went out, for the check at the end.
+        if self._in_rhino and self._launch_hold is not None:
+            row["ship_hold"] = JR.hold_value(self._launch_hold, None)
         self.sessions.append(row)
         self.save()
         return row
@@ -2270,11 +2330,73 @@ class Earnings:
         if name == "MarketSell":
             return self._sell(note, when)
 
+        if name == "ShipHold":
+            return self._ship_hold(note, when)
+
+        if name == "Ejected":
+            return self._ejected(row, note, when)
+
+        if name == "Statistics":
+            return self._statistics(note.get("mining"))
+
         if name == "Docked" and row is not None and self.multi:
             row["station"] = str(note.get("station") or "")
             row["sold_in"] = str(note.get("system") or "")
             self._touch(row, when)
             self.save()
+        return None
+
+    def _ship_hold(self, note, when):
+        """The ship's hold, stated a few seconds after the Rhino came aboard:
+        the other end of the check on that session's transfers (#256)."""
+        at = _epoch(when)
+        for row in reversed(self.sessions):
+            closed = _epoch(row.get("closed"))
+            if row.get("kind") != RHINO or row.get("ended_by") != "docked" or not closed:
+                continue
+            if 0 <= at - closed <= SHIP_HOLD_WITHIN_S:
+                before, _after = JR.hold_sides(row.get("ship_hold"))
+                row["ship_hold"] = JR.hold_value(before, _number(note.get("count")))
+                self.save()
+            break
+        return None
+
+    def _ejected(self, row, note, when):
+        """Cargo thrown out while a session is open, of something it dug up:
+        tonnes lost to it (#267)."""
+        if row is None:
+            return None
+        commodity = canonical(note.get("commodity") or "")
+        count = int(_number(note.get("count")))
+        dug = set(fold(k) for k in unpack_counts(row.get("mined")))
+        dug |= set(fold(k) for k in unpack_counts(row.get("transferred")))
+        if not commodity or count <= 0 or fold(commodity) not in dug:
+            return None
+        lost = unpack_counts(row.get("lost"))
+        add_counts(lost, {commodity: count})
+        row["lost"] = pack_counts(lost)
+        self._touch(row, when)
+        self.save()
+        return "thrown out: %s %d t" % (commodity, count)
+
+    def _statistics(self, stats):
+        """The game's own mining statistics at a login. Against the last
+        login's, they say what was mined and sold in between; the sessions
+        in between are put beside them (#257). Read again on every start,
+        so a login no later than the last one changes nothing."""
+        if not isinstance(stats, dict) or not stats.get("when"):
+            return None
+        last = self.stats_last
+        if last and str(stats["when"]) <= str(last.get("when") or ""):
+            return None
+        if last:
+            between = [row for row in self.sessions if row.get("kind") == RHINO
+                       and str(last.get("when")) <= str(row.get("started") or "") < str(stats["when"])]
+            audit = JR.statistics_audit(last, stats, between)
+            if audit:
+                self.audits = (self.audits + [audit])[-AUDITS_KEPT:]
+        self.stats_last = dict(stats)
+        self._save_stats()
         return None
 
     def _sell(self, note, when):
@@ -2356,7 +2478,12 @@ class Earnings:
 
 
 def _same(a, b):
-    return str(a or "").strip().lower() == str(b or "").strip().lower()
+    return _key(a) == _key(b)
+
+
+def _key(value):
+    """What _same compares: the text, trimmed, in lower case."""
+    return str(value or "").strip().lower()
 
 
 def _natural(value):
@@ -2416,6 +2543,7 @@ def _write(path, fields, rows):
 
 MARKET_BOOK_FILE = "markets.json"
 MARKET_BOOK_MAX = 300           # stations kept; the longest unvisited go first
+SALES_KEPT = 200                # of your own sales, with the price after each
 PRICE_STALE_S = 24 * 3600       # older than a day is stale, whoever read it
 OWN_SOURCE = "your market read"
 
@@ -2437,6 +2565,9 @@ class MarketBook:
     def __init__(self, folder=None):
         self.path = os.path.join(folder, MARKET_BOOK_FILE) if folder else ""
         self.stations = {}
+        # Each of your own sales, with the price there before it and at your
+        # next read of that market (1.10040, #274) - journalrows.sale_mark.
+        self.sales = []
         self.load()
 
     def load(self):
@@ -2452,6 +2583,9 @@ class MarketBook:
             self.stations = {str(key): entry for key, entry in stations.items()
                              if isinstance(entry, dict)
                              and isinstance(entry.get("items"), dict)}
+        sales = data.get("sales") if isinstance(data, dict) else None
+        if isinstance(sales, list):
+            self.sales = [mark for mark in sales if isinstance(mark, dict)][-SALES_KEPT:]
 
     def save(self):
         if not self.path:
@@ -2460,7 +2594,7 @@ class MarketBook:
             os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
             temp = self.path + ".tmp"
             with open(temp, "w", encoding="utf-8") as handle:
-                json.dump({"stations": self.stations}, handle)
+                json.dump({"stations": self.stations, "sales": self.sales[-SALES_KEPT:]}, handle)
             os.replace(temp, self.path)
             return True
         except OSError:
@@ -2507,6 +2641,9 @@ class MarketBook:
                               "read": when, "items": items,
                               "station_type": str(market.get("station_type")
                                                   or entry.get("station_type") or "")}
+        # Your sales here waiting for the price after them (#274).
+        JR.after_read(self.sales, key, {folded: item["sell"] for folded, item in items.items()
+                                        if item.get("seen") == when}, when)
         self._trim()
         return True
 
@@ -2522,6 +2659,12 @@ class MarketBook:
         item = entry["items"].get(fold(commodity))
         if item and _epoch(item.get("seen")) >= _epoch(when):
             return False
+        # The sale, with the price the board showed before it (#274).
+        if not any(mark.get("key") == key and mark.get("when") == when
+                   and mark.get("folded") == fold(commodity) for mark in self.sales):
+            mark = JR.sale_mark(key, system, station, commodity, price, when, before=item)
+            mark["folded"] = fold(commodity)
+            self.sales = (self.sales + [mark])[-SALES_KEPT:]
         entry["items"][fold(commodity)] = {
             "commodity": commodity, "sell": price,
             # A sale says it was buying; how much more it wants is unknown.
@@ -2529,6 +2672,13 @@ class MarketBook:
         entry["when"] = _later(entry.get("when"), when)
         self._trim()
         return True
+
+    def sales_at(self, station, start="", end=""):
+        """Your own sales at a station between two times, oldest first."""
+        out = [mark for mark in self.sales if fold(mark.get("station")) == fold(station)
+               and str(start or "") <= str(mark.get("when") or "")
+               and (not end or str(mark.get("when") or "") <= str(end))]
+        return sorted(out, key=lambda mark: str(mark.get("when") or ""))
 
     def rows(self, commodity, system="", station=""):
         """This commander's reads of one commodity, as price rows."""
@@ -2764,12 +2914,12 @@ class MeritRate:
 
     def learn_file(self, path):
         """Pair the sales and merits in one journal file. How many were new."""
-        with open(path, "rb") as handle:
-            data = handle.read()
-        if _MERIT_EVENTS[1] not in data:
+        # A chunk at a time, never the whole file in memory (1.10040, #276).
+        import catchup as CU
+        if not CU.contains(path, _MERIT_EVENTS[1]):
             return 0
         scratch = MeritRate()
-        for raw in data.splitlines():
+        for raw in CU.lines_of(path):
             if not any(tag in raw for tag in _MERIT_EVENTS):
                 continue
             try:

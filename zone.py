@@ -17,6 +17,7 @@ function that can be checked on its own.
 import datetime
 import time
 
+import bestmine as BM
 import survey as SV
 
 # A known location this close is the one you are at, on the ground or low
@@ -132,10 +133,14 @@ def _rigs(row):
         return 0
 
 
-def summary(finds, limit=TOP_COMMODITIES):
+def summary(finds, limit=TOP_COMMODITIES, price_of=None):
     """The commodities in a location, most rigs first: "Iridium 4R,
     Sapphire 2R +2 more". Each commodity once, with the most rigs anyone
-    has had down on it; one worked out everywhere it was found says so."""
+    has had down on it; one worked out everywhere it was found says so.
+
+    Handed a price source (1.10040), the most valuable first instead - its
+    rigs at the best price known (bestmine.find_value) - and a commodity
+    worked out everywhere last, whatever it would be worth."""
     best = {}
     for row in finds or []:
         name = str(row.get("commodity") or "").strip()
@@ -147,7 +152,13 @@ def summary(finds, limit=TOP_COMMODITIES):
         best[key]["rigs"] = max(best[key]["rigs"], _rigs(row))
         if not SV.is_depleted(row.get("amount")):
             best[key]["worked"] = False
-    ranked = sorted(best.values(), key=lambda item: (-item["rigs"], item["seen"]))
+    if price_of is None:
+        ranked = sorted(best.values(), key=lambda item: (-item["rigs"], item["seen"]))
+    else:
+        ranked = sorted(best.values(), key=lambda item: (
+            item["worked"],
+            -BM.find_value({"commodity": item["name"], "rigs": item["rigs"]}, price_of),
+            -item["rigs"], item["seen"]))
     parts = []
     for item in ranked[:limit]:
         text = item["name"] + (" %dR" % item["rigs"] if item["rigs"] else "")
@@ -220,12 +231,13 @@ def shared_note(finds, now=None, verb="shared by"):
     return text
 
 
-def zone_line(zone, own_deposits, shared_finds, now=None):
+def zone_line(zone, own_deposits, shared_finds, now=None, price_of=None):
     """The one line said on entering a location.
 
     "Mining location 7 - Iridium 4R, Sapphire 2R (3 finds shared by CMDR X,
     9 days ago)" for a shared one, "Mining location 7 - yours: Platinum 4R"
-    for your own, and both halves when both have something there.
+    for your own, and both halves when both have something there. With a
+    price source the finds are named most valuable first (1.10040).
     """
     signal = str((zone or {}).get("signal") or "").strip()
     head = "Mining location %s - " % signal
@@ -233,11 +245,13 @@ def zone_line(zone, own_deposits, shared_finds, now=None):
     theirs = list(shared_finds or [])
     if mine and theirs:
         return head + "yours: %s; shared: %s (%s)" % (
-            summary(mine), summary(theirs), shared_note(theirs, now, verb="by"))
+            summary(mine, price_of=price_of), summary(theirs, price_of=price_of),
+            shared_note(theirs, now, verb="by"))
     if theirs:
-        return head + "%s (%s)" % (summary(theirs), shared_note(theirs, now))
+        return head + "%s (%s)" % (summary(theirs, price_of=price_of),
+                                   shared_note(theirs, now))
     if mine:
-        return head + "yours: " + summary(mine)
+        return head + "yours: " + summary(mine, price_of=price_of)
     return head + "yours, nothing marked in it yet"
 
 
@@ -259,8 +273,9 @@ def nothing_line(reach, count):
     return head + "says %d mining location%s on this body" % (count, "" if count == 1 else "s")
 
 
-def status_card(signal, own_deposits, shared_finds):
+def status_card(signal, own_deposits, shared_finds, price_of=None):
     """What the overlay's STATUS box shows while you are in a location:
-    the number and the top finds, yours first."""
+    the number and the top finds - yours first, or with a price source the
+    most valuable first (1.10040)."""
     rows = list(own_deposits or []) + list(shared_finds or [])
-    return {"signal": str(signal).strip(), "summary": summary(rows)}
+    return {"signal": str(signal).strip(), "summary": summary(rows, price_of=price_of)}

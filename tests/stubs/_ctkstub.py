@@ -85,7 +85,18 @@ mb = _mod("tkinter.messagebox"); mb.showerror = lambda *a, **k: None
 mb.showinfo = lambda *a, **k: None; mb.askyesno = lambda *a, **k: True
 tk.messagebox = mb
 _mod("tkinter.font").Font = _W
-_mod("tkinter.ttk").Frame = _W
+_ttk = _mod("tkinter.ttk")
+_ttk.Frame = _W
+# The tables are on the tree view (1.10040, #308). A style is named by
+# its first argument, which a widget's configure does not take.
+_ttk.Treeview = _W
+class _Style(_W):
+    def configure(self, *a, **kw): return None
+    def map(self, *a, **kw): return None
+    def layout(self, *a, **kw): return None
+    def theme_use(self, *a): return "clam"
+_ttk.Style = _Style
+tk.ttk = _ttk
 fd = _mod("tkinter.filedialog"); fd.askdirectory = lambda *a, **k: ""
 tk.filedialog = fd
 

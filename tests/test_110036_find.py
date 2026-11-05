@@ -132,7 +132,7 @@ if HAVE_DISPLAY:
     JOURNALS = os.path.join(TMP, "journals")
     os.makedirs(JOURNALS, exist_ok=True)
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-        json.dump({"asked_to_share": True, "journal_dir": JOURNALS, "tour_done": True}, _f)
+        json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "journal_dir": JOURNALS, "tour_done": True}, _f)
     app = A.EDSMT()
     app.geometry("1400x900+0+0")
     app.updates.check = lambda *args, **kwargs: None
@@ -159,8 +159,10 @@ def _window():
     check("the count is the whole answer, with no 'the most this asks for'",
           win.status.cget("text") in ("1,203 result(s).",) or "of 1,203 shown" in win.status.cget("text"),
           win.status.cget("text"))
-    labels = [k for k in win.table.winfo_children() if k.winfo_class() == "Label"]
-    check("and a page of them is drawn straight away", len(labels) >= A.PAGE_ROWS, len(labels))
+    # 1.10040 (#308): the table is a tree view holding the rows on screen,
+    # so every row is in it at once - no page, no Show more.
+    check("and all of them are in the table straight away", win.scroller.row_count() == 1203,
+          win.scroller.row_count())
     win.results("search", json.dumps({"deposits": deposits[:400], "complete": False, "pages": 9}))
     pump(2)
     check("a search stopped at the top says so", "narrow it to see past them" in win.status.cget("text"),

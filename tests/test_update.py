@@ -14,6 +14,10 @@ sys.path.insert(0, os.path.dirname(HERE))
 TMP = tempfile.mkdtemp(prefix="edsmt-update-")
 os.environ["LOCALAPPDATA"] = os.path.join(TMP, "appdata")
 import edsmt as A, edonline as EDO  # noqa
+# These checks are about the download entries, not the signature: with the
+# release key set (1.10040) an unsigned fixture would rightly be refused, so
+# the key is cleared here. test_110040_signed.py proves the signature.
+EDO.UPDATE_PUBLIC_KEY = ""
 A.DATA_DIR = os.path.join(TMP, "data"); os.makedirs(A.DATA_DIR, exist_ok=True)
 A.SETTINGS_FILE = os.path.join(A.DATA_DIR, "settings.json")
 

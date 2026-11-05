@@ -580,6 +580,18 @@ def next_target(items):
     return min(live, key=lambda item: float(item.get("range_m") or 0.0))
 
 
+def guided_target(items, wanted=None):
+    """The deposit the scope and the compass point at: the one picked to be
+    guided to (`wanted`, its id) while it is on the picture, otherwise the
+    nearest still worth driving to. One rule for the scope's GO / NEXT line,
+    the proximity sonar and the spoken directions (1.10040)."""
+    if wanted:
+        for item in items or []:
+            if str((item.get("deposit") or {}).get("id") or "") == str(wanted):
+                return item
+    return next_target(items or [])
+
+
 def best_patch(items, radius_m=350.0):
     """The tightest richest knot of deposits on the picture, or None.
 

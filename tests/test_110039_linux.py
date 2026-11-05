@@ -584,9 +584,10 @@ def _packaging():
     check("and uploads EDSMT-linux-x86_64.tar.gz", "EDSMT-linux-x86_64.tar.gz" in linux
           and "upload-artifact" in linux)
     release = jobs.split("\n  release:\n")[1]
-    check("the release waits for both builds", re.search(r"needs:\s*\[\s*windows\s*,\s*linux\s*\]", release), release[:80])
-    check("and attaches the Linux file beside the Windows ones",
-          "upload/EDSMT-linux-x86_64.tar.gz" in release and "upload/EDSMT-Setup.exe" in release)
+    # Since 1.10040 the release needs the Linux build only and the Windows
+    # files come from the desk (tests/test_110040_release_pipeline.py).
+    check("the release waits for the Linux build", re.search(r"needs:\s*\[[^\]]*linux", release), release[:80])
+    check("and attaches the Linux file", "upload/EDSMT-linux-x86_64.tar.gz" in release)
     windows = jobs.split("\n  linux:\n")[0]
     check("the Windows job still runs on windows-latest with the same steps",
           "windows-latest" in windows and "build/EDSMT.spec" in windows and "innosetup" in windows)
@@ -628,7 +629,7 @@ A.SETTINGS_FILE = os.path.join(A.DATA_DIR, "settings.json")
 JOURNALS = os.path.join(TMP, "journals")
 os.makedirs(JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-    json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS}, _f)
+    json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "tour_done": True, "journal_dir": JOURNALS}, _f)
 
 
 class Link:

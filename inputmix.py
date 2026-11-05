@@ -94,6 +94,17 @@ def refuse(app, why, via=""):
                  why[:70], text=why, via=via)
 
 
+def speak(app, line_id):
+    """One line of Voice Mode (1.10040), where the app has a voice."""
+    talk = getattr(type(app), "speak", None)
+    if callable(talk):
+        try:
+            return talk(app, line_id)
+        except Exception:
+            return False
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Marking a deposit: here, or from range
 # ---------------------------------------------------------------------------
@@ -340,12 +351,14 @@ def run_command(app, cmd):
     action = cmd.get("action")
     if action == "error":
         refuse(app, cmd.get("why") or "Not understood.", "chat")
+        speak(app, "chat_unknown")
     elif action == "mark":
         mark(app, cmd, via="chat")
     elif action == "range":
         mark(app, cmd, bearing=cmd["bearing"], metres=cmd["metres"], via="chat")
     elif action == "undo":
         undo_last(app, "chat")
+        speak(app, "chat_ok")
     elif action in ("rig_down", "rig_up", "all_up", "centre"):
         run = {"rig_down": lambda: app.drop_rigs(cmd.get("rig")),
                "rig_up": lambda: app.rig_up(cmd.get("rig")),

@@ -415,6 +415,46 @@ class CoverageMap:
             limit = 3
         return [dict(gap) for gap in self._gap_cache[1][:limit]]
 
+    def coverage_with(self, extra, limit=3):
+        """coverage() with `extra` (lat, lon) places counted as swept too -
+        the ground a wingmate's scanner has covered (1.10040, #171) - and,
+        under "gaps", the patches inside the border neither of you has.
+        Nothing is kept: the map, its points and its own answers are just
+        as they were. With nothing extra it is the map's own answer."""
+        fixes = []
+        for place in extra or []:
+            try:
+                fix = _fix(place[0], place[1])
+            except (IndexError, TypeError):
+                fix = None
+            if fix is not None:
+                fixes.append(fix)
+        if not fixes or not self._ensure_raster():
+            result = self.coverage()
+            result["gaps"] = self.gaps(limit)
+            return result
+        reach = None
+        if self.border_m is not None and self.centre is not None:
+            reach = self.border_m + self.scan_m
+        saved = (self._inside, self._outside, self._version, self._gap_cache)
+        self._inside, self._outside = set(self._inside), set(self._outside)
+        try:
+            for lat, lon in fixes:
+                if reach is not None and SV.surface_range_m(
+                        self.centre[0], self.centre[1], lat, lon, self.radius_m) > reach:
+                    continue
+                self._paint(lat, lon)
+            result = self.coverage()
+            gaps = self._find_gaps() if reach is not None else []
+            try:
+                limit = max(0, int(limit))
+            except (TypeError, ValueError, OverflowError):
+                limit = 3
+            result["gaps"] = [dict(gap) for gap in gaps[:limit]]
+        finally:
+            self._inside, self._outside, self._version, self._gap_cache = saved
+        return result
+
     def _find_gaps(self):
         # Rather than flood-fill cell by cell, each row of the border disc is
         # cut into runs of unswept cells, and runs in neighbouring rows that

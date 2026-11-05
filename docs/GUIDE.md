@@ -31,7 +31,8 @@ signal** — step 3 is Alt+3. The number row, not the number pad.
    Amount, Density — pick with the mouse or type, and Tab moves on. All four
    are needed: a deposit is not marked with any of them blank (the scanner's
    density counts when the game names one), and the rigs, amount and density
-   boxes clear themselves for the next one.
+   boxes clear themselves for the next one. Rigs is how many the site takes,
+   1 to 12 — a Rhino carries six, and a good deposit takes two Rhinos' worth.
 9. **Alt+4 to Alt+9 as each rig goes down** — rig 1 is Alt+4, rig 6 is
    Alt+9. Each rig is drawn on the scope and the compass in the colour of
    what it is mining, with its name beside it. Drive too far from one and the
@@ -85,11 +86,32 @@ every window says what it does. The first start also walks you round the
 main window once — Back, Next, Skip — and never over the game. Settings →
 Basics turns the notes off, and **Show me round again** runs the tour.
 
-**Settings is in tabs** — Basics, Overlay, Keys, Rigs, Sharing, Your data,
+**The welcome window** opens on the first start of each new version: what
+EDSMT is, **CHECK THE SETTINGS** with an **Open Settings** button, the
+headlines of what is new in this version with the full patch notes a click
+away, **Join the Discord**, radioraxxla.com and **Sign in to the site** (a
+member page for any commander, in the squadron or not), a picture of how it
+works, the community map, a **Donate with PayPal** button for Radio Raxxla,
+and the user guide, bug reports, the changelog and the tour. Tick *Don't show this again* and it stays shut until
+the next version. **Help** on the top bar, and **Welcome again** in Settings
+→ About, open it whenever you want.
+
+**The main window**, from the top: the top bar (where you are, the run's
+worth, Overlay, Settings and Help); the **status strip** — CMDR, ship,
+system, body, whether you are docked, landed, in the SRV, on foot or in
+flight, and whether the overlay is up, all as the journal says them; the
+**tabs**; the rail and the map, with four figures over the map — the
+session's tonnes, Cr/hr, the rigs down and how much of the survey area is
+swept; the status line; and along the bottom the keys, **SPACING**
+(*Comfortable* or *Compact* — how much room the bars and tables leave, at
+once) and the **THEME** with **<** and **>** to step through every theme.
+
+**Settings is in tabs** — Basics, Theme, Overlay, Keys, Rigs, Sharing, Your data,
 About. Each tab scrolls on its own, and Save and Close are under all of them.
 
 **Find, My sites, Where to land, Earnings, Powerplay and Leaderboard open as
-tabs** of the main window, along the top bar with **Map** to come back. The
+tabs** of the main window, in the strip under the status strip with **Map**
+to come back — or **F2** to **F8** from the keyboard, F2 being the map. The
 one on show is lit, and it has the window's whole width. **Pop out**, at the
 right of any tab's header, moves that one tool out to a window of its own as
 it stands, and **Dock** on that window brings it back. To have them all open
@@ -194,6 +216,39 @@ sells best; **Sessions** — every session, with the all-time totals under
 the table; and **System prices** — the last known prices in a system you
 name. The page you leave it on is the one it opens on next time.
 
+**The big tables** — Sessions, Find, My sites and Where to land — hold every
+row at once, however many there are, and scroll straight through them. Click
+a row to pick it: its buttons (copy, card, delete, the marks) are on the line
+under the table. Ctrl or Shift picks several, **Ctrl+C** copies them, a
+double-click does the first thing on the line and a right-click lists them
+all. Click a heading to sort; click it again to turn it round. A row is
+coloured by its cells — green for good, amber for caution — and a short cell
+such as **Why** shows its whole sentence when the mouse rests on it.
+
+**What the game itself says about a session.** The Sessions table checks a
+session against the game's own records where the journal has them:
+
+- **To ship** is what the Rhino moved across to the ship. Once the Rhino is
+  back aboard the game states the ship's whole hold, and the cell says
+  **hold agrees** when it rose by exactly what was moved across (**hold
+  differs** when something else came aboard or went). A session's tonnes,
+  and its t/hr, are what went across; the tonnes refined stay the live count
+  while the Rhino is out, because the game writes one for each tonne.
+- **Thrown out** under Mined is cargo of the session's own ore you threw out
+  of the hold while it was open.
+- **Sold at** gives, after the station's name, how the price there had moved
+  by the next time you opened that market (**next read -36%**). The whole
+  line, on the cell's note and in Copy, has the price before the sale, the
+  price you sold at, and the next one with its date.
+- At each login the game writes its own mining figures. From the second
+  login on, the line under the table puts what the game counted between
+  your last two logins beside the sessions EDSMT has for that time. The game
+  counts all mining — a ring as well as a Rhino — so a difference is not a
+  fault, and the line says which it is.
+
+While a session is running, **This session** also says what is in the Rhino
+now, from the count the game writes with every tonne.
+
 **Delete** on a row takes a session out — a test run, one opened by mistake.
 Press it twice on the same row; the file before is kept as
 `sessions.csv.bak`.
@@ -260,6 +315,14 @@ one in each Power's colours - pick a Power and both the app and the overlay
 take it. Every one is held to readable contrast. The overlay changes the
 moment you Save; the app wears a new theme from the next start, and **Save
 and restart now** does that straight away.
+
+**Overlay uses the app theme** is on for a new install: the overlay wears
+whatever the app wears, its own picker is greyed out, and a new app theme
+reaches the overlay as soon as it is saved. Switch it off to give the
+overlay a theme of its own. (A settings file from before the switch keeps
+the overlay it had: on only where the two themes were already the same.)
+The **<** and **>** beside **THEME** at the bottom of the main window step
+through every theme the same way, kept at once.
 
 **Match my in-game HUD colours** reads the colours your game is actually
 using - the HUD colour matrix in `GraphicsConfigurationOverride.xml`, or
@@ -416,6 +479,28 @@ you sees the others' Rhinos and rigs on the scope in a colour of their own,
 and dropping a rig closer than the rig spacing to a wingmate's says so. Your
 commander name goes with it. Nothing is stored:
 you drop out two minutes after your last update.
+
+**In a wing in the game, no code is needed.** With **Link with my in-game
+wing by itself** on (it starts on), EDSMT reads who is in your wing from the
+game and links you with each wingmate who runs EDSMT and has you in their
+wing too — never with a commander who does not. Leave the wing in the game
+and the link ends. A typed code still works beside it.
+
+**One shared survey.** The ground you have swept on the body, the finds you
+have marked and your rig plan's pins go over the link. On the map and the
+scope each wingmate's Rhino, rigs, swept ground and finds are in a colour of
+their own; a find a wingmate marks is said as it comes in, with how far and
+which way; and with a survey border set, **Swept** and the gaps count the
+ground the wing has swept with yours.
+
+**Pins split between the wing.** On a deposit with a rig plan, the pins are
+divided between the wingmates working it, in turn by name — so with Bee and
+Jameson on six pins, Bee takes P1-P3 and Jameson P4-P6. Yours look as they
+always have and you are guided to your own; a wingmate's are dashed, in
+their colour, with their initial (**P1B**). A rig a wingmate drops on a pin
+ticks it off for everyone. With no plan of your own you follow the wing's —
+the one with the most pins. **Split the rig plan's pins between the wing**
+turns the split off.
 
 ---
 
@@ -580,8 +665,73 @@ theme.
 default), round everything, or nothing at all. The scope gets none by default
 and its dish is not filled in, so it stays out of the way of the view.
 
+**Ship minimap** (on to begin with): in the ship, below 10 km over a body
+with finds on the community map, the scope comes up by itself with the
+body's sites round you, you drawn as a ship, and the range widened to suit
+the height. It goes again as you climb away or land. In orbital cruise
+nothing is drawn.
+
+**Dark backdrop behind the boxes** puts a see-through dark panel behind the
+overlay, for white and icy ground where the boxes are hard to read: Off,
+Light, Medium, Strong or Solid. **Darker by itself on icy and rocky-ice
+bodies** (on to start with) takes it to at least Medium on those bodies, from
+the body type in your journal, and never lighter than you set it. Every other
+body keeps the backdrop you picked.
+
 It **cannot** draw over the game in exclusive fullscreen; that is a DirectX
 limitation. Set Elite to **borderless** or windowed and it appears.
+
+---
+
+## Voice
+
+Everything here is in **Settings → Basics → Voice**, off until you switch
+it on, and works on Windows only - it uses Windows' own speech and tones.
+
+**Voice Mode** says what EDSMT just did: signal logged, border set, deposit
+recorded, rig three down, all rigs recovered, update ready, backup complete,
+the session starting, pausing and ending, a rig plan ready, on the pin,
+half the survey area swept and all of it (once each for an area), a
+high-gravity world, the wing link up, a wingmate joining or leaving, a chat
+command not understood, and the rest. The words are the **Basic voice line pack**, in one of three
+voices: **Ship computer**, **Flight controller** or **Radio Raxxla
+on-air**. **Speaking rate** sets how quickly they are read, and **Test
+voice** says the test line in the voice and rate in the boxes, saved or not.
+
+The **Ship computer** voice comes recorded: every line of the pack is a
+recording made for EDSMT, shipped with it. The other two are read by
+Windows' own speech until their recordings follow. A recording is played in
+place of the spoken line when there is one: a `.wav` named after the line,
+in a `voice` folder beside EDSMT or in the data folder, under the voice it
+belongs to - for example `voice\ship_computer\signal_logged.wav`. The
+voices are `ship_computer`, `flight_controller` and `on_air`. Spoken
+directions (the distance and the clock face) are always read live.
+
+**Spoken directions** are for a headset, where the overlay cannot be seen.
+In the Rhino, EDSMT says how far and which way to go on a clock face -
+"Platinum, 340 metres, two o'clock" - to the rig plan's next pin, else the
+guided survey's waypoint, else the deposit the scope points at, else the
+nearest rig. It is said whenever that changes, and every so often while you
+are driving (10 seconds to start with, 5 to 60 in Settings), never more than
+one line every 3 seconds, and not over and over once you are on it.
+
+**Proximity sonar** is tones, no words. In the Rhino, a short tone repeats
+faster and higher as the deposit the scope points at gets nearer: every 2
+seconds at 1,500 m, five a second inside 25 m, nothing past 2 km.
+
+The rig warning is already spoken by its own sound; Voice Mode says it only
+when that sound is switched off, so the two never talk at once.
+
+### A VoiceAttack profile
+
+**Settings → Keys → Make a VoiceAttack profile** writes
+`Radio Raxxla EDSMT.vap` into the data folder and says where. Its commands -
+"mark signal", "set border", "mark deposit", "rig one down" to "rig six
+down", "rigs up", "update deposit", "next waypoint", "overlay" and "lock
+overlay" - press the keys on the Keys page, so make it again after changing
+one. A job with no key is left out, and EDSMT says which. In VoiceAttack,
+**Import Profile** and pick the file. What is and is not confirmed about the
+file is in [VOICEATTACK.md](VOICEATTACK.md).
 
 ---
 
@@ -681,12 +831,12 @@ only useful if everybody's finds are on it.
 What goes up is the system, body, commodity, position and how rich it was,
 and the prices at markets you open, with your CMDR name. Your notes,
 sessions and settings never leave your PC — sessions go to your own Discord
-channel only if you set one up. When your rigs come up, how they were laid
+channels only if you set them up. When your rigs come up, how they were laid
 out goes too (see *Shared rig layouts*).
 
 ### The leaderboard
 
-**Leaderboard** on the top bar ranks the commanders who share finds: this
+The **Leaderboard** tab ranks the commanders who share finds: this
 week (from the Powerplay tick, Thursday 07:00 UTC), this month, last month
 and all time, in three views. **By points**: finds (more when a find has
 rigs, amount and density), the first find on a body, finds staff confirm,
@@ -697,6 +847,37 @@ your Power, rank and total merits as the game reports them, read from the
 journal. **Merits from mining**: what the game paid for selling what you
 mined. Each view has its own Powers table. Everyone who shares is on it
 until they press **Leave**; **Join** puts them back.
+
+**Share my week** makes a card of your week on the surface — finds, sites,
+bodies and systems, your best patch, your furthest find from Sol, your
+place on the week's board, merits and the ribbons you earned — drawn by
+the community map from what you shared, saved in the pictures folder and
+opened, ready to post. The same card is on the weekly page under *Your
+week*, and on your member page.
+
+### Squadron share
+
+**Settings → Sharing → Share my squadron stats with my squadron's site** is
+off until you turn it on, and does nothing until the journal has named your
+squadron (the game writes that when it starts with you in one). On, it
+fills your squadron's site from the game with four things: your carrier's
+location and scheduled jumps, its buy and sell orders, your Powerplay rank
+and merits, and the tonnage you deliver to colonisation builds. Nothing
+else is read — not credits, carrier finance, what a carrier cost, your FID
+or anybody's chat. The text under the switch says exactly this.
+
+### EDDN
+
+**Settings → Sharing → Send mining locations to EDDN** is on to begin
+with. When the FSS reports Planetary Mining Locations on a body, that
+body's signal counts go to EDDN, the network other Elite tools read, with
+your CMDR name as the uploader. Nothing else goes from EDSMT: not your
+finds, not where you are on the body, not credits. Only what the game
+reports as you play is sent — never an old journal read back — and only
+when the system it names is the one the game last said you were in. Beta
+versions of the game send to the network's test channel instead. The line
+under the switch counts what went this session.
+
 ### Mining bodies galaxy-wide
 
 **Find → Mining bodies** lists bodies near you that carry mining
@@ -705,6 +886,28 @@ not only the ones somebody marked in EDSMT. Each row has how many
 locations, whether it is DSS mapped, the kind of ground, how often a
 commodity has turned up on that ground (with how many sites that rests
 on), and how many sites are already on the community map there.
+
+### A site as a picture
+
+**card** on a site in Find's Sites and Still there tables, or on a body with
+known sites in Where to land, makes a picture of it: the body's shared finds
+where they are, the site in the middle and the rest of the body faint, with
+one line under it saying what the map knows — finds, rigs, commodities and
+who found it first. It is saved in the pictures folder and opened. If EDSMT
+has not fetched that body's finds yet it asks the community map and draws
+the card when they arrive.
+
+### Mining for a Powerplay goal
+
+**Find → Powerplay** lists where to mine and where to sell for a Powerplay
+goal. Pick **My power** (*Auto* reads it from your journal), the **Goal**
+— Reinforce, Acquire or Undermine — and, if you like, who it is contested
+by, a commodity, the distance, pad, demand, price age and state. Each row
+is one place to mine and one place to sell: the site, its system's Power
+and state, the station with its pad, demand and price age, how far apart
+they are, and an estimate an hour. Merits an hour read "-" until the
+community map has measured enough to say. The line above the table says how
+fresh the Powerplay state is.
 
 ### What the community has measured
 
@@ -746,19 +949,102 @@ top as the closest thing in the galaxy.
 Every commodity market you open adds its surface-mining prices to the
 community's.
 
-### Your own Discord channel
+### Your own Discord channels
 
-**Settings → Sharing → Discord.** Paste a channel's webhook — the channel's
-**Edit Channel → Integrations → Webhooks → Copy Webhook URL** — and EDSMT
-posts there as you play: every find you mark (commodity, rigs, system, body,
-signal, amount, density, position), and a summary of every Rhino session
-when it ends — tonnes of each commodity, time, t/hr, credits, Cr/hr and
-where you sold. Each has its own switch. **Send a test message** checks the
-address before you rely on it.
+Every find already appears in **#edsmt-finds** on the Radio Raxxla Discord,
+posted by the community map — nothing to set up. **Join the Discord** in
+Settings opens the invite.
 
-The address stays behind dots like a password and goes to Discord and nowhere
-else. Nothing in a post can ping anyone: an `@everyone` typed into a note is
-just text. Your commander name is on the posts, since it is your channel.
+**Settings → Sharing → Discord** adds channels of your own, up to five. **Add
+a webhook**, give it a name, and paste a channel's webhook — the channel's
+**Edit Channel → Integrations → Webhooks → Copy Webhook URL**. Each webhook
+has its own switches: **Finds** posts every find you mark (commodity, rigs,
+system, body, signal, amount, density, position); **Sessions** posts a
+summary of every Rhino session when it ends — tonnes of each commodity,
+time, t/hr, credits, Cr/hr and where you sold — and updates that same
+message when the cargo is sold; **Session map** sends the map picture with
+it, and **Session card** the session card (see Streaming, below). **Test**
+posts one message to that webhook, saved or not; **Remove**
+takes it off the list. If one channel refuses a post, the status line names
+it and the others still get theirs. A webhook you had before 1.10040 is
+kept as the first, named "My Discord", posting what it posted before.
+
+Each address stays behind dots like a password and goes to Discord and
+nowhere else — not into a support bundle or crash.log. Nothing in a post can
+ping anyone: an `@everyone` typed into a note is just text. Your commander
+name is on the posts, since they are your channels.
+
+### Streamer mode
+
+**Settings → Sharing → Streamer mode**, for when you are live. While it is
+on, a **STREAMER** badge sits in the top bar, and the names of the system
+and body you are in — on the overlay, the map's title, the status line and
+the readouts at the top — read "a system 290 Ly from Sol" and "a body" until
+you have been in that system for the **Delay** (0, 5, 10, 15 or 30 minutes;
+15 to start with). Then the real names show. Your own Discord posts wait the
+same delay; they are held in memory only, so closing EDSMT drops them, and
+the next start says so. Your finds still go to the community map at once.
+**Bigger text** makes the overlay's text two sizes larger while streamer
+mode is on. Find, Earnings and the other tools are not hidden, and nor are
+station names. Turn streamer mode off and the names are back, and anything
+held is sent.
+
+### Streaming
+
+**Settings → Overlay → Streaming** puts your Rhino session on a stream
+without a screen capture of EDSMT.
+
+- **Serve an OBS browser source on this PC** (off to start with) serves two
+  small pages on this PC only — 127.0.0.1, at the **Port** below it (8765
+  unless another program needs that one). Nothing on your network or the
+  internet can reach them, and they load nothing from anywhere else.
+- **Copy overlay address** puts `http://127.0.0.1:8765/overlay` on the
+  clipboard. In OBS, add a **Browser Source**, paste it as the URL and give
+  it the size of your canvas (1920 × 1080). It shows, top left on a clear
+  background in the app theme's colours: your CMDR name, the body and
+  system, the session clock, tonnes by commodity, Cr/hr, merits when there
+  are any, rigs down and the nearest deposit with its distance and bearing.
+  A session that has ended stays on it for 30 minutes.
+- **Copy viewer card address** copies `http://127.0.0.1:8765/viewer`: a card
+  about 440 pixels wide for a corner of the stream, or to take a picture of
+  for a Twitch panel — your CMDR name, what you are mining and where, the
+  session's tonnes, Cr/hr and your last find. No Twitch account or key is
+  needed.
+- `http://127.0.0.1:8765/card.png` is the latest session card (below), for
+  an Image or Browser Source.
+- **Streamer mode** applies to all of it: while it hides the names on
+  screen, the pages read "a system N Ly from Sol" and "a body" too, and so
+  does the session card they show. Nothing on them says where on a body you
+  are, or anything about you but your CMDR name.
+- **Text shadow for streaming** (off to start with) draws a dark outline
+  behind every word on the overlay boxes, so they read over bright ground on
+  a stream.
+
+The **Streamer** layout (Settings → Overlay → Layout → Apply layout) puts the
+boxes clear of a webcam and chat, and takes their text to at least 130% so
+nothing on a 1080p capture is smaller than 10 pt. A size you have set bigger
+is kept.
+
+**The session card.** **Session card** on Earnings → This session, or
+**card** on any row of Sessions, makes one picture of that session: CMDR,
+body, system, date, tonnes by commodity, credits, Cr/hr, merits, time mined
+and the session's map beside them, with the EDSMT badge in a corner. It is
+saved in the pictures folder as `card_<system>_<body>_<date>.png`. On each of
+your Discord webhooks, **Session card** (off to start with) sends it with the
+session summary.
+
+### Your Radio Raxxla account
+
+**Settings → Sharing → Radio Raxxla account** pairs EDSMT with your member
+page. Sign in at radioraxxla.com with Discord — any commander can, in the
+squadron or not — open **Tools**, press **Make a pairing code**, and type the
+code (eight letters and digits, like PWP4-ZQMA) into the box and press
+**Pair**. A code works once, for ten minutes. Only the code, this
+computer's name (so you can tell your devices apart on the member page) and
+your commander name as the journal gives it are sent — so the member page
+can show your EDSMT figures without you typing the name. **Member page**
+opens it; **Forget pairing** drops the pairing on this computer, and the
+member page revokes it there.
 
 ---
 
@@ -861,6 +1147,20 @@ switch it touches:
 
 Run Elite in borderless or windowed mode for the overlay, as on Windows.
 
+### Cloud gaming
+
+EDSMT reads the journal the game writes on the machine it runs on, so it
+works wherever that folder is reachable:
+
+- A **Windows cloud PC** you log into (a remote desktop that is a whole
+  Windows machine): install EDSMT on it as on any Windows PC.
+- A **Linux desktop service** where you install the game yourself through
+  Steam, Bottles, Heroic or Lutris: unpack the Linux build beside it and run
+  it there.
+- A **streaming service that only shows you the game's picture**: not
+  possible. The journal stays on their machine and never reaches yours, so
+  there is nothing for EDSMT to read.
+
 ---
 
 ## Something wrong?
@@ -869,6 +1169,18 @@ Run Elite in borderless or windowed mode for the overlay, as on Windows.
 
 If the app does something unexpected it writes `crash.log` next to your finds
 in `%LOCALAPPDATA%\RadioRaxxla\EDSMT`. Attach it.
+
+**Trace mode** (Settings → About, under the support bundle) is for when
+support asks for it. While it is on and a Rhino session is open, EDSMT writes
+a line each time the game changes Status.json or Cargo.json — when it
+happened, the game's flags and the cargo counts, and nothing else: no
+position, no credits, no names. The support bundle carries those lines.
+Leave it off otherwise.
+
+**A long journal at start-up.** EDSMT reads the journal you are playing into
+from the top when it starts, so it can carry on the session you are in. A
+long evening's journal is read a chunk at a time while the window carries
+on, and the status line says how far it has got.
 
 | What you see | What it usually is |
 |---|---|

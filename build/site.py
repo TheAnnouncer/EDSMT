@@ -171,6 +171,17 @@ def write_version_file(now):
         json.dump(payload, fh, indent=2)
         fh.write("\n")
     print("site/version.json -> %s" % now)
+    # Signed with the build machine's key when EDSMT_SIGNING_KEY names it
+    # (1.10040): the app refuses an unsigned update once it holds the
+    # public key. See build/make_signing_key.py.
+    key_path = os.environ.get("EDSMT_SIGNING_KEY", "").strip()
+    import sign_version
+    if sign_version.sign_file(path, key_path):
+        print("site/version.json signed")
+    elif key_path:
+        print("site/version.json NOT signed: no key file at %s" % key_path)
+    else:
+        print("site/version.json not signed (EDSMT_SIGNING_KEY is not set)")
 
 
 def main():

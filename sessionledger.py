@@ -257,15 +257,34 @@ EDIT_QUIET_S = 25.0         # a sale is several MarketSell lines: wait for the l
 EDIT_EVERY_S = 20.0
 EDITS_MAX = 8
 POSTS_KEPT = 200
+# 1.10040: a session is posted to each of the commander's webhooks, so a
+# message is kept under the session AND the webhook it went to.
+KEY_JOIN = "@"
+
+
+def post_key(sid, hook=""):
+    """The book's key for one session's message on one webhook (hook is
+    webhooks.hook_key, never the address). No hook: the session alone, as
+    every message was kept up to 1.10039."""
+    sid = str(sid)
+    return sid + KEY_JOIN + str(hook) if hook else sid
+
+
+def split_key(key):
+    """(sid, hook) from a key post_key made; hook "" for one kept before
+    1.10040."""
+    sid, _join, hook = str(key).partition(KEY_JOIN)
+    return sid, hook
 
 
 class PostBook:
-    """The one message posted for each session, by its Discord id, so the
-    same message can be edited when the sale arrives - and so a session is
-    never posted twice, even across a restart.
+    """The one message posted for each session on each webhook, by its
+    Discord id, so the same message can be edited when the sale arrives -
+    and so a session is never posted twice, even across a restart.
 
-    posted    sid -> {"id", "attachments", "when", "state", "seen_state",
-                      "changed_at", "edited_at", "edits", "dead", "image"}
+    posted    post_key(sid, hook) -> {"id", "attachments", "when", "state",
+                      "seen_state", "changed_at", "edited_at", "edits",
+                      "dead", "image"}
     """
 
     def __init__(self, folder=None):
@@ -368,3 +387,18 @@ class PostBook:
         if entry is not None:
             entry["dead"] = True
             self.save()
+
+    def claim(self, hook):
+        """Every message kept before 1.10040 - under the session alone, from
+        the one webhook there was - filed under `hook`, the webhook that one
+        became. How many were moved."""
+        if not hook:
+            return 0
+        with self._lock:
+            old = [key for key in self.posted if not split_key(key)[1]]
+            for key in old:
+                self.posted.setdefault(post_key(key, hook), self.posted[key])
+                del self.posted[key]
+        if old:
+            self.save()
+        return len(old)

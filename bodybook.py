@@ -25,6 +25,7 @@ import sqlite3
 import threading
 import time
 
+import catchup as CU
 import journal as JN
 
 FILE_NAME = "bodies.db"
@@ -353,12 +354,11 @@ def read_journal_file(book, path, name=None, size=None, when=None, commit=True):
     did not put the system on a Scan. A file without a single body event in
     it is skipped without parsing a line.
     """
-    with open(path, "rb") as handle:
-        data = handle.read()
+    # A chunk at a time, never the whole file in memory (1.10040, #276).
     wrote = 0
-    if BODY_EVENTS.search(data):
+    if CU.contains(path, BODY_EVENTS):
         system = ""
-        for raw in data.splitlines():
+        for raw in CU.lines_of(path):
             if b'"event"' not in raw:
                 continue
             try:

@@ -469,14 +469,17 @@ check("the tick calls it", "self.follow_ledger()" in inspect.getsource(A.EDSMT.t
 
 # ---------------------------------------------------------------------------
 print("== 4. Discord: one summary a session, finds only if asked ==")
-check("per-find posts are off by default", A.DEFAULT_SETTINGS["discord_post_finds"] is False)
-up = A.upgrade_discord(dict(A.DEFAULT_SETTINGS, discord_post_finds=True),
-                       {"discord_post_finds": True})
+# 1.10040: the switches are each webhook's own, and the one webhook of an
+# older file is the first of the list (test_110040_webhooks.py).
+import webhooks as WH  # noqa
+check("per-find posts are off by default", WH.NEW_ROW["finds"] is False)
+_old = {"discord_webhook": HOOK, "discord_post_finds": True}
+up = A.upgrade_discord(dict(A.DEFAULT_SETTINGS, **_old), _old)
 check("a 1.10034 file that had it on (by default) is turned off, once",
-      up["discord_post_finds"] is False and up["discord_finds_level"] == 1, up)
-kept = A.upgrade_discord(dict(A.DEFAULT_SETTINGS, discord_post_finds=True),
-                         {"discord_post_finds": True, "discord_finds_level": 1})
-check("ticked again after that, it stays ticked", kept["discord_post_finds"] is True)
+      up["discord_webhooks"][0]["finds"] is False and "discord_finds_level" not in up, up)
+_old = {"discord_webhook": HOOK, "discord_post_finds": True, "discord_finds_level": 1}
+kept = A.upgrade_discord(dict(A.DEFAULT_SETTINGS, **_old), _old)
+check("ticked again after that, it stays ticked", kept["discord_webhooks"][0]["finds"] is True)
 
 class _Worker:
     def __init__(self): self.jobs = []
@@ -486,7 +489,7 @@ _real_post = EDO.post_json
 EDO.post_json = lambda url, payload, timeout=20.0, headers=None: sent.append((url, payload)) or {"id": "1"}
 d = app
 d.worker = _Worker()
-d.settings = dict(A.DEFAULT_SETTINGS, discord_webhook=HOOK)
+d.settings = dict(A.DEFAULT_SETTINGS, discord_webhooks=[WH.entry("My Discord", HOOK)])
 d.watcher.cargo_capacity = 256
 d.store = SV.Survey(os.path.join(TMP, "store"))
 d.store.deposits = [{"recorded": stamp(5000)}, {"recorded": stamp(4000)},

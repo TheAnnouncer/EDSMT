@@ -57,13 +57,17 @@ WANTED = {
     "prices": ["commodity", "from", "within", "place", "pad", "station", "carriers",
                "price_age", "min_price", "demand", "power_state", "power_side", "show"],
     "bodies": ["commodity", "within", "place"],
+    # 1.10040: the sixth, Powerplay (#231). Its own five boxes are checked
+    # in test_110040_powerplay.py; here, that the shared ones are right.
+    "powerplay": ["pp_power", "pp_goal", "pp_contested", "commodity", "within", "pad",
+                  "demand", "price_age", "pp_state", "pp_show"],
 }
-LABELS = ["Sites", "Still there", "Deposits", "Sell prices", "Mining bodies"]
+LABELS = ["Sites", "Still there", "Deposits", "Sell prices", "Mining bodies", "Powerplay"]
 
 
-@section("the five searches, and the filters each one has")
+@section("the six searches, and the filters each one has")
 def _modes():
-    check("five modes, in the order the switch shows them",
+    check("six modes, in the order the switch shows them",
           [label for _key, label in FD.MODES] == LABELS, FD.MODES)
     check("a label or a key gives the mode; anything else is Sites",
           FD.mode_key("Sell prices") == "prices" and FD.mode_key("bodies") == "bodies"
@@ -145,7 +149,7 @@ if HAVE_DISPLAY:
     JOURNALS = os.path.join(TMP, "journals")
     os.makedirs(JOURNALS, exist_ok=True)
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-        json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS}, _f)
+        json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "tour_done": True, "journal_dir": JOURNALS}, _f)
     app = A.EDSMT()
     app.geometry("1600x1000+0+0")
     app.updates.check = lambda *args, **kwargs: None
@@ -208,6 +212,9 @@ def parts(win):
 def A_texts(widget):
     out = []
     for child in walk(widget):
+        # A table on the tree view (1.10040) says what its rows show.
+        if callable(getattr(child, "texts", None)):
+            out.extend(child.texts())
         try:
             out.append(str(child.cget("text")))
         except Exception:
@@ -216,9 +223,12 @@ def A_texts(widget):
 
 
 def cells(widget, text):
-    """The widgets under `widget` whose text is exactly `text`."""
+    """The widgets under `widget` whose text is exactly `text` - for a table
+    on the tree view (1.10040), the tree whose rows show it."""
     found = []
     for child in walk(widget):
+        if callable(getattr(child, "texts", None)) and text in child.texts():
+            found.append(child)
         try:
             if str(child.cget("text")) == text:
                 found.append(child)
@@ -252,7 +262,7 @@ def _layout():
     pump(4)
     labels = [str(b.cget("text")) for b in walk(win.mode_switch)
               if isinstance(b, A.ctk.CTkButton)]
-    check("a segmented switch with the five searches", isinstance(win.mode_switch,
+    check("a segmented switch with the six searches", isinstance(win.mode_switch,
           A.ctk.CTkSegmentedButton) and labels == LABELS, labels)
     check("it opens on Sites, the first time", win.mode == "sites"
           and win.mode_switch.get() == "Sites", win.mode)
@@ -272,8 +282,8 @@ def _layout():
         on = sorted(k for k, ws in everything.items() if all(shown(w) for w in ws))
         off = sorted(k for k, ws in everything.items() if not any(shown(w) for w in ws))
         check("%s: exactly its own filters are on screen" % label,
-              on == sorted(WANTED[mode]) and len(on) + len(off) == len(everything),
-              (on, off))
+              on == sorted(k for k in WANTED[mode] if k in everything)
+              and len(on) + len(off) == len(everything), (on, off))
         check("%s: the switch says so, and it is remembered" % label,
               win.mode == mode and win.mode_switch.get() == label
               and app.settings.get("find_mode") == mode)
@@ -466,9 +476,7 @@ def is_window(tool):
     return str(tool.tk.call("winfo", "toplevel", tool._w)) == str(tool)
 
 
-@on_screen("every tool tab has Pop out at the right of its header")
-def _pop_buttons():
-    app.settings["tools_as_tabs"] = True
+def _each_pop_button():
     for key, opener in TOOLS:
         getattr(app, opener)()
         pump(4)
@@ -487,8 +495,28 @@ def _pop_buttons():
         x = button.winfo_rootx() + button.winfo_width() // 2
         y = button.winfo_rooty() + button.winfo_height() // 2
         top = app.winfo_containing(x, y)
+        # On a Windows desktop the point can be off the screen (a wide tool
+        # on a scaled display) or under another program; Windows then
+        # answers None, which says nothing about the header. Viewable is
+        # what can be asked there.
+        unasked = top is None and sys.platform == "win32" and bool(button.winfo_viewable())
         check("%s: drawn over the header, not behind it" % key,
-              top is not None and (top is button or str(top).startswith(str(button))), str(top))
+              unasked or (top is not None and (top is button or str(top).startswith(str(button)))), str(top))
+
+
+@on_screen("every tool tab has Pop out at the right of its header")
+def _pop_buttons():
+    app.settings["tools_as_tabs"] = True
+    # winfo_containing asks the window system what is at a point. On Windows
+    # that includes every other program's window, so the app goes on top for
+    # the question and comes down after.
+    app.attributes("-topmost", True)
+    app.lift()
+    pump(2)
+    try:
+        _each_pop_button()
+    finally:
+        app.attributes("-topmost", False)
 
 
 @on_screen("Pop out and Dock: the same tool, everything in it kept")
@@ -518,13 +546,13 @@ def _pop_and_dock():
     check("everything in it is as it was", find.min_rigs.get() == "3" and len(find._rows) == rows
           and find.mode == "sites" and "Row 000" in A_texts(find.table))
     check("the button now says Dock", find.dock_button.cget("text") == "Dock")
-    before = find.scroller.canvas.yview()[0]
+    before = find.scroller.yview()[0]
     cell = cells(find.table, "Row 005")
     for _ in range(3):
         cell[0].event_generate("<Button-5>", when="now")
     pump(2)
     check("the wheel scrolls the table in its own window",
-          find.scroller.canvas.yview()[0] > before, (before, find.scroller.canvas.yview()))
+          find.scroller.yview()[0] > before, (before, find.scroller.yview()))
     count = len([w for w in walk(app) if isinstance(w, A.FindWindow)])
     app.open_find()
     pump(3)
@@ -544,8 +572,8 @@ def _pop_and_dock():
     for _ in range(3):
         cell[0].event_generate("<Button-5>", when="now")
     pump(2)
-    check("and the wheel works in the tab again", find.scroller.canvas.yview()[0] > 0,
-          find.scroller.canvas.yview())
+    check("and the wheel works in the tab again", find.scroller.yview()[0] > 0,
+          find.scroller.yview())
     for key, opener in TOOLS:
         tool = getattr(app, opener)() or app.docked_tools.get(key)
         pump(3)

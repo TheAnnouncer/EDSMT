@@ -33,8 +33,16 @@ Free and open source (GPL-3.0). Not affiliated with Frontier Developments.
 - **Search** — Find, Where to land and My sites with full filters and saved
   searches.
 - **Community map** — every find is shared with your commander name, so
-  everyone sees what has been mapped, and a weekly and monthly leaderboard
-  with Powerplay merits.
+  everyone sees what has been mapped, with good and bad marks that feed the
+  map's confidence, a weekly and monthly leaderboard with Powerplay merits,
+  badges on your member page, and your week as a card to share. Mining
+  locations the FSS reports also go to EDDN for other tools to read.
+- **The wing** — linked from the in-game wing: one shared survey, the pins
+  split between Rhinos, each wingmate in a colour of their own.
+- **Voice** — spoken guidance in the Rhino, a VoiceAttack profile, and a
+  sonar for VR.
+- **Streaming** — a browser page for OBS, a viewer card, and streamer mode
+  that holds back where you are.
 - **Controls** — keys, joystick and HOTAS buttons, or chat commands.
 
 ## Get it
@@ -80,6 +88,13 @@ Python 3.10 or newer with tkinter. The game's Saved Games folder is found
 inside whichever Wine prefix is being played in. Hotkeys need an X11
 session; the overlay cannot be clicked through on Linux. The
 [user guide](docs/GUIDE.md#linux) has the detail.
+
+**Cloud gaming.** EDSMT needs the game's journal folder on the machine it
+runs on. A Windows cloud PC you log into runs it as any Windows PC does. A
+Linux desktop service that lets you install the game through Steam, Bottles,
+Heroic or Lutris runs the Linux build beside it. A streaming service that
+only shows you the game's picture cannot run it, because the journal never
+reaches your computer.
 
 ---
 

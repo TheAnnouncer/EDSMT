@@ -344,7 +344,7 @@ A.SETTINGS_FILE = os.path.join(_HOME, "settings.json")
 _JOURNALS = os.path.join(_HOME, "journals")
 os.makedirs(_JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-    json.dump({"asked_to_share": True, "journal_dir": _JOURNALS}, _f)
+    json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "journal_dir": _JOURNALS}, _f)
 app = A.EDSMT()
 # The window checks below are the tools in windows of their own; as tabs of
 # the main window they are checked in test_110036_tabs.py and at the end here.
@@ -399,6 +399,9 @@ def A_walk(widget):
 def texts_in(widget):
     out = []
     for child in widget.winfo_children():
+        # A table on the tree view (1.10040) says what its rows show.
+        if callable(getattr(child, "texts", None)):
+            out.extend(child.texts())
         try:
             out.append(str(child.cget("text")))
         except Exception:
@@ -438,27 +441,25 @@ check("the commander's name is in the table",
       "CMDR Konstantin Vasquez-Delacroix" in shown, shown)
 check("the whole commodity list, not the first 34 letters of it",
       "Ruby, Iridium, Platinum, Rhodplumsite" in shown, shown)
-_heads = [w for w in finder.table.winfo_children()
-          if isinstance(w, A.ctk.CTkButton)]
+# 1.10040 (#308): the table is a tree view; its columns are sized to their
+# headings and cells.
+_widths = [finder.scroller.tree.column(c, "width") for c in finder.scroller.tree["columns"]]
 check("headings are sized to their words, not 140 pixels each",
-      _heads and max(h.winfo_width() for h in _heads) < 140,
-      [h.winfo_width() for h in _heads])
+      _widths and min(_widths) < 140, _widths)
 def _text_of(w):
     try:
         return str(w.cget("text"))
     except Exception:
         return ""
-_score = [w for w in finder.table.winfo_children()
-          if _text_of(w).startswith("Score")]
 check_wide("on a 1400-pixel window every column is on screen without scrolling",
-           lambda: _score and inside(_score[0], finder.scroller.canvas),
+           lambda: finder.scroller.column_on_screen("Score"),
            lambda: "Score is off the edge")
 finder.geometry("820x600")
 settle(6)
 check("squeezed narrow, the table scrolls sideways instead of losing columns",
       finder.scroller.hbar.winfo_ismapped()
-      and finder.scroller.inner.winfo_reqwidth() > finder.scroller.canvas.winfo_width(),
-      (finder.scroller.inner.winfo_reqwidth(), finder.scroller.canvas.winfo_width()))
+      and finder.scroller.content_width() > finder.scroller.view_width(),
+      (finder.scroller.content_width(), finder.scroller.view_width()))
 finder.destroy()
 settle()
 
@@ -579,7 +580,7 @@ entry_of(rigs).focus_force(); settle(4)
 check("a box with a fixed list opens it on focus too",
       rigs.suggest.visible())
 _rows = [rigs.suggest.listbox.get(i).strip() for i in range(rigs.suggest.listbox.size())]
-check("showing every choice it has", _rows == [str(n) for n in range(1, A.MAX_RIGS + 1)], _rows)
+check("showing every choice it has", _rows == [str(n) for n in range(1, A.SITE_RIGS + 1)], _rows)
 entry_of(rigs).delete(0, "end")
 press(entry_of(rigs), "4", "4")
 press(entry_of(rigs), "Tab")
@@ -829,9 +830,10 @@ app.watcher.system = _SYS
 _asked = []
 app.community.grounds = lambda: _asked.append("grounds") or True
 app.community.system_sites = lambda system: _asked.append(system) or True
-_btn = [w for w in texts_in(app) if w == "Where to land"]
-check("there is a Where to land button", "Where to land" in _btn, _btn)
-_land_btn = None
+# 1.10040 (#310): the tools are tabs of a chevron strip under the status
+# strip, drawn on a canvas - no longer buttons in the top bar.
+_btn = [t.label for t in app.tab_strip.tabs]
+check("there is a Where to land tab", "Where to land" in _btn, _btn)
 def _find_button(widget, text):
     for child in widget.winfo_children():
         try:
@@ -842,12 +844,13 @@ def _find_button(widget, text):
         hit = _find_button(child, text)
         if hit is not None:
             return hit
-_land_btn = _find_button(app, "Where to land")
 _least = A.RAIL_WIDTH + A.SCROLLBAR_W + 420
 app.geometry("%dx900" % _least); settle(6)
-check("and it is on screen at the app's smallest width",
-      inside(_land_btn, app), (_least, _land_btn.winfo_rootx(),
-                               _land_btn.winfo_width(), app.winfo_width()))
+_land_tab = next(t for t in app.tab_strip.tabs if t.key == "land")
+check("and it is on screen at the app's smallest width, the strip after it too",
+      inside(app.tab_strip, app)
+      and max(x for t in app.tab_strip.tabs for x, _y in t.points) <= app.tab_strip.winfo_width(),
+      (_least, _land_tab.x1, app.tab_strip.winfo_width(), app.winfo_width()))
 _settings_btn = _find_button(app, "Settings")
 check("so is everything to its right, Settings included",
       inside(_settings_btn, app), (_settings_btn.winfo_rootx(), app.winfo_width()))
@@ -860,7 +863,9 @@ check("because the buttons went under the readouts, not over them",
       app._top_stacked is True)
 # 1.10035: the Powerplay button is a fifth on the left, so the buttons need
 # 112 pixels more room than they did at 1400. 1.10036 added the Map and
-# Leaderboard tabs, so beside the readouts now needs about 1650.
+# Leaderboard tabs, so beside the readouts needed about 1650 - until 1.10040
+# moved the tabs to a strip of their own and left the top bar to the
+# readouts and four buttons.
 app.geometry("1680x900+0+0"); settle(6)
 check_wide("given the width back, the buttons go back beside the readouts",
            lambda: app._top_stacked is False)
@@ -874,16 +879,16 @@ app.t_detail.configure(text="-37.94006, -143.44643   hdg 158 SSE   DSS: 7 "
                        "mining location(s)   238 K")
 settle(8)
 _squeezed = [b.cget("text") for b in (_find_button(app, t) for t in
-             ("Find", "My sites", "Where to land", "Earnings", "Settings"))
+             ("Overlay", "Unlock", "Settings", "Help"))
              if b is not None and (b.winfo_width() < b.winfo_reqwidth() - 2
                                    or not inside(b, app))]
 check_wide("a long earnings line wraps; every button keeps its whole width",
-           lambda: not _squeezed and _find_button(app, "Earnings") is not None,
+           lambda: not _squeezed and _find_button(app, "Help") is not None,
            lambda: _squeezed)
 check_wide("and the earnings line stays inside the room left of the buttons",
            lambda: app.t_earnings.winfo_rootx() + app.t_earnings.winfo_width()
-           <= _find_button(app, "Find").winfo_rootx() + 2,
-           lambda: (app.t_earnings.winfo_width(), _find_button(app, "Find").winfo_rootx()))
+           <= app._top_buttons.winfo_rootx() + 2,
+           lambda: (app.t_earnings.winfo_width(), app._top_buttons.winfo_rootx()))
 lander = app.open_land()
 settle(6)
 check("the window opens on the system you are in",
@@ -919,10 +924,10 @@ lander.sort_by(A.LAND_HEADERS.index("Ls")); settle(4)
 check("sorting on Ls puts the nearest first",
       [r["short"] for r in lander._sorted(list(lander._rows))][0] == "A 2")
 check_wide("on a 1400-pixel window the whole table fits without scrolling sideways",
-           lambda: lander.scroller.inner.winfo_reqwidth()
-           <= lander.scroller.canvas.winfo_width(),
-           lambda: str((lander.scroller.inner.winfo_reqwidth(),
-                        lander.scroller.canvas.winfo_width())))
+           lambda: lander.scroller.content_width()
+           <= lander.scroller.view_width(),
+           lambda: str((lander.scroller.content_width(),
+                        lander.scroller.view_width())))
 check_wide("and no empty sideways scrollbar is left drawn under it",
            lambda: not lander.scroller.hbar.winfo_ismapped()
            and not lander.scroller.hbar.winfo_manager())
@@ -930,7 +935,7 @@ check("and what it is worth and why are the first things after the body",
       A.LAND_HEADERS[:3] == ("Body", "Est. value", "Why"), A.LAND_HEADERS)
 lander.geometry("820x500"); settle(6)
 check("squeezed, the table scrolls sideways rather than losing columns",
-      lander.scroller.hbar.winfo_ismapped(), lander.scroller.inner.winfo_reqwidth())
+      lander.scroller.hbar.winfo_ismapped(), lander.scroller.content_width())
 check("and the footnote is still on screen",
       inside(lander.footnote, lander), lander.footnote.winfo_rooty())
 lander.geometry("1400x600"); settle(8)
@@ -968,7 +973,7 @@ app.store.add_deposit(system="Col 285 Sector AB-C d1-2",
                       body="Col 285 Sector AB-C d1-2 4 a", location="3",
                       commodity="Bromellite", rigs="5", amount="High",
                       lat="4.001", lon="5.001")
-check("the button is in the top bar", _find_button(app, "My sites") is not None)
+check("the tab is in the tab strip", "sites" in [t.key for t in app.tab_strip.tabs])
 _sites = app.open_sites(); settle(6)
 _cells = texts_in(_sites.table)
 check("it lists a body that is not the one you are on",
@@ -983,10 +988,10 @@ check("the filter narrows it to that system",
       [r["body"] for r in _sites._rows])
 _sites.filter_box.delete(0, "end"); _sites._paint(); settle(4)
 check_wide("on a 1400-pixel window the table fits without scrolling sideways",
-           lambda: _sites.scroller.inner.winfo_reqwidth()
-           <= _sites.scroller.canvas.winfo_width(),
-           lambda: str((_sites.scroller.inner.winfo_reqwidth(),
-                        _sites.scroller.canvas.winfo_width())))
+           lambda: _sites.scroller.content_width()
+           <= _sites.scroller.view_width(),
+           lambda: str((_sites.scroller.content_width(),
+                        _sites.scroller.view_width())))
 check("the footnote says how to get back there",
       "galaxy map" in _sites.footnote.cget("text"))
 _sites.destroy(); settle(4)
@@ -1114,9 +1119,13 @@ check("the multi-session box and End session are on the window",
 _check_btn = next((b for b in texts_in(ledger) if b == "Check prices"), None)
 check("Check prices is on the window", _check_btn == "Check prices")
 # 1.10032: "we need to be able to delete entries from the earnings section".
+# 1.10040 (#308): a row's buttons are on the line under the table while it
+# is picked, so each row is asked for its own.
+_deletes = [b[0] for i in range(ledger.scroller.row_count())
+            for b in ledger.scroller.actions_for(i)].count("delete")
 check("every session row has a delete button",
-      texts_in(ledger.table).count("delete") == len(ledger._rows) >= 2,
-      (texts_in(ledger.table).count("delete"), len(ledger._rows)))
+      _deletes == len(ledger._rows) >= 2 and "delete" in texts_in(ledger.table),
+      (_deletes, len(ledger._rows)))
 _victim = next(r for r in ledger._rows if r.get("id") == "dug1")
 _before = len(app.earnings.sessions)
 ledger.delete_session(_victim); settle(2)
@@ -1294,9 +1303,9 @@ _cells = texts_in(ledger.table)
 check("unticked, every market that buys it is listed - Demand 0 is not one (1.10035)",
       "120,500" in _cells and "41,239" not in _cells and "22,911" not in _cells,
       _cells)
-_sell_head = next(w for w in ledger.table.winfo_children()
-                  if isinstance(w, A.ctk.CTkButton) and _text_of(w).startswith("Sell"))
-_sell_head.invoke(); settle(6)
+_sell_head = next(c for c in ledger.scroller.tree["columns"]
+                  if str(ledger.scroller.tree.heading(c, "text")).startswith("Sell"))
+ledger.scroller.tree.tk.call(ledger.scroller.tree.heading(_sell_head, "command")); settle(6)
 _sorted_sells = [int(c.replace(",", "")) for c in texts_in(ledger.table)
                  if c.replace(",", "").isdigit() and len(c) > 4]
 check("click Sell to sort on it", _sorted_sells == sorted(_sorted_sells), _sorted_sells)
@@ -1311,7 +1320,7 @@ check_wide("Search system is inside the window",
            lambda: "Search system is off the edge")
 ledger.show_view("sessions"); settle(6)
 check("the Sessions page puts the sessions back (1.10038)",
-      "Copy / delete" in texts_in(ledger.table) or
+      "Started" in texts_in(ledger.table) or
       any("No Rhino sessions" in t or "Rhino" in t for t in texts_in(ledger.table)),
       texts_in(ledger.table)[:6])
 ledger.destroy(); settle()
@@ -1446,18 +1455,21 @@ check("the question opens", len(_welcome) == 1, app.winfo_children())
 check("and nothing behind it can be typed into until it is answered",
       _welcome and app.grab_current() is _welcome[0], str(app.grab_current()))
 check("it has been recorded as asked", app.settings.get("asked_to_share") is True)
-# The Rhino across the top of it, and the answer buttons still in the window.
-# Asked of what the window NEEDS rather than where it is drawn: on the build
-# server a window that has the grab is not always on screen yet when this
-# runs, and an undrawn window reports one pixel for everything.
+# The EDSMT badge across the top of it (1.10040, the welcome window), and the
+# answer button still in the window. Asked of what the window NEEDS rather
+# than where it is drawn: on the build server a window that has the grab is
+# not always on screen yet when this runs, and an undrawn window reports one
+# pixel for everything.
 _pics = [w for w in A_walk(_welcome[0]) if isinstance(w, tk.Label)
          and str(w.cget("image"))]
-check("the Rhino is across the top of the first-run window",
-      _pics and _pics[0].winfo_reqwidth() >= 500, [p.winfo_reqwidth() for p in _pics])
-_body_needs = _pics[0].master.winfo_reqheight() if _pics else 10 ** 6
-_given = A.WELCOME_SIZE[1]
-check("with its button still inside the window under it",
-      _body_needs + 24 <= _given, (_body_needs, _given))
+check("the EDSMT badge is across the top of the first-run window",
+      _pics and _pics[0].winfo_reqwidth() >= 150, [p.winfo_reqwidth() for p in _pics])
+_body_needs = _welcome[0].footer.winfo_reqheight()
+_given = _welcome[0].size_wanted[1]
+check("with its button still inside the window under it - the footer is laid "
+      "out first and the rest scrolls",
+      _body_needs + 24 <= _given and _welcome[0].pack_slaves()[0] is _welcome[0].footer,
+      (_body_needs, _given))
 _welcome[0].answer(True); settle(6)
 check("answering closes it", not _welcome[0].winfo_exists())
 check("and gives the keyboard back", app.grab_current() is None, str(app.grab_current()))
@@ -1478,9 +1490,8 @@ app.settings["tools_as_tabs"] = True
 app.geometry("1400x900"); settle(6)
 _tab = app.open_find(); settle(6)
 _tab.results("sites", json.dumps(SITES), True); settle(8)
-_tscore = [w for w in _tab.table.winfo_children() if _text_of(w).startswith("Score")]
 check("as a tab on a 1400-pixel window every Find column is on screen",
-      _tab.docked and _tscore and inside(_tscore[0], _tab.scroller.canvas),
+      _tab.docked and _tab.scroller.column_on_screen("Score"),
       "Score is off the edge of the tab")
 app.show_map(); settle(4)
 

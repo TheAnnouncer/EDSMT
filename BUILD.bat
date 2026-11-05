@@ -131,7 +131,9 @@ rem  or an update is invisible to everybody who already has EDSMT. This
 rem  also writes version.json, which is what the app checks on launch -
 rem  AFTER the installer is built, because version.json carries the
 rem  SHA-256 of both downloads and the app refuses a file that does not
-rem  match it.
+rem  match it. With EDSMT_SIGNING_KEY set to the signing key file's path
+rem  (made once with build\make_signing_key.py, kept OUTSIDE the repo),
+rem  version.json is signed as well, and the app refuses an unsigned one.
 "%BPY%" build\site.py
 if errorlevel 1 goto FAIL
 if exist "site\index.html" copy /y "site\index.html" "upload\index.html" >nul
@@ -143,7 +145,7 @@ if exist "site\edsmt.html" copy /y "site\edsmt.html" "upload\edsmt.html" >nul
 rem  The pictures the page shows. Upload them with it.
 for %%F in (site\*.jpg) do copy /y "%%F" "upload\%%~nxF" >nul
 if exist "site\version.json" copy /y "site\version.json" "upload\version.json" >nul
-if exist "radioraxxla.ico" copy /y "radioraxxla.ico" "upload\favicon.ico" >nul
+if exist "edsmt.ico" copy /y "edsmt.ico" "upload\favicon.ico" >nul
 if errorlevel 1 goto FAIL
 
 rem  PyInstaller leaves its scratch tree in build\work - 20-odd MB of
@@ -175,6 +177,10 @@ if exist "upload\EDSMT-Setup.exe" (
     echo      NO INSTALLER was built - Inno Setup is missing.
     echo      EDSMT.exe still works on its own; use that link for now.
 )
+echo.
+echo      After the tag is pushed, the same files go on the GitHub release:
+echo        python build\publish_release.py --go
+echo      (without --go it only checks). GitHub adds the Linux file itself.
 echo   ==========================================================
 echo.
 choice /c YN /m "   Open the upload folder"

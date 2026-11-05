@@ -13,6 +13,10 @@
 /upload/
 build/work/
 
+# ---- keys ---------------------------------------------------------------
+# The update-signing key lives outside the repo; this catches a slip.
+*.key
+
 # ---- Python -------------------------------------------------------------
 __pycache__/
 *.py[cod]

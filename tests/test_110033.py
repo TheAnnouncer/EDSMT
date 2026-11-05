@@ -147,7 +147,12 @@ check("the last one aboard does", str(row.get("closed") or "") != ""
       and row.get("ended_by") == "docked", (row.get("closed"), row.get("ended_by")))
 check("an old row with no split reads as none", SV.rhino_split({}) == []
       and SV.rhino_split({"rhinos": "not json"}) == [])
-check("the column is new and at the end", SV.SESSION_FIELDS[-1] == "rhinos")
+# Added at the end in 1.10033; 1.10040 appended ship_hold and lost after it,
+# so an older sessions file still reads column for column.
+check("the column was added after every older one, never inserted",
+      SV.SESSION_FIELDS.index("rhinos") > SV.SESSION_FIELDS.index("ended_by")
+      and SV.SESSION_FIELDS[SV.SESSION_FIELDS.index("rhinos"):] == ["rhinos", "ship_hold", "lost"],
+      SV.SESSION_FIELDS[-4:])
 
 print("== a crewmate's Rhino still does not end yours ==")
 crew = SV.Earnings(os.path.join(TMP, "crew"))
@@ -417,9 +422,9 @@ import edonline as EDO  # noqa
 _c = EDO.CommunityClient(worker=None)
 _c.configure("https://somebody-elses.example", "", True)
 check("an address left in settings.json is not followed",
-      _c.base_url == "https://api.radioraxxla.com", _c.base_url)
+      _c.base_url == "https://edsmt.radioraxxla.com", _c.base_url)
 _c.configure("", "", False)
-check("and a blank one is the map too", _c.base_url == "https://api.radioraxxla.com")
+check("and a blank one is the map too", _c.base_url == "https://edsmt.radioraxxla.com")
 _settings_src = SRC.split("class SettingsWindow")[1].split("\nclass ")[0]
 check("Settings has no box for an address",
       '"community_url"' not in _settings_src.split("def save(self)")[0]
@@ -870,7 +875,9 @@ def _png_size(path):
     with open(path, "rb") as fh:
         head = fh.read(24)
     return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
-for _name, _size in ((A.WELCOME_PICTURE, (512, 210)), (A.ABOUT_PICTURE, (540, 300))):
+# 1.10040: the welcome window wears the EDSMT badge (test_110040_welcome), so
+# the Rhino is on About alone.
+for _name, _size in ((A.ABOUT_PICTURE, (540, 300)),):
     _path = os.path.join(_REPO, "images", _name)
     check("images/%s is there, %dx%d" % ((_name,) + _size),
           os.path.isfile(_path) and _png_size(_path) == _size,

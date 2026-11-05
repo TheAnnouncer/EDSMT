@@ -22,8 +22,8 @@ SOL_BANDS = ((500, 0), (2000, 5), (10000, 10), (25000, 20), (None, 30))
 # The Powerplay week turns at the cycle tick, Thursday 07:00 UTC.
 TICK_WEEKDAY, TICK_HOUR = 3, 7
 ROW_LIMIT = 50
-WEB_PAGE = "https://api.radioraxxla.com/leaderboard"
-LIVE_PAGE = "https://api.radioraxxla.com/live"
+WEB_PAGE = "https://edsmt.radioraxxla.com/leaderboard"
+LIVE_PAGE = "https://edsmt.radioraxxla.com/live"
 
 # What the server gives, said the way a commander reads it. Kept here as
 # well as on the server so the window can say it before any answer comes.

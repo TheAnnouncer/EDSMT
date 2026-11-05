@@ -35,6 +35,7 @@ import planview as PV
 import markerfilter as MF
 import warp as WP
 import gametheme as GT
+import streamer as ST
 
 # The window is filled with this colour and Windows is told to treat it as
 # transparent, which is how a rectangular window becomes a floating HUD.
@@ -390,6 +391,54 @@ def theme_palette(name):
                              PALETTES["cockpit"]))
 
 
+# The marker for you - the Rhino, or the ship - in a colour of its own
+# (1.10040, #304): a cyan, the first of these that is far enough from every
+# colour the theme uses for something else. A palette carrying an "SRV" of
+# its own keeps it, and Settings -> Theme can pick any colour at all.
+SRV_CANDIDATES = ("#00e5ff", "#00ffff", "#7df9ff")
+# How far apart, in plain RGB distance, two colours must be to be told apart
+# at a glance on a scope.
+SRV_APART = 60.0
+
+
+def _rgb_apart(a, b):
+    a, b = a.lstrip("#"), b.lstrip("#")
+    return sum((int(a[i:i + 2], 16) - int(b[i:i + 2], 16)) ** 2
+               for i in (0, 2, 4)) ** 0.5
+
+
+def srv_default(full):
+    """The marker colour a whole palette gives."""
+    own = str((full or {}).get("SRV") or "").strip()
+    if is_colour(own):
+        return own.lower()
+    taken = [full[key] for key in ("ORANGE", "AMBER", "CYAN", "GREEN", "RED", "TEXT")
+             if is_colour((full or {}).get(key))]
+    best, best_gap = SRV_CANDIDATES[0], -1.0
+    for colour in SRV_CANDIDATES:
+        gap = min((_rgb_apart(colour, other) for other in taken), default=999.0)
+        if gap >= SRV_APART:
+            return colour
+        if gap > best_gap:
+            best, best_gap = colour, gap
+    return best
+
+
+def srv_colour(theme):
+    """A theme's own marker colour."""
+    return srv_default(theme_palette(theme))
+
+
+def marker_colour(settings, theme=None):
+    """The colour you are drawn in: the one picked in Settings when it is a
+    colour, otherwise the theme's - `theme`, or the one the overlay wears."""
+    settings = settings or {}
+    own = str(settings.get("srv_colour") or "").strip()
+    if is_colour(own):
+        return own.lower()
+    return srv_colour(theme if theme is not None else worn_theme(settings))
+
+
 # What each theme changes on the overlay. Kept under the old name because
 # the overlay has always asked THEMES for it.
 THEMES = {name: overlay_palette(full) for name, full in PALETTES.items()}
@@ -410,6 +459,15 @@ def dot(canvas, x, y, radius, fill, outline, shared=False, spent=False):
                                      width=width)
     return canvas.create_oval(x - radius, y - radius, x + radius, y + radius,
                               fill=fill, outline=outline, width=width)
+
+
+def worn_theme(settings):
+    """The theme the overlay wears: the app's while "Overlay uses the app
+    theme" is on (1.10040, #316), its own otherwise."""
+    settings = settings or {}
+    if settings.get("overlay_follows_app"):
+        return settings.get("app_theme") or "cockpit"
+    return settings.get("overlay_theme", "cockpit")
 
 
 def apply_theme(name, accent=None):
@@ -676,6 +734,31 @@ def swept_style(look, base, bright):
     if look == "solid":
         return blend(base, bright, 0.35), ""
     return blend(base, bright, 0.5), "gray50"
+
+
+# A see-through dark panel behind each box, for bright ground (1.10040): on a
+# white or icy body the boxes were hard to read. A mesh rather than an alpha,
+# because the window's background is keyed out and Tk has no per-item alpha:
+# the mesh's open pixels show the game through it.
+BACKDROPS = (("Off", "off"), ("Light", "light"), ("Medium", "medium"),
+             ("Strong", "strong"), ("Solid", "solid"))
+_BACKDROP_MESH = {"light": "gray25", "medium": "gray50", "strong": "gray75", "solid": ""}
+# The ground that is bright from the journal alone: the game says what a body
+# is, never how bright it looks on screen.
+BRIGHT_GROUND = ("icy body", "rocky ice body")
+
+
+def backdrop_style(level, auto=False, planet_class=""):
+    """The stipple of the backdrop behind a box ("" is filled), or None for
+    none. With `auto`, bright ground takes it to at least Medium."""
+    level = str(level or "off").strip().lower()
+    order = [v for _l, v in BACKDROPS]
+    if level not in order:
+        level = "off"
+    if auto and str(planet_class or "").strip().lower() in BRIGHT_GROUND \
+            and order.index(level) < order.index("medium"):
+        level = "medium"
+    return None if level == "off" else _BACKDROP_MESH[level]
 
 
 def blend(a, b, share):
@@ -1166,19 +1249,66 @@ class _ScaledCanvas:
         return self._canvas.create_text(*args, **kwargs)
 
 
-def scaled_canvas(canvas, factor):
-    """The canvas itself at 100%, a scaling wrapper otherwise."""
+# A dark outline behind the words, for a stream (1.10040, #148): a copy of
+# each piece of text a pixel off on every side, drawn first, in one solid
+# colour. Solid because the window keys out CHROMA and Tk has no alpha; a
+# soft shadow would key out into a fringe. Never CHROMA itself, or the
+# outline would be a hole.
+SHADOW = "#000000"
+SHADOW_TAG = "textshadow"
+SHADOW_OFFSETS = ((-1, 0), (1, 0), (0, -1), (0, 1))
+
+
+class _ShadowCanvas:
+    """A canvas whose words are drawn over a dark outline of themselves.
+    Everything but create_text goes straight through, and the item handed
+    back is the words' own, so nothing that measures or tags it changes."""
+
+    def __init__(self, canvas):
+        self._canvas = canvas
+
+    def __getattr__(self, name):
+        return getattr(self._canvas, name)
+
+    def create_text(self, *args, **kwargs):
+        words = str(kwargs.get("text", "") or "")
+        fill = str(kwargs.get("fill", "") or "").lower()
+        numbers = []
+        for item in args:
+            numbers.extend(item if isinstance(item, (list, tuple)) else [item])
+        if words.strip() and fill not in ("", CHROMA.lower()) and len(numbers) >= 2:
+            try:
+                x, y = float(numbers[0]), float(numbers[1])
+            except (TypeError, ValueError):
+                x = y = None
+            if x is not None:
+                behind = dict(kwargs, fill=SHADOW, tags=(SHADOW_TAG,))
+                for dx, dy in SHADOW_OFFSETS:
+                    self._canvas.create_text(x + dx, y + dy, *numbers[2:], **behind)
+        return self._canvas.create_text(*args, **kwargs)
+
+
+def scaled_canvas(canvas, factor, shadow=False):
+    """The canvas itself at 100% with no shadow; otherwise a wrapper that
+    draws its text at a set size, over a dark outline when `shadow`."""
     try:
         factor = float(factor)
     except (TypeError, ValueError):
         factor = 1.0
-    if canvas is None or abs(factor - 1.0) < 0.01:
+    if canvas is None:
         return canvas
-    return _ScaledCanvas(canvas, max(0.5, min(3.0, factor)))
+    if abs(factor - 1.0) >= 0.01:
+        canvas = _ScaledCanvas(canvas, max(0.5, min(3.0, factor)))
+    return _ShadowCanvas(canvas) if shadow else canvas
 
 
 # The text sizes offered per box, as percentages.
 TEXT_SIZES = (80, 90, 100, 115, 130, 150, 175, 200)
+# The least text size a layout preset gives the boxes it shows (1.10040,
+# #148). At 100% the streamer layout's smallest words are 8 pt - about 11
+# pixels on a 1080p capture, and less once a viewer's player shrinks it.
+# At 130% none is under 10 pt and most are 12 or 13.
+PRESET_TEXT = {"streamer": 130}
 
 
 class Panel:
@@ -1600,6 +1730,16 @@ class Overlay:
         self.settings["overlay_layout"] = layout
         for key in PANEL_ORDER:
             self.settings["overlay_show_%s" % key] = key in shown
+        # The streamer layout's words, big enough for a stream (1.10040,
+        # #148): never made smaller than someone set them.
+        least = PRESET_TEXT.get(name)
+        for key in shown if least else ():
+            try:
+                now = float(self.settings.get("overlay_text_%s" % key, 100) or 100)
+            except (TypeError, ValueError):
+                now = 100.0
+            if now < least:
+                self.settings["overlay_text_%s" % key] = least
         self.settings["overlay_preset"] = name
         for key in ("overlay_x", "overlay_y"):
             self.settings.pop(key, None)
@@ -2061,7 +2201,7 @@ class Overlay:
         can change while the overlay is up, and a HUD that needs a restart
         to change colour is a HUD that looks like the setting did nothing.
         """
-        return apply_theme(self.settings.get("overlay_theme", "cockpit"),
+        return apply_theme(worn_theme(self.settings),
                            self.settings.get("overlay_colour", ""))
 
     def refresh_settings(self, settings):
@@ -2249,12 +2389,15 @@ class Overlay:
         return ORANGE
 
     def text_scale(self, key):
-        """This box's text size from settings: 1.0 is as designed."""
+        """This box's text size from settings: 1.0 is as designed. Two
+        sizes up while streamer mode's bigger text is on (1.10040)."""
         try:
-            return float(self.settings.get("overlay_text_%s" % key, 100)
-                         or 100) / 100.0
+            percent = float(self.settings.get("overlay_text_%s" % key, 100) or 100)
         except (TypeError, ValueError):
             return 1.0
+        if self.settings.get("streamer_mode") and self.settings.get("streamer_big_text", True):
+            percent = ST.step_up(percent, TEXT_SIZES)
+        return percent / 100.0
 
     def draw(self, rows, heading, note="", body="", location="", site=None,
              survey=None, rigs=None, guide=None, target=None, only=None,
@@ -2379,7 +2522,8 @@ class Overlay:
             # back the canvas itself when there is no shape.
             self.canvas = scaled_canvas(
                 WP.wrap(panel.canvas, self.shape(key), width, height),
-                self.text_scale(key))
+                self.text_scale(key),
+                shadow=bool(self.settings.get("overlay_text_shadow")))
             set_measure(self._real_measure)
             try:
                 self.canvas.delete("all")
@@ -2426,6 +2570,7 @@ class Overlay:
     def draw_strip(self, rows, heading, note, width, height):
         """The compass tape: which way to turn, and how far."""
         canvas = self.canvas
+        self._backdrop(width, height)
         span = float(self.settings.get("overlay_span_deg", DEFAULT_SPAN_DEG))
         limit = int(self.settings.get("overlay_targets", 6))
         accent = ORANGE
@@ -2843,7 +2988,7 @@ class Overlay:
         if pin:
             # A pin from another commander's layout says so (#218).
             left = ("%sPIN %d %s %s  (%d/%d)" % (
-                "SHARED " if planned.get("shared") else "",
+                "SHARED " if planned.get("shared") else "WING " if planned.get("wing") else "",
                 pin["n"], turn_arrow(pin.get("offset", 0.0)),
                 format_range(pin["range_m"]), planned.get("done", 0),
                 len(planned.get("pins") or [])), AMBER, 10, True)
@@ -3046,7 +3191,8 @@ class Overlay:
                     spent=str((row.get("deposit") or {}).get("amount")
                               or "").strip().lower() == "depleted")
             canvas.create_polygon(PV.arrow_points(cx, cy, 0, 8),
-                                  fill=AMBER, outline="")
+                                  fill=marker_colour(self.settings), outline="",
+                                  tags=("me",))
 
         # -- the value strip along the bottom right, and the signal name
         bars = {}
@@ -3162,8 +3308,8 @@ class Overlay:
         except (TypeError, ValueError):
             cap = DEFAULT_MAX_RADIUS_M
         cap = min(cap, PV.SIGNAL_VIEW_CAP_M)
-        floor = MIN_RADIUS_M if rows else PV.SIGNAL_VIEW_EMPTY_M
-        extent = PV.extent_for(points, floor_m=floor, headroom=1.25, cap_m=cap)
+        floor = self._radar_floor_m(rows)
+        extent = PV.extent_for(points, floor_m=floor, headroom=1.25, cap_m=max(cap, floor))
         # The rig planner: near its pins the scope is about metres, not
         # kilometres - it centres on you and holds the pins and the traced
         # edge, so a pin 78 m from the last one is a pin you can drive to.
@@ -3236,7 +3382,9 @@ class Overlay:
     def _wing_marks(self, viewport, origin):
         """Wingmates on the scope: a diamond for each Rhino with the name
         beside it, and their rigs as small squares with their initial - in
-        one colour of their own, so theirs never read as yours."""
+        a colour of their own, so theirs never read as yours. Since 1.10040
+        each wingmate has their own colour, and the line they have swept
+        and the finds they marked are drawn in it too."""
         wing = getattr(self, "_wing", None)
         if not wing:
             return
@@ -3244,16 +3392,31 @@ class Overlay:
         for mate in wing.get("mates") or []:
             name = str(mate.get("name") or "wingmate")
             tag = name.replace("CMDR", "").strip()[:1].upper() or "W"
+            colour = mate.get("colour") or WING_COLOUR
+            line = []
+            for east, north in mate.get("sweep") or []:
+                line.extend(viewport.to_canvas(east - origin[0], north - origin[1]))
+            if len(line) >= 4:
+                canvas.create_line(*line, fill=colour, width=1, dash=(3, 5),
+                                   tags=("wingmark", "wingtrail"))
+            for find in mate.get("finds") or []:
+                x, y = viewport.to_canvas(find["east"] - origin[0],
+                                          find["north"] - origin[1])
+                if not (0 <= x <= viewport.width and 0 <= y <= viewport.height):
+                    continue
+                canvas.create_oval(x - 5, y - 5, x + 5, y + 5, outline=colour,
+                                   width=1, dash=(2, 2) if find.get("depleted") else None,
+                                   tags=("wingmark", "wingfind"))
             for rig in mate.get("rigs") or []:
                 x, y = viewport.to_canvas(rig["east"] - origin[0],
                                           rig["north"] - origin[1])
                 if not (0 <= x <= viewport.width and 0 <= y <= viewport.height):
                     continue
                 canvas.create_rectangle(x - 5, y - 5, x + 5, y + 5,
-                                        outline=WING_COLOUR, width=1,
+                                        outline=colour, width=1,
                                         tags=("wingmark",))
                 canvas.create_text(x, y, text="%s%s" % (tag, rig.get("n") or ""),
-                                   fill=WING_COLOUR, font=("Consolas", 6, "bold"),
+                                   fill=colour, font=("Consolas", 6, "bold"),
                                    tags=("wingmark",))
                 self._taken().append((x - 6, y - 6, x + 6, y + 6))
             x, y = viewport.to_canvas(mate["east"] - origin[0],
@@ -3261,10 +3424,10 @@ class Overlay:
             if not (0 <= x <= viewport.width and 0 <= y <= viewport.height):
                 continue
             canvas.create_polygon(x, y - 6, x + 6, y, x, y + 6, x - 6, y,
-                                  outline=WING_COLOUR, fill="", width=2,
+                                  outline=colour, fill="", width=2,
                                   tags=("wingmark",))
             canvas.create_text(x + 9, y, anchor="w", text=name[:18],
-                               fill=WING_COLOUR, font=("Consolas", 8),
+                               fill=colour, font=("Consolas", 8),
                                tags=("wingmark",))
             self._taken().append((x - 7, y - 7, x + 9 + 7 * len(name[:18]), y + 7))
 
@@ -3296,10 +3459,18 @@ class Overlay:
                 continue
             colour = GREEN_OK if pin.get("done") else (
                 AMBER if pin.get("n") == following else DIM)
+            # 1.10040 (#172): a wingmate's pin, in their colour, dashed and
+            # with their initial - yours stay as they always were.
+            theirs = pin.get("mine") is False
+            if theirs and not pin.get("done"):
+                colour = pin.get("colour") or WING_COLOUR
+            initial = str(pin.get("owner") or "").replace("CMDR", "").strip()[:1].upper() \
+                if theirs else ""
             canvas.create_oval(x - ring, y - ring, x + ring, y + ring,
                                outline=colour, width=2 if pin.get("n") == following
-                               else 1, tags=("planmark",))
-            canvas.create_text(x, y, text="P%d" % pin["n"], fill=colour,
+                               else 1, dash=(3, 3) if theirs else None,
+                               tags=("planmark",))
+            canvas.create_text(x, y, text="P%d%s" % (pin["n"], initial), fill=colour,
                                font=("Consolas", 8, "bold"), tags=("planmark",))
             self._taken().append((x - 8, y - 8, x + 8, y + 8))
 
@@ -3687,6 +3858,43 @@ class Overlay:
             return True
         return key not in (RADAR,)
 
+    def _backdrop(self, width, height):
+        """The see-through dark panel behind this box, under everything on
+        it, when one is asked for or the ground is bright."""
+        mesh = backdrop_style(self.settings.get("overlay_backdrop", "off"),
+                              self.settings.get("overlay_backdrop_auto", True),
+                              self._ground())
+        if mesh is not None:
+            self.canvas.create_rectangle(1, 1, width - 1, height - 1, fill=VOID, outline="",
+                                         stipple=mesh, tags=("backdrop",))
+            self.canvas.tag_lower("backdrop")
+
+    def _radar_floor_m(self, rows=True):
+        """How far the scope reaches at least: the Rhino's floor on the
+        ground; in the ship (1.10040, #126) twice the height, so the body's
+        sites fit round a ship that covers ground fast."""
+        floor = MIN_RADIUS_M if rows else PV.SIGNAL_VIEW_EMPTY_M
+        state = getattr(self.app, "game", None)
+        if state is not None and getattr(state, "in_ship", False) and not getattr(state, "landed", False):
+            import shipview
+            return shipview.range_floor_m(getattr(state, "altitude", None), floor)
+        return floor
+
+    def _in_ship(self):
+        state = getattr(self.app, "game", None)
+        return bool(state is not None and getattr(state, "in_ship", False)
+                    and not getattr(state, "landed", False))
+
+    def _ground(self):
+        """The journal's PlanetClass for the body under us, from the app."""
+        getter = getattr(self.app, "planet_class", None)
+        if callable(getter):
+            try:
+                return getter() or ""
+            except Exception:
+                return ""
+        return ""
+
     def prices(self):
         """What the app knows a commodity sells for, or nothing.
 
@@ -3978,17 +4186,21 @@ class Overlay:
             # the Rhino is pointing. It used to point along the bearing from
             # the centre, so it never turned when the Rhino did.
             x, y = me["edge"]
-            canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=AMBER,
+            mine = marker_colour(self.settings)
+            canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=mine,
                                outline="")
             canvas.create_polygon(PV.arrow_points(x, y, plan["heading"], 11),
-                                  fill=AMBER, outline=VOID)
-            canvas.create_text(x, y + 14, fill=AMBER,
+                                  fill=mine, outline=VOID, tags=("me",))
+            canvas.create_text(x, y + 14, fill=mine,
                                font=("Consolas", 8, "bold"),
                                text=format_range(me["view_range_m"]))
             return
+        # 1.10040 (#304): you in the marker colour, not the theme's amber.
+        # In the ship (#126) the arrow is longer and narrower: a ship, not a Rhino.
+        size = 15 if self._in_ship() else 11
         canvas.create_polygon(
-            PV.arrow_points(me["x"], me["y"], plan["heading"], 11),
-            fill=AMBER, outline=VOID)
+            PV.arrow_points(me["x"], me["y"], plan["heading"], size),
+            fill=marker_colour(self.settings), outline=VOID, tags=("me",))
         self._taken().append((me["x"] - 12, me["y"] - 12, me["x"] + 12, me["y"] + 12))
 
     def _body_of(self, rows):
@@ -4057,7 +4269,7 @@ class Overlay:
         wanted = getattr(self, "_target_id", None)
         chosen = [item for item in plan["items"] if wanted
                   and str((item.get("deposit") or {}).get("id") or "") == wanted]
-        target = chosen[0] if chosen else PV.next_target(plan["items"])
+        target = PV.guided_target(plan["items"], wanted)
         if target is not None:
             offset = relative_bearing(plan["heading"], target["bearing"])
             text = fit_text("%s %s %s %s %03d" % (
@@ -4132,6 +4344,7 @@ class Overlay:
         and a working one look identical until something on it moves.
         """
         canvas = self.canvas
+        self._backdrop(width, height)
         # THE SCOPE GETS NO FRAME. It is a hole you look through at the
         # ground, and a bright rounded box round it is a bright rounded box
         # sitting in the middle of the cockpit whether or not you are

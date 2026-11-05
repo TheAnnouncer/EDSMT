@@ -59,6 +59,9 @@ MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_TEXT_BYTES = 8 * 1024 * 1024
 MAX_CODE = 4000
 MAX_NAME = 120
+# The most rigs a site can be recorded as taking: two Rhinos' worth. A
+# Rhino carries six; a good deposit takes more than one Rhino (1.10040).
+SITE_RIGS = 12
 
 _CODE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]{1,31}:"
                    r"([A-Za-z0-9_-]{20,%d}={0,2})" % MAX_CODE)
@@ -172,7 +175,7 @@ def _commodity(value):
 
 def _find(source, system, body, commodity, lat, lon, location="1", rigs="",
           amount="", density="", radius_m=None, recorded="", depleted_at="",
-          max_rigs=6, default=""):
+          max_rigs=SITE_RIGS, default=""):
     """Normalise one find into the source, or count why not."""
     system, body = _text(system), _text(body)
     if not (system and body):
@@ -221,7 +224,7 @@ def decode_code(code):
     return data
 
 
-def read_lines(text, max_rigs=6):
+def read_lines(text, max_rigs=SITE_RIGS):
     """Every find in pasted text. Chat around the codes is ignored; a code
     that does not decode is counted."""
     source = Source(KIND_LINES, LABELS[KIND_LINES])
@@ -245,7 +248,7 @@ def read_lines(text, max_rigs=6):
 # Bookmark database
 # ---------------------------------------------------------------------------
 
-def read_bookmarks(path, max_rigs=6):
+def read_bookmarks(path, max_rigs=SITE_RIGS):
     """The bookmarks in a database file. Opened read-only: nothing in it is
     changed, and a file that is not a database of bookmarks is said so."""
     source = Source(KIND_BOOKMARKS, LABELS[KIND_BOOKMARKS])
@@ -319,7 +322,7 @@ def looks_like_csv(header):
     return all(name in seen for name in CSV_REQUIRED)
 
 
-def read_csv_text(text, max_rigs=6):
+def read_csv_text(text, max_rigs=SITE_RIGS):
     source = Source(KIND_CSV, LABELS[KIND_CSV])
     reader = csv.reader(io.StringIO(text))
     header = next(reader, [])
@@ -363,7 +366,7 @@ def read_csv_text(text, max_rigs=6):
 # Map JSON
 # ---------------------------------------------------------------------------
 
-def read_map_text(text, default_commodity="", max_rigs=6):
+def read_map_text(text, default_commodity="", max_rigs=SITE_RIGS):
     source = Source(KIND_MAP, LABELS[KIND_MAP])
     try:
         data = json.loads(text)
@@ -421,7 +424,7 @@ def _decode(raw):
     return ""
 
 
-def read_text(text, default_commodity="", max_rigs=6):
+def read_text(text, default_commodity="", max_rigs=SITE_RIGS):
     """Pasted or loaded text: Map JSON, a survey CSV or share lines, by what
     it holds."""
     text = str(text or "")
@@ -438,7 +441,7 @@ def read_text(text, default_commodity="", max_rigs=6):
     return source
 
 
-def read_path(path, default_commodity="", max_rigs=6):
+def read_path(path, default_commodity="", max_rigs=SITE_RIGS):
     """A file, by its contents."""
     try:
         size = os.path.getsize(path)

@@ -149,8 +149,8 @@ def _words():
     check("depleted is an amount and not a density",
           cmd("!rr alex d/l")["amount"] == "Depleted" and cmd("!rr alex l/d")["action"] == "error")
     for text, why in (("!rr painite h/m 4", "not a commodity"), ("!rr alex x/m 4", "not an amount"),
-                      ("!rr alex h/x 4", "not a density"), ("!rr alex h/m 7", "6 rigs"),
-                      ("!rr alex h/m 0", "6 rigs"), ("!rr alex h/m 2 3", "Two rig counts"),
+                      ("!rr alex h/x 4", "not a density"), ("!rr alex h/m 13", "12 rigs"),
+                      ("!rr alex h/m 0", "12 rigs"), ("!rr alex h/m 2 3", "Two rig counts"),
                       ("!rr", "Nothing after"), ("!rr 400 1km alex", "not a bearing"),
                       ("!rr 135 20km alex", "not a distance"), ("!rr rig down 1 2", "One rig"),
                       ("!rr rig down 9", "No rig 9"), ("!rr rig up", "Which rig"), ("!rr rig", "Rig down or rig up")):
@@ -643,7 +643,10 @@ if HAVE_DISPLAY:
     JOURNALS = os.path.join(TMP, "journals")
     os.makedirs(JOURNALS, exist_ok=True)
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-        json.dump({"asked_to_share": True, "journal_dir": JOURNALS}, _f)
+        # Chat commands and the long press start off here, so the checks can
+        # see them switched on (a new install has both on since 1.10040, #313).
+        json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "journal_dir": JOURNALS,
+                   "chat_tags": False, "long_press_rig": False}, _f)
     app = A.EDSMT()
     app.geometry("1400x900+0+0")
     app.updates.check = lambda *args, **kwargs: None
@@ -731,9 +734,9 @@ def _session():
     check("a CMDR name from the journal", app.game.cmdr == "Jameson")
     check("the window has the FROM RANGE button, and it has a note", hasattr(app, "btn_range")
           and getattr(app.btn_range, "_edsmt_tip", "") == A.TIPS["range_mark"])
-    check("chat commands are off, the prefix is !rr, a long press is off",
-          A.DEFAULT_SETTINGS["chat_tags"] is False and A.DEFAULT_SETTINGS["chat_prefix"] == "!rr"
-          and A.DEFAULT_SETTINGS["long_press_rig"] is False and A.DEFAULT_SETTINGS["long_press_button"] == "primary")
+    check("chat commands are on (the 1.10040 defaults, #313), the prefix is !rr, a long press is on",
+          A.DEFAULT_SETTINGS["chat_tags"] is True and A.DEFAULT_SETTINGS["chat_prefix"] == "!rr"
+          and A.DEFAULT_SETTINGS["long_press_rig"] is True and A.DEFAULT_SETTINGS["long_press_button"] == "primary")
     check("every key has a joystick setting, blank",
           all(A.DEFAULT_SETTINGS.get(IND.joy_key(a)) == "" for a in IND.JOY_ACTIONS))
     keys = {k[len("hotkey_"):] for k in A.DEFAULT_SETTINGS if k.startswith("hotkey_") and k != "hotkey_defaults"}
@@ -746,7 +749,7 @@ def _session():
 @on_screen("chat tags: off means nothing, and others' messages are never read")
 def _chat_off():
     tell("!rr alexandrite h/m 4")
-    check("switched off (the default), a command in the chat does nothing", mine() == [], mine())
+    check("switched off, a command in the chat does nothing", mine() == [], mine())
     app.settings["chat_tags"] = True
     app.follow_input()
     check("and switching on does not replay what was typed while it was off", mine() == [], mine())
@@ -803,8 +806,9 @@ def _chat_mark():
           (row.get("rigs"), row.get("amount"), row.get("density")) == ("2", "Low", "High"), row)
     check("and the boxes it used are emptied for the next one",
           app.fields["rigs"].get() == "" and app.fields["amount"].get() == "")
-    tell("!rr diamond h/m 9")
-    check("seven rigs do not fit a Rhino", "6 rigs" in last_said() and len(mine()) == 2, last_said())
+    tell("!rr diamond h/m 13")
+    check("thirteen rigs do not fit a site (two Rhinos carry 12)", "12 rigs" in last_said() and len(mine()) == 2,
+          last_said())
 
 
 @on_screen("chat tags: a deposit marked from range")

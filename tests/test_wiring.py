@@ -81,6 +81,12 @@ TOOLKIT = {
     "find_withtag", "gettags", "itemcget", "itemconfig", "itemconfigure",
     "move", "moveto", "postscript", "scale", "tag_bind", "tag_lower",
     "tag_raise", "tag_unbind", "type", "xview", "yview",
+    # tkinter.ttk's tree view and style, which the big tables are drawn on
+    # (1.10040, #308), and the font and menu calls they make.
+    "column", "get_children", "heading", "identify_column", "identify_region",
+    "identify_row", "insert", "item", "layout", "map", "tag_configure",
+    "theme_use", "xview_moveto", "xview_scroll", "measure", "metrics",
+    "add_command", "add_separator", "index", "tk_popup",
 }
 spec = importlib.util.find_spec("customtkinter")
 if spec and spec.origin:
@@ -249,6 +255,8 @@ def _app():
     app.game = None
     app.updates = None
     app.signal_choices = lambda: [str(n) for n in range(1, 9)]
+    # 1.10040: Find and Settings have a button for the materials the lists offer.
+    app.open_materials = lambda: None
     return app
 
 

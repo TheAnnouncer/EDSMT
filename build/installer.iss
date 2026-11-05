@@ -11,7 +11,7 @@
 
 #define AppName    "EDSMT"
 #define AppLong    "EDSMT - Surface Mining Survey"
-#define AppVersion "1.10039"
+#define AppVersion "1.10040"
 #define ExeName    "EDSMT.exe"
 
 [Setup]
@@ -24,7 +24,7 @@ AppVerName={#AppLong} {#AppVersion}
 AppPublisher=Radio Raxxla
 AppCopyright=Copyright (C) 2026 Radio Raxxla. GPL-3.0-only
 AppPublisherURL=https://www.radioraxxla.com/EDSMT
-VersionInfoVersion=1.10039.0.0
+VersionInfoVersion=1.10040.0.0
 
 ; Per-user by default: no admin prompt, which is one fewer thing to explain
 ; and one fewer reason for somebody to give up on the download.
@@ -60,7 +60,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 
 OutputDir=..\upload
 OutputBaseFilename=EDSMT-Setup
-SetupIconFile=..\radioraxxla.ico
+SetupIconFile=..\edsmt.ico
 UninstallDisplayIcon={app}\{#ExeName}
 UninstallDisplayName={#AppLong}
 Compression=lzma2/max

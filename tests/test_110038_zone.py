@@ -19,7 +19,7 @@ Pure parts run anywhere; the app on the real toolkit under xvfb:
 
     xvfb-run -a -s "-screen 0 1920x1200x24" python3.12 tests/test_110038_zone.py
 """
-import os, sys, json, tempfile, time
+import calendar, os, sys, json, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
@@ -301,7 +301,10 @@ A.SETTINGS_FILE = os.path.join(A.DATA_DIR, "settings.json")
 JOURNALS = os.path.join(TMP, "journals")
 os.makedirs(JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-    json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS}, _f)
+    # The overlay is on for a new install since 1.10040; this check is about
+    # the main window and draws the overlay's STATUS box on its own below.
+    json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "tour_done": True,
+               "journal_dir": JOURNALS, "overlay_enabled": False}, _f)
 
 
 class Link:
@@ -428,8 +431,16 @@ def _enter_shared():
          "uploader": "CMDR Other", "created": stamp(0.5 * DAY)},
     ]}))
     filed = app.shared[("ega", "ega 1")]["rows"]
+    def near(text, ago_s):
+        """A stamp within a few seconds of `ago_s` ago: the rows were stamped a
+        moment before this looks at them."""
+        try:
+            when = calendar.timegm(time.strptime(str(text), "%Y-%m-%dT%H:%M:%SZ"))
+        except ValueError:
+            return False
+        return abs(when - (time.time() - ago_s)) <= 5
     check("the shared finds are filed with when they were last seen",
-          len(filed) == 4 and filed[0]["when"] == stamp(9 * DAY + 60) and filed[3]["when"] == stamp(0.5 * DAY),
+          len(filed) == 4 and near(filed[0]["when"], 9 * DAY + 60) and near(filed[3]["when"], 0.5 * DAY),
           [f.get("when") for f in filed])
     app.say("before", A.DIM)
     tick()

@@ -518,7 +518,7 @@ check("scope and guide down the left edge, one above the other",
       and D[OV.RADAR]["y"] + D[OV.RADAR]["h"] <= D[OV.GUIDE]["y"] + 0.001)
 check("targets on the right, status along the bottom",
       D[OV.TARGETS]["x"] > 0.8 and D[OV.STATUS]["y"] > 0.9)
-check("and the five boxes of it are on for a new commander",
+check("and the five boxes of it are on for a new commander, the guide among them",
       all(A.DEFAULT_SETTINGS["overlay_show_%s" % k]
           for k in ("strip", "radar", "targets", "status"))
       and A.DEFAULT_SETTINGS["overlay_show_guide"])
@@ -535,11 +535,11 @@ check("and when there is one, it is a see-through mesh",
 
 print("== the top bar: where things are on the left, the overlay on the right ==")
 _top = SRC.split("    def _telemetry(self):")[1].split("\n    def ")[0]
-_nav, _side = _top.split("nav = ctk.CTkFrame")[1], _top.split("side = ctk.CTkFrame")[1]
-check("Find, My sites, Where to land and Earnings are in the left group",
-      # 1.10036: the left group is the tabs, made from one list.
-      "ctk.CTkButton(nav, text=text" in _top
-      and all('"%s",' % t in _top
+check("Find, My sites, Where to land and Earnings are the tabs, made from one list",
+      # 1.10036: the tabs, made from one list. 1.10040: a chevron strip of
+      # them under the status strip (tabstrip.TABS), not buttons on the bar.
+      "TabStrip(head, self.pick_tab" in _top
+      and all(t in [label for _k, label, _f in A.TS.TABS]
               for t in ("Find", "My sites", "Where to land", "Earnings")))
 check("Overlay, Unlock and Settings in the right one",
       "ctk.CTkButton(side, text=\"Overlay\"" in _top

@@ -490,8 +490,14 @@ def _discord_edit(url, message_id, payload, keep=(), timeout=20.0):
     return {"id": message_id}
 EDO.post_json, EDO.discord_post_file, EDO.discord_edit = _post_json, _post_file, _discord_edit
 
+# 1.10040: the webhook is the first of a list, and each session's message is
+# kept under the session and that webhook's key (test_110040_webhooks.py).
+import webhooks as WH  # noqa
+def KEY(sid):
+    return SL.post_key(sid, WH.hook_key(HOOK))
+
 def flow_app(tag):
-    d = make_app({"discord_webhook": HOOK})
+    d = make_app({"discord_webhooks": [WH.entry("My Discord", HOOK)]})
     folder = os.path.join(TMP, "flow-" + tag)
     os.makedirs(folder, exist_ok=True)
     d.earnings = SV.Earnings(folder)
@@ -513,7 +519,7 @@ d.earnings.save()
 photo = d.picture_now(when=NOW - 3500)
 d._pictures = [(NOW - 3500, photo["path"])]
 check("a session that ends is posted once, and the post is a job", d.post_discord_sessions() == 1 and len(d.worker.jobs) == 1)
-check("and the session is spoken for at once", d.post_book.has(live["id"]))
+check("and the session is spoken for at once", d.post_book.has(KEY(live["id"])))
 check("never a second post for it, however often the tick asks",
       all(d.post_discord_sessions() == 0 for _ in range(5)) and len(d.worker.jobs) == 1)
 done = d.worker.run()
@@ -524,7 +530,7 @@ check("the embed shows the picture", posted[-1][2]["embeds"][0]["image"]["url"]
       == "attachment://" + os.path.basename(photo["path"]))
 for tag, message in done:
     d.take_discord(tag, True, message)
-entry = d.post_book.posted[live["id"]]
+entry = d.post_book.posted[KEY(live["id"])]
 check("Discord's message id and attachment id are kept", entry["id"] == MESSAGE_ID and entry["attachments"] == ["5550001"], entry)
 check("nothing to edit before a sale", d.post_discord_sessions() == 0 and d.worker.jobs == [])
 # The sale comes in, with its wages and merits, seconds apart.
@@ -555,10 +561,11 @@ check("over the whole session there was exactly one post",
 d2 = flow_app("a")
 d2.earnings = d.earnings
 check("a new run of the app knows the message and posts nothing for the old session",
-      d2.post_book.has(live["id"]) and d2.post_discord_sessions() == 0 and d2.worker.jobs == [])
+      d2.post_book.has(KEY(live["id"])) and d2.post_discord_sessions() == 0 and d2.worker.jobs == [])
 # The message was deleted on Discord.
-entry2 = d.post_book.posted[live["id"]]
+entry2 = d.post_book.posted[KEY(live["id"])]
 d.take_discord(EDO.DISCORD_TAG, True, json.dumps({"edsmt_session": live["id"], "edit": True,
+                                                  "edsmt_hook": WH.hook_key(HOOK),
                                                   "error": "discord.com refused it (HTTP 404): Unknown Message"}))
 check("a deleted message is given up on, and the commander is told",
       entry2["dead"] is True and any("did not take it" in s for s in d.said), d.said)
@@ -942,13 +949,17 @@ for spec in ("EDSMT.spec", "EDSMT-onefile.spec"):
           not re.search(r'excludes\s*=\s*\[[^\]]*"PIL"', text))
 check("every new module exists beside the app", all(os.path.isfile(os.path.join(REPO, m + ".py"))
       for m in ("mapimage", "shiphold", "sessionledger", "supportbundle")))
-for key in ("map_picture_auto", "discord_attach_map", "discord_edit_after_sale"):
+for key in ("map_picture_auto", "discord_edit_after_sale"):
     check("setting %s: on by default, has a tip, has a switch" % key,
           A.DEFAULT_SETTINGS.get(key) is True and key in A.SETTING_TIPS
           and '"%s"' % key in inspect.getsource(A.SettingsWindow.__init__))
+# 1.10040: the map with the summary is a switch on each webhook's row.
+check("the map with the summary: on for a new webhook, has a tip, has a switch",
+      WH.NEW_ROW["map"] is True and "map" in A.HOOK_TIPS
+      and '("map", "Session map")' in inspect.getsource(A.SettingsWindow.add_hook_row))
 check("the pictures folder button exists in Settings", "command=self.open_pictures_folder"
       in inspect.getsource(A.SettingsWindow.__init__))
-shown = " ".join(str(v) for v in (A.SETTING_TIPS["map_picture_auto"], A.SETTING_TIPS["discord_attach_map"],
+shown = " ".join(str(v) for v in (A.SETTING_TIPS["map_picture_auto"], A.HOOK_TIPS["map"],
                                   A.SETTING_TIPS["discord_edit_after_sale"], SB.describe("1", "x")))
 for name in ("mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py"):
     src = open(os.path.join(REPO, name), encoding="utf-8").read()

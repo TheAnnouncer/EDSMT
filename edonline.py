@@ -43,7 +43,7 @@ import urllib.request
 from math import radians, sin, cos, sqrt, pi
 
 APP_NAME = "EDSMT"
-APP_VERSION = "1.10039"
+APP_VERSION = "1.10040"
 # The worker tag the bodies of a system come back under.
 BODIES_TAG = "bodies"
 # How a deposit was rigged (#218): sent, and the best ones read back.
@@ -56,6 +56,10 @@ LAYOUT_SHARE_TAG = "share-layout"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION} (+https://radioraxxla.com/EDSMT/)"
 
 INARA_URL = "https://inara.cz/inapi/v1"
+# Support Radio Raxxla (1.10040): the welcome window and Settings > About
+# offer one button per link filled in here, and none for a blank one.
+DONATE_URL = "https://www.paypal.com/donate/?hosted_button_id=UQJQ955Z7AA68"
+KOFI_URL = ""
 
 
 # Wire-format identifiers. Shaped like EDDN envelopes on purpose: if a real
@@ -66,6 +70,16 @@ REGROWTH_SCHEMA = "radioraxxla/surfacemining-regrowth/1"
 MARKET_SCHEMA = "radioraxxla/surfacemining-market/1"
 VERIFY_SCHEMA = "radioraxxla/surfacemining-verify/1"
 REMOVE_SCHEMA = "radioraxxla/surfacemining-remove/1"
+# 1.10040 (#302): a commander's good or bad mark on a shared site.
+MARK_SCHEMA = "radioraxxla/surfacemining-mark/1"
+MARK_TAG = "mark"
+# The wing link with your wing in the game (1.10040, #170): its own answers,
+# apart from the typed code's.
+WING_AUTO_TAG = "wing-auto"
+# Refusals a mark sent again would only meet again: no site there, or a
+# message the map cannot read. Anything else - no connection, too many in
+# an hour, the map having a bad moment - is tried again later.
+MARK_REFUSED = ("HTTP 400", "HTTP 404", "HTTP 422")
 
 # Inara's author, on the API board: "please ensure your apps are doing TWO
 # requests per minute AT MAXIMUM". Batching is how you stay under it - queue
@@ -192,8 +206,46 @@ def _read_error(exc: urllib.error.HTTPError, url: str) -> RuntimeError:
     return RuntimeError("%s replied HTTP %s." % (host, exc.code))
 
 
+# The community map's address. Since 1.10040 every Radio Raxxla tool has a host
+# of its own, and this is EDSMT's. The first address is still answered by the
+# same map, so an app that cannot reach the new name yet (a stale DNS cache, a
+# firewall rule naming the old one) tries the old one once and keeps to it for
+# the rest of the session. A reply from the map, even a refusal, is an answer
+# and is never sent again.
+HOME_URL = "https://edsmt.radioraxxla.com"
+OLD_URL = "https://api.radioraxxla.com"
+_host_state = {"old": False}
+
+
+def reset_host() -> None:
+    """Back to the map's own address (a new session, or a test)."""
+    _host_state["old"] = False
+
+
+def _on_our_host(url: str) -> str:
+    if _host_state["old"] and url.startswith(HOME_URL + "/"):
+        return OLD_URL + url[len(HOME_URL):]
+    return url
+
+
+def _open(request, timeout):
+    """urlopen, with the one step back to the old address described above."""
+    try:
+        return urllib.request.urlopen(request, timeout=timeout)
+    except urllib.error.HTTPError:
+        raise
+    except urllib.error.URLError:
+        url = request.full_url
+        if _host_state["old"] or not url.startswith(HOME_URL + "/"):
+            raise
+        _host_state["old"] = True
+        request.full_url = OLD_URL + url[len(HOME_URL):]
+        return urllib.request.urlopen(request, timeout=timeout)
+
+
 def post_json(url: str, payload: dict, timeout: float = 20.0,
               headers: dict | None = None) -> dict:
+    url = _on_our_host(url)
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=body, method="POST")
     request.add_header("Content-Type", "application/json")
@@ -201,7 +253,7 @@ def post_json(url: str, payload: dict, timeout: float = 20.0,
     for key, value in (headers or {}).items():
         request.add_header(key, value)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _open(request, timeout) as response:
             raw = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         raise _read_error(exc, url) from None
@@ -212,12 +264,13 @@ def post_json(url: str, payload: dict, timeout: float = 20.0,
 
 
 def get_json(url: str, timeout: float = 20.0, headers: dict | None = None) -> dict:
+    url = _on_our_host(url)
     request = urllib.request.Request(url, method="GET")
     request.add_header("User-Agent", USER_AGENT)
     for key, value in (headers or {}).items():
         request.add_header(key, value)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _open(request, timeout) as response:
             raw = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         raise _read_error(exc, url) from None
@@ -225,6 +278,24 @@ def get_json(url: str, timeout: float = 20.0, headers: dict | None = None) -> di
         raise RuntimeError("could not reach %s: %s"
                            % (_host_of(url), exc.reason)) from None
     return _decode(raw, url)
+
+
+def get_bytes(url: str, timeout: float = 20.0, headers: dict | None = None) -> bytes:
+    """GET something that is not JSON - a picture - with the same step back
+    to the old address and the same errors as get_json (1.10040)."""
+    url = _on_our_host(url)
+    request = urllib.request.Request(url, method="GET")
+    request.add_header("User-Agent", USER_AGENT)
+    for key, value in (headers or {}).items():
+        request.add_header(key, value)
+    try:
+        with _open(request, timeout) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        raise _read_error(exc, url) from None
+    except urllib.error.URLError as exc:
+        raise RuntimeError("could not reach %s: %s"
+                           % (_host_of(url), exc.reason)) from None
 
 
 # ---------------------------------------------------------------------------
@@ -483,16 +554,18 @@ def post_multipart(url: str, payload: dict, files, timeout: float = 40.0,
 
 
 def discord_post_file(url: str, payload: dict, filename: str, data: bytes,
-                      timeout: float = 40.0) -> dict:
-    """The message with one picture attached. Discord answers with the
+                      timeout: float = 40.0, more=()) -> dict:
+    """The message with a picture attached, and any `more` [(filename,
+    bytes)] after it (1.10040: the session card). Discord answers with the
     message (?wait=true), whose id and attachment ids are kept for the edit."""
     url = str(url or "").strip()
     if not discord_hook_ok(url):
         raise ValueError("That is not a Discord webhook address - copy it from "
                          "the channel's Integrations > Webhooks.")
-    body = dict(payload, attachments=[{"id": 0, "filename": filename}])
+    files = [(filename, data)] + [(str(n), d) for n, d in (more or ())]
+    body = dict(payload, attachments=[{"id": i, "filename": n} for i, (n, _d) in enumerate(files)])
     return post_multipart(url.rstrip("/") + "?wait=true", body,
-                          [(filename, data, "image/png")], timeout=timeout)
+                          [(n, d, "image/png") for n, d in files], timeout=timeout)
 
 
 def discord_edit(url: str, message_id, payload: dict, keep=(),
@@ -724,6 +797,10 @@ def is_newer(candidate, current):
 UPDATE_HOSTS = ("radioraxxla.com", "www.radioraxxla.com")
 UPDATE_MAX_BYTES = 400 * 1024 * 1024
 UPDATE_KINDS = ("installer", "portable")
+# The public half of the key the build machine signs version.json with
+# (1.10040). Blank until the key is made; once set, an unsigned or wrongly
+# signed version.json offers no download, only the download page.
+UPDATE_PUBLIC_KEY = "O2BH+ujLBRRkfPf7i6Pz8DpPZDckigCh8m4W/tu7LQ0="
 
 
 def update_package(data, kind):
@@ -736,6 +813,9 @@ def update_package(data, kind):
     """
     pkg = data.get(kind) if isinstance(data, dict) else None
     if not isinstance(pkg, dict):
+        return None
+    import signing
+    if not signing.verified(data, UPDATE_PUBLIC_KEY):
         return None
     url = str(pkg.get("url") or "").strip()
     try:
@@ -966,7 +1046,7 @@ class CommunityClient:
     # blank URL - which every settings.json written before the address
     # existed does, and an empty string beats the default when the two are
     # merged. Upgrading should not silently disconnect somebody.
-    DEFAULT_URL = "https://api.radioraxxla.com"
+    DEFAULT_URL = HOME_URL
 
     def configure(self, base_url: str, token: str = "",
                   enabled: bool = False, share_name: bool = True) -> None:
@@ -1284,6 +1364,41 @@ class CommunityClient:
             lambda: self._depleted(post_json(url, payload, headers=self._headers())))
         return True
 
+    def mark_site(self, cmdr: str, system: str, planet: str, spot: str,
+                  mark: str, tag: str = MARK_TAG) -> bool:
+        """A good or bad mark on a shared site (1.10040, #302), sent the way a
+        depletion report is. The answer always names the site and the mark,
+        so the app can tick off the one it was for - or keep it for later
+        when nothing came back."""
+        if not (self.ready and system and planet and mark in ("good", "bad")):
+            return False
+        spot = str(spot or "1")
+        payload = {
+            "$schema": MARK_SCHEMA,
+            "header": {
+                "uploaderID": cmdr if self.share_name else "",
+                "softwareName": APP_NAME,
+                "softwareVersion": APP_VERSION,
+                "gatewayTimestamp": utc_stamp(),
+            },
+            "message": {"system": system, "planet": planet, "spot": spot,
+                        "mark": mark},
+        }
+        url = f"{self.base_url}/v1/marks"
+        headers = self._headers()
+        told = {"site": [system, planet, spot], "mark": mark}
+
+        def send():
+            try:
+                reply = post_json(url, payload, headers=headers)
+            except Exception as exc:                  # noqa: BLE001
+                said = str(exc)
+                return json.dumps(dict(told, error=said,
+                                       refused=any(code in said for code in MARK_REFUSED)))
+            return json.dumps(dict(told, reply=reply))
+        self.worker.submit(tag, send)
+        return True
+
     def verify(self, cmdr: str, system: str, planet: str, spot: str = "1",
                verified: bool = True) -> bool:
         """Say somebody from Radio Raxxla has stood on this site.
@@ -1349,6 +1464,18 @@ class CommunityClient:
         url = "%s/v1/wing/%s" % (self.base_url, urllib.parse.quote(
             str(code).strip().upper()))
         self.worker.submit("wing", lambda: json.dumps(
+            post_json(url, beat, timeout=8.0, headers=self._headers())))
+        return True
+
+    def wing_auto(self, beat: dict) -> bool:
+        """One beat of the wing link with your wing in the game (1.10040):
+        who you are and who is in your wing, both from the journal, and
+        where you are. The answer is the wingmates who have you in their
+        wing too - nobody else. Kept no longer than the typed code's."""
+        if not self.can_read or not beat:
+            return False
+        url = "%s/v1/wing/auto" % self.base_url
+        self.worker.submit(WING_AUTO_TAG, lambda: json.dumps(
             post_json(url, beat, timeout=8.0, headers=self._headers())))
         return True
 
@@ -1653,6 +1780,52 @@ class CommunityClient:
             params["state"] = str(state).strip()
         return self._near_search("/v1/powerplay/systems", "systems", params, tag,
                                  "the community server has no Powerplay systems yet")
+
+    # What the Powerplay search takes besides where from (1.10040, #231).
+    POWERPLAY_SEARCH = ("goal", "power", "opposing", "state", "commodity", "pad",
+                        "min_demand", "max_demand", "price_age_h", "site_age_days",
+                        "verified", "hide_worked", "range_rule", "tonnes_hr", "limit")
+    POWERPLAY_SEARCH_MOST_LY = 20000
+
+    def powerplay_search(self, near=None, within_ly: float = 0,
+                         tag: str = "powerplay-search", **filters) -> bool:
+        """Where to mine and where to sell for a Powerplay goal (#231): one
+        row per pair, near a system name or a position (x, y, z), within
+        `within_ly` (0 is anywhere). The filters are ppsearch.query's. A
+        server without the search answers 404; that comes back as an empty
+        answer marked `older`, so Find can put the search away."""
+        if not self.can_read:
+            return False
+        if isinstance(near, str):
+            name = " ".join(near.split())
+            params = {"near": name} if name else {}
+        else:
+            params = self._near(near, 0)
+        try:
+            within = float(within_ly or 0)
+        except (TypeError, ValueError):
+            within = 0.0
+        if within > 0:
+            if not params:
+                return False
+            params["within_ly"] = min(within, float(self.POWERPLAY_SEARCH_MOST_LY))
+        params.update({k: v for k, v in filters.items()
+                       if k in self.POWERPLAY_SEARCH and v not in (None, "")})
+        url = f"{self.base_url}/v1/powerplay/search?" + urllib.parse.urlencode(params)
+        headers = self._headers()
+
+        def ask():
+            try:
+                return json.dumps(get_json(url, headers=headers))
+            except RuntimeError as exc:
+                if "HTTP 404" not in str(exc):
+                    raise
+            return json.dumps({"count": 0, "rows": [], "older": True,
+                               "missing": "the community server has no Powerplay "
+                                          "search yet"})
+
+        self.worker.submit(tag, ask)
+        return True
 
     def report_standing(self, report: dict, tag: str = "leaderboard-standing") -> bool:
         """The commander's Powerplay standing as the game reports it, for the

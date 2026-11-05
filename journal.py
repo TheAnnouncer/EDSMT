@@ -44,8 +44,12 @@ from pathlib import Path
 
 import chattags as CT
 import edonline as EDO
+import journalrows as JR
 import powerplay as PW
+import squadshare as SQ
+import eddnsend as ED
 import survey as SV
+import wingmates as WM
 
 # Frontier's own list, owned by edonline so the app, the uploader and the
 # server cannot drift apart.
@@ -190,6 +194,9 @@ def is_rhino(kind, localised=None):
 # session, so the oldest fall off the front rather than the newest being
 # refused - eight hours in, what matters is the sale, not the landing.
 RUN_QUEUE_MAX = 500
+# The ship's hold the journal states this soon after the Rhino came aboard is
+# the one that checks the session's transfers (seen 5-6 s after DockSRV).
+SHIP_HOLD_AFTER_DOCK_S = 60
 CHAT_QUEUE_MAX = 100
 
 # Surface mining shipped on 2 Sep 2026 and Frontier has not yet published the
@@ -198,6 +205,19 @@ CHAT_QUEUE_MAX = 100
 # game does name the deposit, the type fills itself in. If it does not, nothing
 # breaks, and the log tells us exactly what the game is writing.
 MINING_HINT = re.compile(r"rig|deposit|mining|mineral|refin|extract|prospect", re.I)
+
+# The event's name, read off the line before the line is parsed (1.10040,
+# #254). The game writes it second, after the timestamp; a quote inside a
+# value is always escaped, so this cannot match inside one.
+EVENT_NAME = re.compile(r'"event"\s*:\s*"([^"\\]*)"')
+# Where to look for it: well past the timestamp, short of the rest.
+EVENT_NAME_WITHIN = 200
+# Every event the reader does something with besides the ones the mining
+# hint catches - see read_names(). The rest of a journal (chat, music,
+# signals, ships targeted) is most of its lines, and none of it is parsed.
+OTHER_READ_EVENTS = {"SendText", "Fileheader", "Continued", "LaunchVessel",
+                     "Loadout", "ShipyardSwap", "EjectCargo", "FSSDiscoveryScan",
+                     "FSSAllBodiesFound", "Cargo", "MiningRefined", "Statistics"}
 # Set by the app to a real path in its data folder. Blank means nowhere:
 # a reader driven by a test must not leave a log beside the code, where it
 # would be committed.
@@ -233,8 +253,23 @@ def hold_label(symbol, localised=None):
 
     See survey.english_name - the symbol decides, and the localised text is
     only trusted when it is the same word.
+
+    Remembered while the list of commodity names stays as it is (1.10040,
+    #254): a journal names the same few hundreds of thousands of times.
     """
-    return SV.english_name(symbol, localised) or str(localised or symbol or "")
+    if not (isinstance(symbol, (str, type(None))) and isinstance(localised, (str, type(None)))):
+        return SV.english_name(symbol, localised) or str(localised or symbol or "")
+    key = (symbol, localised, len(SV._LOOKUP))
+    found = _LABELS.get(key)
+    if found is None:
+        found = SV.english_name(symbol, localised) or str(localised or symbol or "")
+        if len(_LABELS) > 4000:
+            _LABELS.clear()
+        _LABELS[key] = found
+    return found
+
+
+_LABELS = {}
 
 
 def number(value):
@@ -537,8 +572,41 @@ def market_means(data):
             if shared[value] < SHARED_MEAN_PLACEHOLDER}
 
 
+def read_names():
+    """Every event name a journal line is parsed for: the ones _consume
+    acts on. A line naming anything else is skipped unread."""
+    return (set(PW.POWER_EVENTS) | set(WM.WING_EVENTS) | set(WM.RESET_EVENTS)
+            | set(IDENTITY_EVENTS) | set(BODY_EVENTS) | set(SRV_EVENTS)
+            | set(RUN_EVENTS) | set(SYSTEM_EVENTS) | set(OTHER_READ_EVENTS)
+            | set(SQ.EVENTS) | set(ED.EVENTS))
+
+
+_READ_NAMES = None
+_SKIPPED = {}
+
+
+def skipped(name):
+    """True for an event no part of the reader looks at - neither a name it
+    acts on nor one the mining hint would log. Worked out once a name."""
+    global _READ_NAMES
+    found = _SKIPPED.get(name)
+    if found is None:
+        if _READ_NAMES is None:
+            _READ_NAMES = read_names()
+        found = name not in _READ_NAMES and not MINING_HINT.search(name)
+        if len(_SKIPPED) < 2000:
+            _SKIPPED[name] = found
+    return found
+
+
 class JournalWatcher:
     """Polled reader. Cheap enough to call straight off the Tk event loop."""
+
+    # Every line parsed, the ones nothing reads too. Only a test sets it, to
+    # show that skipping those changes nothing.
+    PARSE_ALL = False
+    # What the app hung on its own reader, kept when it adopts another.
+    KEPT_ON_ADOPT = ("on_rewrite",)
 
     def __init__(self, override=None):
         self.directory = find_journal_dir(override)
@@ -563,6 +631,7 @@ class JournalWatcher:
         # Metres above the ground under you, when the game gives that - None
         # when it gives a height over the average radius or none at all.
         self.altitude = None
+        self.altitude_from_average = False
         # The mining location the game has targeted, by its number, when
         # Status.json names one - see signal_targeted().
         self.target_signal = ""
@@ -589,7 +658,18 @@ class JournalWatcher:
         self.body_mapped = set()
         self.body_facts = {}           # body -> radius / temperature / gravity
         self.cmdr = ""                 # from Commander / LoadGame, never typed
+        # Who is in your wing in the game (1.10040, #170): WingJoin, WingAdd
+        # and WingLeave, emptied by a new game or the game shut.
+        self.wing = []
         self.fid = ""                  # Frontier ID, needed by Inara
+        # The squadron the journal names, and the whitelisted events kept
+        # for the squadron share (1.10040, #301) until the app takes them.
+        self.squadron = None
+        self.squad_events = []
+        # Mining-location messages for EDDN (1.10040, #159), made as the
+        # events are read and kept until the app takes them.
+        self.eddn = ED.Tracker()
+        self.eddn_items = []
         self.pending_land = None       # a Touchdown waiting to be reported
         # Where the Rhino was left, and where the ship came down: the places
         # the overlay points back to. Each is {"lat", "lon", "body"} or None.
@@ -676,6 +756,13 @@ class JournalWatcher:
         self._hold_keys = {}           # vessel -> {folded name: count}
         self._hold_labels = {}         # folded name -> the name to show
         self._hold_told = False        # the first sight has been reported
+        # 1.10040: when the commander's own Rhino last came aboard, so the
+        # ship's hold the journal states a few seconds later can be put
+        # against that session's transfers (#256).
+        self._rhino_docked_at = None
+        # Told the raw text of every Status.json and Cargo.json read, for
+        # trace mode (#273). Kept when a reader that caught up is adopted.
+        self.on_rewrite = None
 
     @property
     def has_position(self):
@@ -834,6 +921,8 @@ class JournalWatcher:
         self.system = self.body = ""
         self.star_pos = None
         self.system_address = None
+        self.eddn = ED.Tracker()
+        self.eddn_items = []
         self.lat = self.lon = self.heading = None
         return self.directory is not None
 
@@ -862,6 +951,17 @@ class JournalWatcher:
         # of the SRV read as ten tonnes freshly dug up.
         self._read_cargo()
         return self
+
+    def take_squad_events(self):
+        """The squadron share's picked events since last asked; the list
+        is emptied."""
+        out, self.squad_events = self.squad_events, []
+        return out
+
+    def take_eddn(self):
+        """The EDDN messages made since last asked; the list is emptied."""
+        out, self.eddn_items = self.eddn_items, []
+        return out
 
     def poll_status(self):
         """Status.json on its own, for the fast loop. True if you moved.
@@ -901,6 +1001,7 @@ class JournalWatcher:
         self.problem = ""
         if not raw:
             return
+        self._told("Status.json", raw)
         try:
             data = json.loads(raw)
         except ValueError:
@@ -916,7 +1017,8 @@ class JournalWatcher:
         self.in_ship = bool(flags & FLAG_IN_MAIN_SHIP)
         self.gliding = bool(flags2 & FLAG2_GLIDE)
         height = number(data.get("Altitude"))
-        self.altitude = (None if height is None or flags & FLAG_ALT_FROM_AVERAGE
+        self.altitude_from_average = bool(flags & FLAG_ALT_FROM_AVERAGE)
+        self.altitude = (None if height is None or self.altitude_from_average
                          else height)
         self.on_foot = bool(flags2 & (FLAG2_ON_FOOT | FLAG2_ON_FOOT_PLANET
                                       | FLAG2_ON_FOOT_EXTERIOR))
@@ -1041,6 +1143,16 @@ class JournalWatcher:
             self.target_signal = str(int(found.group(1)))
             self.destination_signal = self.target_signal
 
+    def _told(self, name, raw):
+        """Hand a file's text to whoever asked for it (trace mode). Never
+        raises: a trace must not stop the read."""
+        hook = self.on_rewrite
+        if hook is not None:
+            try:
+                hook(name, raw)
+            except Exception:
+                pass
+
     def _log_line(self, name, line):
         """Keep one line in the mining event log, quietly."""
         if not EVENT_LOG:
@@ -1051,7 +1163,32 @@ class JournalWatcher:
         except (OSError, NameError, TypeError):
             pass
 
-    def _read_journal(self):
+    def catch_up_step(self, limit):
+        """Read at most `limit` more bytes of the journal: the first read of
+        a long one, a chunk at a time, on a thread of its own (catchup.py).
+        (bytes read so far, the file's size, whether anything was read)."""
+        before = (self._journal, self._pos)
+        self._read_journal(limit)
+        size = 0
+        try:
+            if self._journal:
+                size = os.path.getsize(self._journal)
+        except OSError:
+            size = 0
+        return self._pos, max(size, self._pos), (self._journal, self._pos) != before
+
+    def adopt(self, other):
+        """Take over everything a reader that has caught up on its own
+        thread has read: the journal, where it is in it, and all it learnt.
+        The next poll() goes on from there and reads Status.json, the market
+        and the hold, as a first poll does."""
+        self.close()
+        for name, value in vars(other).items():
+            if name not in self.KEPT_ON_ADOPT:
+                setattr(self, name, value)
+        other._handle = None
+
+    def _read_journal(self, limit=None):
         try:
             files = [os.path.join(self.directory, f)
                      for f in os.listdir(self.directory)
@@ -1102,7 +1239,9 @@ class JournalWatcher:
             # how much the game appends, and the location never updates.
             self._handle.seek(0, os.SEEK_END)
             self._handle.seek(self._pos, os.SEEK_SET)
-            chunk = self._handle.read()
+            # A chunk at a time while catching up (1.10040, #276); torn
+            # lines at a chunk's end are held back below as at any other.
+            chunk = self._handle.read(limit) if limit else self._handle.read()
             self._pos = self._handle.tell()
         except (OSError, ValueError):
             return
@@ -1130,10 +1269,17 @@ class JournalWatcher:
         # On "\n" only (#264): splitlines() also breaks at U+2028, U+2029
         # and \x85, which a chat line or a ship's name can carry, and both
         # halves of the event then failed to parse.
+        parse_all = self.PARSE_ALL
         for line in text.split("\n"):
             line = line.strip()
             if not line.startswith("{"):
                 continue
+            if not parse_all:
+                # Most of a journal is events nothing here reads: skipped on
+                # their name, unparsed (1.10040, #254).
+                found = EVENT_NAME.search(line, 0, EVENT_NAME_WITHIN)
+                if found is not None and skipped(found.group(1)):
+                    continue
             try:
                 event = json.loads(line)
             except ValueError:
@@ -1141,6 +1287,23 @@ class JournalWatcher:
             name = event.get("event")
             if name in PW.POWER_EVENTS:
                 self._power_note(name, event)
+            if name in SQ.EVENTS:
+                self.squadron = SQ.squadron_after(self.squadron, event)
+                picked = SQ.pick(event)
+                if picked is not None:
+                    self.squad_events.append(picked)
+                    if len(self.squad_events) > SQ.MOST:
+                        del self.squad_events[:-SQ.MOST]
+            if name in ED.EVENTS:
+                made = self.eddn.see(event)
+                if made is not None:
+                    self.eddn_items.append(made)
+                    if len(self.eddn_items) > ED.MOST:
+                        del self.eddn_items[:-ED.MOST]
+            if name in WM.WING_EVENTS or name in WM.RESET_EVENTS:
+                self.wing = WM.roster_after(self.wing, event)
+                if name in WM.WING_EVENTS:
+                    continue
 
             # Inara requires the in-game CMDR name, taken from the journal
             # rather than typed, so it always matches exactly.
@@ -1216,6 +1379,12 @@ class JournalWatcher:
                         self.vehicle_id = None
                 self._note_parked(name, event)
                 self._trip(name, note)
+                if note["rhino"] and note["player"]:
+                    if name == "LaunchSRV":
+                        # The ship's hold as the Rhino goes out (#256).
+                        note["ship_t"] = self.ship_total
+                    elif name == "DockSRV":
+                        self._rhino_docked_at = SV._epoch(note["when"]) or None
                 self._queue_run(note)
                 continue
 
@@ -1247,6 +1416,25 @@ class JournalWatcher:
             # business, and only the ship's.
             if name == "EjectCargo":
                 self._ship_leaves(event.get("Count"))
+                # 1.10040 (#267): thrown out is tonnes lost to the session.
+                thrown = JR.ejected(event)
+                if thrown:
+                    when = str(event.get("timestamp") or "")
+                    label = hold_label(thrown["type"], thrown["localised"])
+                    self._queue_run({"event": "Ejected", "when": when, "commodity": label,
+                                     "count": thrown["count"], "abandoned": thrown["abandoned"],
+                                     "n": self._nth("Ejected", when, label),
+                                     "system": self.system, "body": self.body,
+                                     "cmdr": self.cmdr})
+                continue
+
+            # 1.10040 (#257): the game's own mining statistics, written at
+            # every login, for the books to put the sessions against.
+            if name == "Statistics":
+                stats = JR.mining_stats(event)
+                if stats:
+                    self._queue_run({"event": "Statistics", "when": stats["when"],
+                                     "mining": stats, "cmdr": self.cmdr})
                 continue
 
             if name in ("FSSDiscoveryScan", "FSSAllBodiesFound"):
@@ -1843,20 +2031,25 @@ class JournalWatcher:
 
     def _cargo_count(self, event):
         """The tonnage the journal itself states for a hold: Count on every
-        Cargo event, with or without an Inventory."""
-        vessel = str(event.get("Vessel") or "Ship")
-        count = event.get("Count")
-        if count is None and isinstance(event.get("Inventory"), list):
-            count = sum(whole(i.get("Count")) for i in event["Inventory"]
-                        if isinstance(i, dict))
-        if count is None:
+        Cargo event, with or without an Inventory (journalrows.cargo_tick,
+        1.10040, #266). The Rhino's arrives with every tonne; the ship's
+        arrives a few seconds after the Rhino comes aboard, and is handed to
+        the books to check that session's transfers by (#256)."""
+        tick = JR.cargo_tick(event)
+        if tick is None:
             return
-        tonnes = max(0, whole(count))
+        vessel, tonnes = tick
         if vessel == "SRV":
             self.srv_total = tonnes
         elif vessel == "Ship":
             self.ship_total = tonnes
             self.ship_total_at = str(event.get("timestamp") or "")
+            docked = self._rhino_docked_at
+            at = SV._epoch(self.ship_total_at)
+            if docked and at and 0 <= at - docked <= SHIP_HOLD_AFTER_DOCK_S:
+                self._rhino_docked_at = None
+                self._queue_run({"event": "ShipHold", "when": self.ship_total_at,
+                                 "count": tonnes, "cmdr": self.cmdr})
 
     def _file_total(self, vessel, counts):
         """Cargo.json changed: it states the hold of the vessel it describes."""
@@ -1928,6 +2121,7 @@ class JournalWatcher:
             return
         if not raw:
             return
+        self._told("Cargo.json", raw)
         try:
             data = json.loads(raw)
         except ValueError:

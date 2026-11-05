@@ -101,6 +101,6 @@ The issue template asks for the status line instead.
 
 ## The community service
 
-`api.radioraxxla.com` is operated by Radio Raxxla and is the only community
-service EDSMT connects to. Report a problem with it the same way as any other
+`edsmt.radioraxxla.com` (and its first address, `api.radioraxxla.com`) is
+operated by Radio Raxxla and is the only community service EDSMT connects to. Report a problem with it the same way as any other
 vulnerability.

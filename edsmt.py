@@ -28,6 +28,8 @@ import secrets
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
+import tkinter.ttk as ttk
 
 import customtkinter as ctk
 
@@ -59,9 +61,35 @@ import crowd as CR
 import presale as PS
 import gamebinds as GB
 import galaxy as GX
+import ppsearch as PPS
 import zone as ZN
 import gametheme as GT
 import x11keys as XK
+import welcome as WL
+import logo as LG
+import hubmanifest as HM
+import tabstrip as TS
+import uichrome as UC
+import pairing as PR
+import sitecard as SCD
+import shipview as SHV
+import weekcard as WC
+import squadshare as SQ
+import eddnsend as ED
+import bestmine as BM
+import sitemarks as SM
+import materials as MT
+import wingmates as WM
+import webhooks as WH
+import streamer as ST
+import streamout as SO
+import sessioncard as SC
+import sonar as SN
+import voice as VO
+import voiceattack as VA
+import tableview as TV
+import catchup as CU
+import journalrows as JR
 
 ctk.set_appearance_mode("Dark")
 
@@ -109,6 +137,11 @@ F_BODY = (FONT, 11)               # labels, fields, prose
 F_SMALL = (FONT, 10)              # the hint under a control
 F_SMALL_B = (FONT, 10, "bold")    # a column heading in a dense table
 F_MICRO = (FONT, 9)               # map ticks, and the copy buttons
+
+# Every padding and row height the chrome and the tables take from the
+# spacing, Comfortable or Compact (1.10040, #310): one table, uichrome.py.
+# Refilled in place when the spacing changes - see EDSMT.apply_spacing.
+SPACE = UC.spacing("comfortable")
 
 def _style_table():
     """Every widget style, built from the colours as they are right now.
@@ -206,6 +239,10 @@ def refresh_game_theme(**where):
 
 
 MAX_RIGS = 6
+# The most rigs a site can be recorded as taking: two Rhinos' worth. The
+# Rhino's own six stay as they are - the rig keys, "rigs full", the wing
+# beat's 1-6 and 7-12 (1.10040, Discord feedback).
+SITE_RIGS = 12
 
 # How often another commander's finds on the body you are on are asked for
 # again, and how long an unanswered ask waits before trying once more.
@@ -243,10 +280,6 @@ RETYPE_WAIT_S = 60.0
 # for a system name like "Col 285 Sector ZL-K b22-2" on one line.
 CELL_WRAP = 260
 
-# Rows a result table draws at a time. Five hundred individual deposits,
-# each a dozen toolkit widgets, took long enough to draw that the window
-# looked hung. A page appears at once; the rest are one click away.
-PAGE_ROWS = 100
 # Staff "remove" in Find needs a second press within this many seconds.
 REMOVE_CONFIRM_S = 6.0
 DENSITY_LEVELS = list(SV.DENSITY_TIERS)      # how concentrated: Low/Medium/High
@@ -319,6 +352,12 @@ RIGS_ALL_CONFIRM_S = 6
 # The demand a Community Goal station shows: a placeholder, not a market.
 PLACEHOLDER_DEMAND = 999999
 WING_STALE_S = 30.0
+# The wing link with your wing in the game (1.10040, #170): after a failed
+# beat the next waits this long, so a server that cannot answer is not asked
+# every four seconds. And how often the swept figure is worked out again
+# with the wing's sweep in it (#171): it is the costly sum.
+WING_AUTO_RETRY_S = 30.0
+WING_COVER_S = 5.0
 WING_CODE_RE = re.compile(r"^[A-Z2-9]{6}$")
 WING_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -358,6 +397,9 @@ TONNES_QUIET_S = 4.0
 # An open Session earnings window redraws its current session this often
 # (1.10035) - the clock and the tonnes move while you mine.
 LEDGER_LIVE_S = 5.0
+# The OBS page (1.10040, #149): a session that has ended stays on it this
+# long, so the stream sees how it went; then the page waits for the next.
+STREAM_LAST_S = 30 * 60
 # The Inara key and the staff token are shown as this until Show is pressed,
 # and go back to it by themselves this many seconds later.
 MASK = "•"
@@ -400,7 +442,7 @@ ANONYMOUS = "anonymous"
 # silently dropped - the window sits on "Searching..." for ever with
 # nothing wrong anywhere.
 FIND_TAGS = ("search", "sites", "intact", "market", "sell",
-             "commodities", "verify", "remove", GX.TAG)
+             "commodities", "verify", "remove", GX.TAG, PPS.TAG)
 
 # The result kinds that are somebody's FIND. Worked-out and verified are
 # properties of a patch in the ground; a station selling ore has neither,
@@ -539,12 +581,90 @@ def app_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
-# The Rhino, shown on the first-run window and in Settings > About EDSMT.
+# The Rhino, shown in Settings > About EDSMT.
 # Screenshot by CMDR TheAnnouncer; Elite Dangerous (c) Frontier Developments plc.
-WELCOME_PICTURE = "rhino-banner.png"
 ABOUT_PICTURE = "rhino-about.png"
-# The first-run window's size, with the picture across its top and without.
-WELCOME_SIZE, WELCOME_SIZE_PLAIN = (560, 620), (560, 460)
+
+
+def shipped_file(*parts):
+    """A file shipped with the app: in the bundle when frozen, beside the
+    source otherwise."""
+    return os.path.join(getattr(sys, "_MEIPASS", app_dir()), *parts)
+
+
+# The EDSMT badge's folder (1.10040). A name, so a check can point it at a
+# folder where the picture is missing or broken.
+IMAGES_DIR = shipped_file("images")
+
+
+def badge_image(px, widget=None, folder=None):
+    """The EDSMT badge as a picture `px` across, sharp at the screen's
+    scaling, or None when the file is missing or will not load - a window
+    without its badge still opens and works."""
+    try:
+        scaling = float(ctk.ScalingTracker.get_widget_scaling(widget)) if widget else 1.0
+    except Exception:
+        scaling = 1.0
+    path = os.path.join(folder or IMAGES_DIR, LG.badge_file(px, scaling))
+    try:
+        from PIL import Image
+        with Image.open(path) as source:
+            source.load()
+            image = source.convert("RGBA")
+        return ctk.CTkImage(light_image=image, dark_image=image, size=(px, px))
+    except Exception:
+        return None
+
+
+# The pictures worn as window icons, kept: Tk forgets a picture nothing in
+# Python holds on to, and the icon goes blank.
+_ICON_PICTURES = []
+
+
+def wear_icon(window, folder=None, platform=None):
+    """Put the EDSMT logo on a window's title bar and taskbar button:
+    edsmt.ico on Windows (the Radio Raxxla icon only when that is missing or
+    refused), the badge on Linux. The file worn, or "" for none - an icon is
+    never a reason for a window not to open."""
+    folder = folder or shipped_file()
+    for how, path in LG.icon_choices(folder, platform or sys.platform):
+        try:
+            if how == "bitmap":
+                window.iconbitmap(path)
+            else:
+                image = tk.PhotoImage(master=window, file=path)
+                window.iconphoto(True, image)
+                _ICON_PICTURES.append(image)
+            return path
+        except Exception:
+            continue
+    return ""
+
+
+def open_link(url):
+    """Open a web page in the commander's browser. True if it was handed to
+    one. Nothing is downloaded or run."""
+    try:
+        import webbrowser
+        return bool(webbrowser.open(str(url)))
+    except Exception:
+        return False
+
+
+def open_path(path):
+    """Open a file or folder of the commander's own with whatever the
+    system opens it with - a picture in the viewer, a folder in Explorer.
+    True if it was handed over. Windows-only calls stay here, where a
+    check can replace the whole thing."""
+    try:
+        if os.name == "nt":
+            os.startfile(path)                            # noqa: S606
+        else:
+            import subprocess
+            subprocess.Popen(["xdg-open", path])
+        return True
+    except Exception:
+        return False
 
 
 def picture(name, master=None):
@@ -662,6 +782,18 @@ def warning_sound(profane=False):
     return path if os.path.isfile(path) else ""
 
 
+def voice_folders():
+    """Where Voice Mode looks for voice/<theme>/<id>.wav recordings (1.10040):
+    the bundle first (an installed build keeps what it ships in PyInstaller's
+    own folder, not beside the exe), then beside the app, then the data
+    folder, where a downloaded pack lands. Each folder once."""
+    out = []
+    for folder in (shipped_file(), app_dir(), DATA_DIR):
+        if folder and folder not in out:
+            out.append(folder)
+    return out
+
+
 def data_dir():
     """Somewhere writable, whatever folder the program was installed into."""
     here = app_dir()
@@ -771,19 +903,27 @@ DEFAULT_SETTINGS = {
     "inara_enabled": False,
     "inara_api_key": "",
     "inara_is_being_developed": False,
-    # Your own Discord channel (1.10034): a webhook you made in the
-    # channel's Integrations, and what goes to it. Blank sends nothing.
-    "discord_webhook": "",
-    # 1.10035: one summary a session, and every find only if asked for -
-    # a post per find was a channel nobody could read.
-    "discord_post_finds": False,
-    "discord_post_sessions": True,
-    "discord_finds_level": 1,
-    # 1.10035: the map picture saved when the Rhino docks, sent with the
-    # summary, and the summary edited (not posted again) after the sale.
+    # Your own Discord channels (1.10040, #315): up to five webhooks, each
+    # with a name and its own switches for finds, session summaries and the
+    # map picture (webhooks.py). The single "discord_webhook" of earlier
+    # builds becomes one of them, named "My Discord" (upgrade_discord).
+    "discord_webhooks": [],
+    # 1.10035: the map picture saved when the Rhino docks, and the summary
+    # edited (not posted again) after the sale.
     "map_picture_auto": True,
-    "discord_attach_map": True,
     "discord_edit_after_sale": True,
+    # Streamer mode (1.10040, #312): system and body names hidden from what
+    # a stream can see, and your own Discord posts held, until you have been
+    # in a system this many minutes (ST.DELAYS_MIN); the overlay's text two
+    # steps bigger while it is on.
+    "streamer_mode": False,
+    "streamer_delay_min": ST.DEFAULT_DELAY_MIN,
+    "streamer_big_text": True,
+    # The OBS browser source (1.10040, #149 and #307): the session as a page
+    # served on 127.0.0.1 only, on this port, while the switch is on
+    # (streamout.py). Off until asked for.
+    "stream_enabled": False,
+    "stream_port": SO.DEFAULT_PORT,
     # Every find is shared with every commander, always (October 2026: "we
     # do not hold back on that information"). These three are no longer
     # choices - ALWAYS_SHARED puts them back on in any file that says
@@ -791,13 +931,17 @@ DEFAULT_SETTINGS = {
     "community_enabled": True,
     # The address is fixed in edonline; this key is kept only so that older
     # settings files read the same way.
-    "community_url": "https://api.radioraxxla.com",
+    "community_url": "https://edsmt.radioraxxla.com",
     # Whether the share question has been put to this commander yet. The
     # database is only worth searching if people contribute to it, and a
     # setting nobody is ever shown is a setting nobody ever turns on.
     "asked_to_share": False,
     "community_token": "",
     "community_share_cmdr_name": True,
+    # Paired with the member page on radioraxxla.com (1.10040): the token
+    # handed back once, a secret like every key, and the device it names.
+    "portal_token": "",
+    "portal_device": "",
     # The community leaderboard (1.10036). Everyone is on it - the names are
     # on the finds already - and Leave in its window takes a commander off.
     "leaderboard_optin": True,
@@ -865,13 +1009,14 @@ DEFAULT_SETTINGS = {
     # 1.10035: any of the keys above can also be a joystick or HOTAS button,
     # stored the way it is written on screen ("JOY1 B7"). Blank is no button.
     **{IND.joy_key(action): "" for action in IND.JOY_ACTIONS},
-    # 1.10035: commands typed in the game's chat. Off: local chat is public,
-    # so a command typed there is read by everyone near you.
-    "chat_tags": False,
+    # 1.10035: commands typed in the game's chat (local chat is public, so a
+    # command typed there is read by everyone near you). On since 1.10040,
+    # with the 1.10040 defaults (#313).
+    "chat_tags": True,
     "chat_prefix": CT.DEFAULT_PREFIX,
     # 1.10035: a mouse button held for two seconds counts as a rig placed.
     # Which button: left, right, or learn (the first one held that long).
-    "long_press_rig": False,
+    "long_press_rig": True,
     # 1.10036: "primary" or "secondary" - the game's own SRV fire binding,
     # read from the commander's .binds. Older "left"/"right"/"learn" read as
     # primary/secondary/primary (inputmix.fire_choice).
@@ -894,18 +1039,37 @@ DEFAULT_SETTINGS = {
     "earnings_page": "This session",
     # Which warning to play: the clean one, or the one with language in it.
     "rig_sound_profane": True,
+    # 1.10040 (#145, #146, #153, #292): Voice Mode speaks the Basic voice
+    # line pack in one of its three voices; spoken directions say how far
+    # and which way to the target, for a headset; the proximity sonar is a
+    # tone that quickens as the target nears. All off until switched on.
+    "voice_mode": False,
+    "voice_theme": VO.DEFAULT_THEME,
+    "voice_rate": VO.DEFAULT_RATE,
+    "voice_directions": False,
+    "voice_directions_s": VO.DIRECTIONS_EVERY_S,
+    "sonar": False,
     # The scanner's reach, and how much neighbouring drive circles overlap.
     # Settings rather than constants: they are measured by the community,
     # not published, and a better number should not need a new build.
     "survey_scan_m": 2000,
     "survey_overlap_m": 250,
-    # The in-game overlay. Off until asked for: it puts a window over the
-    # game, and that should never be a surprise.
-    "overlay_enabled": False,
+    # The in-game overlay. On since 1.10040 (#313): the
+    # welcome window and the tour say it is there and how to turn it off.
+    "overlay_enabled": True,
     # The boxes only while a Rhino is being driven: down in the ship, on
     # foot and in the Nomad, back up when the Rhino is. Unlocked, to arrange
     # them, they stay up anywhere.
     "overlay_rhino_only": False,
+    # The ship minimap (1.10040, #126): the scope up by itself, low over a
+    # body with finds on it, in the ship.
+    "ship_minimap": True,
+    # The squadron share (1.10040, #301): commander data, so its own switch,
+    # off until turned on.
+    "squadron_share": False,
+    # Mining locations to EDDN (1.10040, #159): a body's FSS signal counts
+    # when it has Planetary Mining Locations, nothing else.
+    "eddn_upload": True,
     # Only while the game is the window in front. Left up over everything,
     # the boxes sat on top of EDSMT's own Find and Earnings windows.
     "overlay_only_over_game": False,
@@ -928,6 +1092,13 @@ DEFAULT_SETTINGS = {
     # better framed. "all" suits a dark cockpit, "none" suits anyone who
     # wants nothing on screen that is not information.
     "overlay_frame": "none",
+    # A see-through dark panel behind each box (1.10040): Off on ordinary
+    # ground, and darker by itself on icy and rocky-ice bodies, where the
+    # boxes were hard to read (OV.backdrop_style).
+    "overlay_backdrop": "off",
+    "overlay_backdrop_auto": True,
+    # A dark outline behind the overlay's words, for a stream (1.10040, #148).
+    "overlay_text_shadow": False,
     # The whole palette, not one accent line. "Pick a colour" used to tint
     # exactly one row of the compass tape and nothing else, because every
     # other colour was a constant baked in at import - which is why picking
@@ -936,16 +1107,27 @@ DEFAULT_SETTINGS = {
     # The main window's own palette - any of the overlay's themes. Worn from
     # the next start, because a window keeps the colours it was built with.
     "app_theme": "gold",
+    # 1.10040 (#316): the overlay wears the app theme, changing with it as
+    # soon as it is saved. See upgrade_overlay_follow for an older file.
+    "overlay_follows_app": True,
+    # 1.10040 (#304): the colour you are drawn in on the map and the scope,
+    # the Rhino or the ship. Blank is the theme's own cyan.
+    "srv_colour": "",
+    # 1.10040 (#306): the materials the commodity lists leave out. None: the
+    # lists offer every one.
+    "materials_hidden": [],
+    # 1.10040 (#310): Comfortable or Compact - the shortcut bar's switch.
+    "ui_spacing": "comfortable",
     # The five boxes of the default layout: compass, scope, targets, status
     # and the guide. The deposit card is there to switch on.
     "overlay_show_strip": True,
     "overlay_show_radar": True,
     "overlay_show_targets": True,
     "overlay_show_status": True,
-    "overlay_show_deposit": False,
-    # The step-by-step guide rides along with whichever boxes are on. On by
-    # default: it is how a first-timer learns the keys, and one switch turns
-    # it off.
+    "overlay_show_deposit": True,
+    # The step-by-step guide rides along with whichever boxes are on. On for
+    # a first-time commander: it is how the keys are learned, and one switch
+    # turns it off.
     "overlay_show_guide": True,
     # Set once the guide has been followed through to its last step - signal,
     # deposit, rigs. It then switches itself off; turned back on by hand in
@@ -955,6 +1137,8 @@ DEFAULT_SETTINGS = {
     "overlay_hint_shown": 0,
     # A word on every control when the mouse rests on it (#166).
     "show_tips": True,
+    # Trace mode (1.10040, #273): off unless support asks for it.
+    "trace_files": False,
     # The first-run tour has been seen, or skipped (#166).
     "tour_done": False,
     # Set the first time the server takes a deposit of this commander's own.
@@ -971,8 +1155,8 @@ DEFAULT_SETTINGS = {
     # the radius they are looked for in) and the rig radar - a ring of the
     # spacing round every rig, and NEXT RIG. The trail painted at scanner
     # range on the scope is off until there is a border: a plate over the
-    # game was a bug once.
-    "map_trail": True,
+    # game was a bug once. Off since 1.10040 (#313).
+    "map_trail": False,
     "map_lines": True,
     "map_golden": True,
     "golden_radius_m": 1250,
@@ -1011,6 +1195,11 @@ DEFAULT_SETTINGS = {
     "wing_link": False,
     "wing_code": "",
     "wing_member": "",
+    # 1.10040 (#170, #172): linked with your wing in the game with no code -
+    # only with commanders who have you in their wing too - and a rig plan's
+    # pins split between the wingmates on that deposit.
+    "wing_auto": True,
+    "wing_split_pins": True,
     # Each overlay box's text as a percentage, on its own and apart from the
     # box's size: a tester wanted bigger words without a bigger scope.
     **{"overlay_text_%s" % _box: 100 for _box in (
@@ -1302,26 +1491,47 @@ def load_settings():
     # button picked here. Right was the game's Secondary fire by default.
     merged["long_press_button"] = IM.fire_choice(merged)
     merged["long_press_learned"] = ""
-    return upgrade_discord(
+    return upgrade_overlay_follow(upgrade_discord(
         keep_new_keys_free(upgrade_layout(upgrade_hotkeys(merged, data), data),
-                           data), data)
+                           data), data), data)
+
+
+def upgrade_overlay_follow(merged, saved):
+    """"Overlay uses the app theme" (1.10040, #316) for a file written before
+    the switch: on only where its overlay already wears its app theme, so
+    nobody's overlay changes colour under them. A new install has both on
+    the default, so it is on there too."""
+    saved = saved or {}
+    if "overlay_follows_app" not in saved:
+        merged["overlay_follows_app"] = (str(merged.get("overlay_theme") or "")
+                                         == str(merged.get("app_theme") or ""))
+    return merged
+
+
+def follow_app_theme(data):
+    """While the overlay follows the app, its theme is the app's: written
+    down that way whenever settings are applied, so the file says what the
+    overlay wears (it reads OV.worn_theme either way)."""
+    if data.get("overlay_follows_app"):
+        data["overlay_theme"] = data.get("app_theme") or DEFAULT_SETTINGS["app_theme"]
+    return data
+
+
+# The webhook a file from before 1.10040 had, by its key (never its
+# address), once load_settings has made it the first of the list: the
+# session messages it posted are filed under it when the app starts.
+DISCORD_CLAIM = []
 
 
 def upgrade_discord(merged, saved):
-    """Per-find Discord posts off, once, for a file written before 1.10035.
-
-    1.10034 posted every find by default, and saved that default into the
-    file, so a commander who never touched the switch could not be told
-    apart from one who wanted it. Off once; ticked again, it stays ticked."""
-    saved = saved or {}
-    try:
-        level = int(saved.get("discord_finds_level") or 0)
-    except (TypeError, ValueError):
-        level = 0
-    if level < 1:
-        merged["discord_post_finds"] = False
-    merged["discord_finds_level"] = 1
-    return merged
+    """The one Discord webhook of a file from before 1.10040 as the first of
+    the list, named "My Discord", with the switches it had; the old keys go
+    (webhooks.upgrade). Per-find posts stay off for a file 1.10035 never
+    saw: 1.10034 wrote its default of on into every file."""
+    old = WH.old_address(saved)
+    if old:
+        DISCORD_CLAIM[:] = [WH.hook_key(old)]
+    return WH.upgrade(merged, saved)
 
 
 # The overlay layout this build ships, as a number. Up to 1.10029 every
@@ -1982,7 +2192,7 @@ def _import_number(text):
 def _import_rigs(text):
     """Their rig count, or blank. Never a number this game cannot produce."""
     value = _import_number(text)
-    if value is None or not 1 <= value <= MAX_RIGS:
+    if value is None or not 1 <= value <= SITE_RIGS:
         return ""
     return str(int(value))
 
@@ -2663,7 +2873,7 @@ class PlanView(tk.Canvas):
         self.bind("<Button-5>", lambda e: self._zoom_by(1.25))
 
     def show(self, rows, heading=0.0, caption="", survey=None, rigs=None,
-             signal=None, anchor=None, place=None):
+             signal=None, anchor=None, place=None, wing=None):
         """`signal` is the signal being worked and `anchor` where it was
         logged (metres east/north of the commander), so the map can open on
         it. `place` is (system, body, signal): arriving somewhere new puts
@@ -2673,6 +2883,8 @@ class PlanView(tk.Canvas):
         self.caption = caption
         self.survey = survey
         self.rigs = rigs
+        # 1.10040 (#171): the wing's sweep, finds, rigs and Rhinos.
+        self.wing = wing if isinstance(wing, dict) else None
         self.signal = str(signal or "").strip()
         self.signal_at = anchor
         if place is not None and place != self._place:
@@ -2818,6 +3030,7 @@ class PlanView(tk.Canvas):
         self._swept_percent = None
         if survey:
             self._survey(viewport, survey)
+        self._wing_layer(viewport, survey)
         self._rings(viewport, self._plan)
         self._rig_hits = []
         if rigs:
@@ -2913,6 +3126,52 @@ class PlanView(tk.Canvas):
             gx, gy = viewport.to_canvas(gap["east"], gap["north"])
             self._keep_clear(self.create_text(gx, gy, fill=RED, font=F_SMALL_B,
                                               text="GAP %.1f km2" % gap["area_km2"]))
+
+    def _wing_layer(self, viewport, survey):
+        """The wing on the map (1.10040, #171): each wingmate's swept ground,
+        the finds they marked, their rigs and their Rhino, all in that
+        wingmate's colour, under your own finds."""
+        wing = getattr(self, "wing", None)
+        if not isinstance(wing, dict):
+            return
+        survey = survey if isinstance(survey, dict) else {}
+        for mate in wing.get("mates") or []:
+            colour = mate.get("colour") or OV.WING_COLOUR
+            for shape in PV.swept_shapes(mate.get("sweep"), mate.get("scan_m"),
+                                         survey.get("centre"), survey.get("border_m")):
+                if shape[0] == "disc":
+                    x, y = viewport.to_canvas(shape[1], shape[2])
+                    r_px = viewport.radius_px(shape[3])
+                    self.create_oval(x - r_px, y - r_px, x + r_px, y + r_px,
+                                     fill=colour, outline="", stipple="gray12",
+                                     tags=("wing", "wingswept"))
+                else:
+                    flat = []
+                    for east, north in shape[1]:
+                        flat.extend(viewport.to_canvas(east, north))
+                    self.create_polygon(flat, fill=colour, outline="", stipple="gray12",
+                                        tags=("wing", "wingswept"))
+            line = [c for east, north in mate.get("sweep") or []
+                    for c in viewport.to_canvas(east, north)]
+            if len(line) >= 4:
+                self.create_line(*line, fill=colour, width=1, dash=(4, 4),
+                                 tags=("wing", "wingtrail"))
+            for find in mate.get("finds") or []:
+                x, y = viewport.to_canvas(find["east"], find["north"])
+                self.create_oval(x - 7, y - 7, x + 7, y + 7, outline=colour,
+                                 width=2, dash=(2, 2) if find.get("depleted") else None,
+                                 tags=("wing", "wingfind"))
+            for rig in mate.get("rigs") or []:
+                x, y = viewport.to_canvas(rig["east"], rig["north"])
+                self.create_rectangle(x - 6, y - 6, x + 6, y + 6, outline=colour,
+                                      width=2, tags=("wing", "wingrig"))
+                self.create_text(x, y, text=str(rig.get("n") or ""), fill=colour,
+                                 font=F_MICRO, tags=("wing", "wingrig"))
+            x, y = viewport.to_canvas(mate["east"], mate["north"])
+            self.create_polygon(x, y - 7, x + 7, y, x, y + 7, x - 7, y,
+                                outline=colour, fill="", width=2, tags=("wing", "wingmate"))
+            self.create_text(x + 10, y, anchor="w", text=str(mate.get("name") or "")[:18],
+                             fill=colour, font=F_SMALL, tags=("wing", "wingmate"))
 
     # -- 1.10035: the trail, the lines, golden groups, the rig radar ------
 
@@ -3262,9 +3521,12 @@ class PlanView(tk.Canvas):
         return item
 
     def _me(self, viewport, plan):
+        # 1.10040 (#304): you in the marker colour the app hands over - the
+        # theme's own, or the one picked in Settings.
         cx, cy = viewport.centre
         self.create_polygon(PV.arrow_points(cx, cy, plan["heading"]),
-                            fill=CYAN, outline=VOID)
+                            fill=attr(self, "marker", None) or CYAN, outline=VOID,
+                            tags=("me",))
 
     def _footer(self, width, height, plan):
         parts = ["rings %s" % _metres(plan["ring_step_m"])]
@@ -3356,6 +3618,178 @@ def _metres(value):
 # The window
 # ---------------------------------------------------------------------------
 
+def chrome_font(step, widget=None):
+    """A step of the type scale on a plain canvas: (its size in pixels, a
+    Tk font of it to measure text with). customtkinter draws its own labels
+    at the step's size in pixels times the window's scaling; a canvas has to
+    be told."""
+    px = max(6, chrome_px(step[1], widget))
+    return px, tkfont.Font(family=step[0], size=-px,
+                           weight="bold" if "bold" in step[2:] else "normal")
+
+
+# How big a status strip glyph is, in pixels before scaling.
+STRIP_GLYPH = 12
+
+
+def chrome_px(px, widget=None):
+    """Pixels before scaling, in the screen's own."""
+    try:
+        scaling = float(ctk.ScalingTracker.get_widget_scaling(widget)) if widget else 1.0
+    except Exception:
+        scaling = 1.0
+    return max(1, int(round(px * scaling)))
+
+
+class TabStrip(tk.Canvas):
+    """The tool tabs as chevrons (1.10040, #310). tabstrip.py lays them out
+    and says which one a click lands on; this draws them in the theme - the
+    lit tab in the accent - and passes the click on. A tab's note shows when
+    the mouse rests on it."""
+
+    def __init__(self, master, on_pick, height):
+        super().__init__(master, height=chrome_px(height, master), bg=RAIL, bd=0,
+                         highlightthickness=0, cursor="hand2")
+        self.on_pick = on_pick
+        self.lit = "map"
+        self.tabs = []
+        self._over = None
+        self._name_px, self._font = chrome_font(F_STRONG, master)
+        self._key_px = chrome_font(F_MICRO, master)[0]
+        self.bind("<Configure>", lambda _e: self.redraw(), add="+")
+        self.bind("<Button-1>", self.press, add="+")
+        self.bind("<Motion>", self.hover, add="+")
+        self.bind("<Leave>", lambda _e: self.hover(None), add="+")
+
+    def set_height(self, height):
+        """The spacing changed: as tall as the table says, at this scaling."""
+        self.configure(height=chrome_px(height, self))
+        self.redraw()
+
+    def light(self, key):
+        """Light one tab: the one on show."""
+        self.lit = key
+        self.redraw()
+
+    def redraw(self):
+        self.delete("all")
+        width = self.winfo_width() if self.winfo_width() > 1 else self.winfo_reqwidth()
+        height = self.winfo_height() if self.winfo_height() > 1 else self.winfo_reqheight()
+        self.tabs = TS.layout(width - 2, height - 1, self._font.measure)
+        middle = (height - 1) / 2.0
+        for tab in self.tabs:
+            lit, over = tab.key == self.lit, tab.key == self._over
+            flat = [v for point in tab.points for v in point]
+            self.create_polygon(*flat, fill=ORANGE if lit else RULE if over else STEEL,
+                                outline=AMBER if lit else RULE, width=1,
+                                tags=("tab", "tab-" + tab.key))
+            self.create_text(tab.text_x, middle, text=tab.label,
+                             font=(FONT, -self._name_px, "bold"),
+                             fill=VOID if lit else AMBER, tags=("words", "name"))
+            if tab.keys_shown:
+                self.create_text(tab.key_x, middle, text=tab.fkey,
+                                 font=(FONT, -self._key_px),
+                                 fill=VOID if lit else DIM, tags=("words", "fkey"))
+
+    def press(self, event):
+        key = TS.hit(self.tabs, event.x, event.y)
+        if key is not None:
+            self.on_pick(key)
+
+    def hover(self, event):
+        """Light the tab under the mouse, and give the note its words."""
+        key = TS.hit(self.tabs, event.x, event.y) if event is not None else None
+        if key == self._over:
+            return
+        self._over = key
+        self.redraw()
+        note = getattr(self, "_edsmt_tooltip", None)
+        if note is not None:
+            note._leave()
+            note.text = TIPS.get(key) or TIPS["tabs"]
+            if key is not None:
+                note._enter()
+
+
+class StatusStrip(tk.Canvas):
+    """The status strip under the top bar (1.10040, #310): CMDR, SHIP,
+    SYSTEM, BODY, what the commander is in and the overlay, each with a
+    small glyph. uichrome.py says what each reads and shortens the long
+    ones to fit; this draws them."""
+
+    def __init__(self, master, height):
+        super().__init__(master, height=chrome_px(height, master), bg=VOID, bd=0,
+                         highlightthickness=0)
+        self.cells = UC.status_cells(None, False, True)
+        self.shown = []
+        self._label_px = chrome_font(F_MICRO, master)[0]
+        self._value_px, self._value_font = chrome_font(F_STRONG, master)
+        self.bind("<Configure>", lambda _e: self.redraw(), add="+")
+
+    def set_height(self, height):
+        self.configure(height=chrome_px(height, self))
+        self.redraw()
+
+    def show(self, cells):
+        """New readouts; drawn only when something changed."""
+        if cells != self.cells or not self.shown:
+            self.cells = cells
+            self.redraw()
+
+    def redraw(self):
+        self.delete("all")
+        width = self.winfo_width() if self.winfo_width() > 1 else self.winfo_reqwidth()
+        height = self.winfo_height() if self.winfo_height() > 1 else self.winfo_reqheight()
+        left = chrome_px(16, self)
+        glyph = chrome_px(STRIP_GLYPH, self)
+        self.shown = UC.fit_cells(self.cells, width - 2 * left, self._value_font.measure,
+                                  glyph=glyph, gap=chrome_px(6, self),
+                                  between=chrome_px(22, self))
+        middle = height / 2.0
+        for cell in self.shown:
+            x = left + cell.x0
+            self._glyph(cell.label, x + glyph / 2.0, middle, glyph / 2.0)
+            self.create_text(x + glyph + chrome_px(6, self), middle, text=cell.label,
+                             anchor="w", font=(FONT, -self._label_px, "bold"), fill=DIM,
+                             tags=("label",))
+            plain = cell.value == UC.NONE
+            self.create_text(left + cell.value_x, middle, text=cell.value, anchor="w",
+                             font=(FONT, -self._value_px, "bold"), tags=("value",),
+                             fill=DIM if plain else CYAN if cell.label == "STATE" else TEXT)
+        self.create_line(0, height - 1, width, height - 1, fill=RULE, tags=("rule",))
+
+    def _glyph(self, label, x, y, r):
+        """A small shape per readout, in the instrument colour."""
+        tags = ("glyph",)
+        if label == "CMDR":
+            self.create_oval(x - r * 0.4, y - r, x + r * 0.4, y - r * 0.2, outline=ORANGE,
+                             width=1.5, tags=tags)
+            self.create_arc(x - r * 0.9, y - r * 0.1, x + r * 0.9, y + r * 1.7, start=0,
+                            extent=180, style="arc", outline=ORANGE, width=1.5, tags=tags)
+        elif label == "SHIP":
+            self.create_polygon(x - r, y - r * 0.7, x + r, y, x - r, y + r * 0.7,
+                                x - r * 0.5, y, fill=ORANGE, outline="", tags=tags)
+        elif label == "SYSTEM":
+            self.create_oval(x - r * 0.4, y - r * 0.4, x + r * 0.4, y + r * 0.4,
+                             fill=ORANGE, outline="", tags=tags)
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                self.create_line(x + dx * r * 0.6, y + dy * r * 0.6, x + dx * r, y + dy * r,
+                                 fill=ORANGE, width=1.5, tags=tags)
+        elif label == "BODY":
+            self.create_oval(x - r * 0.6, y - r * 0.6, x + r * 0.6, y + r * 0.6,
+                             outline=ORANGE, width=1.5, tags=tags)
+            self.create_line(x - r, y + r * 0.3, x + r, y - r * 0.3, fill=AMBER,
+                             width=1.5, tags=tags)
+        elif label == "STATE":
+            self.create_polygon(x, y - r, x + r, y, x, y + r, x - r, y, outline=CYAN,
+                                fill="", width=1.5, tags=tags)
+        else:
+            self.create_rectangle(x - r, y - r * 0.7, x + r, y + r * 0.7, outline=ORANGE,
+                                  width=1.5, tags=tags)
+            self.create_line(x - r * 0.5, y, x + r * 0.5, y, fill=AMBER, width=1.5,
+                             tags=tags)
+
+
 class EDSMT(GD.GuidanceMixin, ctk.CTk):
     """One window that follows the game.
 
@@ -3383,6 +3817,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         # Now it lands in crash.log with a traceback and says so on screen.
         self.report_callback_exception = self._callback_failed
         self.title(APP_TITLE)
+        # 1.10040: the EDSMT logo on the title bar and the taskbar.
+        self.icon_worn = wear_icon(self)
         self.geometry("1240x780")
         # Width is the real floor: the rail is a fixed 336 and the plan
         # view needs room to be a map rather than a postage stamp. Height
@@ -3415,7 +3851,15 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.ship_book = SH.CapacityBook(DATA_DIR)
         self.extras = SL.SessionLedger(DATA_DIR)
         self.post_book = SL.PostBook(DATA_DIR)
+        # 1.10040: a message posted before the list existed belongs to the
+        # webhook the old single one became - so the sale is still edited in.
+        for hook in DISCORD_CLAIM:
+            self.post_book.claim(hook)
         self.applog = SB.AppLog(DATA_DIR)
+        # Streamer mode (1.10040): your own Discord posts waiting out the
+        # delay - in memory only - and the system you arrived in, and when.
+        self.discord_hold = ST.DelayQueue()
+        self._streamer_seen = None
         self._pictures = []
         self._boot_at = time.time()
         # 1.10035: the commander's Powerplay record from his own journal, and
@@ -3436,6 +3880,9 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
         JN.EVENT_LOG = os.path.join(DATA_DIR, "journal-mining-events.log")
         self.watcher = JN.JournalWatcher(self.settings.get("journal_dir") or None)
+        # Trace mode (1.10040, #273) is told every read of the game's files.
+        self.watcher.on_rewrite = self.trace_rewrite
+        self._trace_last = {}
 
         self.worker = EDO.Worker()
         self.inara = EDO.InaraClient(self.worker)
@@ -3443,6 +3890,14 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                              self.settings.get("inara_enabled", False),
                              self.settings.get("inara_is_being_developed", False))
         self.community = EDO.CommunityClient(self.worker)
+        # The squadron share's waiting events (1.10040, #301), and when a
+        # batch last went.
+        self.squad_box = SQ.Box()
+        self._squad_busy = False
+        # Mining-location messages waiting for EDDN (1.10040, #159).
+        self.eddn_box = ED.Outbox()
+        self._eddn_busy = False
+        self._eddn_out = None
         self.community.configure(self.settings.get("community_url", ""),
                                  self.settings.get("community_token", ""),
                                  self.settings.get("community_enabled", False),
@@ -3521,16 +3976,27 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.rigs_at = load_rigs()
         self._rigs_saved = json.dumps(self.rigs_at, sort_keys=True, default=str)
         self._rigs_warned = False
+        # 1.10040 (#145, #146, #153): the voice and the sonar. Neither starts
+        # anything until it is first wanted; both go with the window.
+        self.voice = VO.Speaker(folders=voice_folders(),
+                                rate=self.settings.get("voice_rate", VO.DEFAULT_RATE))
+        self.sonar = SN.Sonar()
+        self.directions = VO.DirectionsTimer(
+            VO.directions_every(self.settings.get("voice_directions_s")))
 
         self.hotkeys = Hotkeys()
         self.hotkeys.start(self.wanted_hotkeys(self.settings))
 
         self.overlay = OV.Overlay(self, tk, self.settings)
 
+        # Comfortable or Compact (1.10040), before a widget is sized by it.
+        SPACE.clear()
+        SPACE.update(UC.spacing(self.settings.get("ui_spacing")))
         self._build()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         if carried["taken"] or carried["signals"]:
             self.say(import_summary(carried), GREEN)
+        self.after(2400, self.streamer_restart_note)
         if SETTINGS_NOTICE:
             # Last word on the status line, after anything else start-up
             # has to say, and held there long enough to be read.
@@ -3538,8 +4004,14 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.after(2500, lambda: self.say(notice, AMBER))
         if self.settings.get("overlay_enabled"):
             self.after(600, self.follow_vehicle_overlay)
+        if self.settings.get("voice_mode"):
+            self.after(1500, lambda: self.speak("online"))
         if not self.settings.get("asked_to_share"):
             self.after(900, self.ask_to_share)
+        elif WL.welcome_due(self.settings, APP_VERSION):
+            # 1.10040 (#309): the welcome on the first start of each new
+            # version until it is ticked off; the tour follows it, once.
+            self.after(900, self.show_welcome)
         elif not self.settings.get("tour_done"):
             # Everyone already past the first question sees the tour once,
             # on the first start of 1.10034 (#166).
@@ -3547,10 +4019,55 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         # Once, a couple of seconds in, so it never delays the window
         # appearing and never blocks anything if the site is unreachable.
         self.after(2500, lambda: self.updates.check(APP_VERSION))
-        self.after(400, self.tick)
+        self._tick_job = self.after(400, self.tick)
         self.after(450, self.fast_tick)
+        # 1.10040 (#323): a launcher can see EDSMT is running - which
+        # version, which process, and its picture. Removed on a clean exit.
+        self.hub_file = HM.announce(APP_VERSION, os.path.join(IMAGES_DIR, LG.BADGE_SMALL),
+                                    log=self.applog.write)
 
     # -- the first run ---------------------------------------------------
+
+    def show_welcome(self, force=False):
+        """The welcome window (1.10040, #309): by itself on the first start of
+        each new version until "Don't show this again" is ticked on it, and
+        whenever it is asked for - Help, or Settings > About. One at a time:
+        asked for again, the one open comes forward. The window, or None."""
+        open_now = attr(self, "welcome", None)
+        try:
+            if open_now is not None and open_now.winfo_exists():
+                open_now.lift()
+                return open_now
+        except Exception:
+            pass
+        if not force and not WL.welcome_due(attr(self, "settings", None), APP_VERSION):
+            return None
+        if not force:
+            # Never over the game, as the tour: EDSMT started with Elite in
+            # front waits until its own window is looked at.
+            try:
+                front = OV.foreground_is_game()
+            except Exception:
+                front = None
+            if front:
+                try:
+                    self.after(TOUR_WAIT_MS, self.show_welcome)
+                except Exception:
+                    pass
+                return None
+        try:
+            self.welcome = WelcomeWindow(self)
+        except Exception as exc:
+            self.say("Could not open the welcome window: %s" % exc, AMBER)
+            return None
+        return self.welcome
+
+    def welcome_seen(self):
+        """"Don't show this again", ticked: not by itself on this version."""
+        settings = attr(self, "settings", None)
+        if isinstance(settings, dict):
+            settings["welcome_seen_version"] = APP_VERSION
+            save_settings(settings)
 
     def ask_to_share(self):
         """Put the share question once, on first run.
@@ -3564,7 +4081,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         # swallowed by the except below - retired the only place the shared
         # database is ever offered, for good, without a word on screen.
         try:
-            WelcomeWindow(self)
+            self.welcome = WelcomeWindow(self)
         except Exception as exc:
             return self.say("Could not put the sharing question: %s - "
                             "Settings has it whenever you want it." % exc,
@@ -3666,7 +4183,24 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         overlay = attr(self, "overlay", None)
         if overlay is not None and not overlay.locked:
             return True
-        return bool(getattr(attr(self, "game"), "in_rhino", False)) or self.guidance_wanted()
+        if bool(getattr(attr(self, "game"), "in_rhino", False)) or self.guidance_wanted():
+            return True
+        # 1.10040 (#126): the ship minimap, low over a body with finds on it.
+        return SHV.minimap_wanted(self.settings, attr(self, "game", None), self.body_has_finds())
+
+    def body_has_finds(self):
+        """Whether the map knows anything on the body under us - yours or
+        anyone's - for the ship minimap. Never raises."""
+        try:
+            system, body = self.here()
+            if not (system and body):
+                return False
+            if self.store.at(system, body):
+                return True
+            had = (attr(self, "shared", None) or {}).get((str(system).lower(), str(body).lower()))
+            return bool(had and had.get("rows"))
+        except Exception:
+            return False
 
     def follow_vehicle_overlay(self):
         """Put the boxes up or take them down as the Rhino comes and goes.
@@ -3804,6 +4338,22 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                                **(BTN_SECONDARY if locked else BTN_PRIMARY))
             except Exception:
                 pass
+        self.show_status_strip()
+
+    def show_status_strip(self, state=None):
+        """The status strip (1.10040, #310): what the journal says, and the
+        overlay - drawn only when one of them changed."""
+        strip = attr(self, "status_strip", None)
+        if strip is None:
+            return
+        overlay = attr(self, "overlay", None)
+        try:
+            strip.show(UC.status_cells(
+                state if state is not None else attr(self, "game", None),
+                bool((attr(self, "settings", None) or {}).get("overlay_enabled")),
+                bool(getattr(overlay, "locked", True))))
+        except Exception:
+            pass        # an instrument that cannot be drawn is not a fault
 
     def draw_overlay(self, rows, heading, centre=None, radius_m=None,
                      survey=None, rigs=None, only=None):
@@ -3824,7 +4374,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         site = self.site_offset(system, body, location, centre, radius_m)
         self.overlay.map_prefs = self.map_prefs()
         self.overlay.guidance = self.guidance_view(attr(self, "game", None), centre, radius_m)
-        self.overlay.draw(rows, heading, note, body=body,
+        self.overlay.draw(rows, heading, note, body=self.hide_names(body),
                           location=location, site=site, survey=survey,
                           rigs=rigs, guide=self.guide_card(),
                           target=attr(self, "_guide_to", None), only=only,
@@ -3985,10 +4535,20 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         except (TypeError, ValueError, KeyError):
             return None
 
+    def without_secrets(self, text):
+        """`text` with every secret the settings hold taken out - each
+        Discord webhook address and its token, the keys - for crash.log and
+        the status line, which can be on a stream (1.10040)."""
+        try:
+            return SB.scrub(text, SB.secret_values(attr(self, "settings", None) or {}),
+                            home="")
+        except Exception:
+            return str(text)
+
     def _callback_failed(self, kind, value, trace):
         """Something raised inside a Tk callback. Do not let it vanish."""
         import traceback
-        detail = "".join(traceback.format_exception(kind, value, trace))
+        detail = self.without_secrets("".join(traceback.format_exception(kind, value, trace)))
         try:
             os.makedirs(DATA_DIR, exist_ok=True)
             with open(os.path.join(DATA_DIR, "crash.log"), "a",
@@ -3999,7 +4559,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             pass
         try:
             self.say("Something went wrong: %s: %s - written to crash.log"
-                     % (getattr(kind, "__name__", kind), value), RED)
+                     % (getattr(kind, "__name__", kind), self.without_secrets(value)), RED)
         except Exception:
             pass
 
@@ -4053,16 +4613,27 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
         centre = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0)
         centre.grid(row=1, column=1, sticky="nsew")
-        centre.grid_rowconfigure(0, weight=1)
+        centre.grid_rowconfigure(1, weight=1)
         centre.grid_columnconfigure(0, weight=1)
         # Where the tools go when they open as tabs (1.10036): in the map's
         # place, one at a time.
         self.tool_area = centre
+        # 1.10040 (#310): the session's figures over the map, in stat cards.
+        cards = ctk.CTkFrame(centre, fg_color="transparent")
+        cards.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        self.map_card_row = cards
+        self.map_cards = {}
+        for name in MAP_CARDS:
+            box, value = stat_card(cards, name, MAP_CARD_TIPS[name])
+            box.pack(side="left", padx=(0, 8))
+            self.map_cards[name] = (box, value)
+        self._cards_at = 0.0
         self.plan = PlanView(centre, on_select=self.picked_on_map,
                              on_edit=self.edit_deposit,
                              on_edit_rig=self.edit_rig)
-        self.plan.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.plan.grid(row=1, column=0, sticky="nsew", padx=10, pady=(6, 10))
         bracket(centre, colour=ORANGE)
+        self.show_marker_colour()
 
         # The status line is an instrument, not a footnote: a fixed label
         # says what the readout is, the readout follows it, and a rule
@@ -4073,20 +4644,156 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         ctk.CTkFrame(strip, height=1, fg_color=RULE).pack(fill="x")
         readout = ctk.CTkFrame(strip, fg_color="transparent")
         readout.pack(fill="x")
-        ctk.CTkLabel(readout, text="STATUS", font=F_SMALL_B, width=72,
-                     text_color=ORANGE, anchor="w").pack(side="left",
-                                                         padx=(14, 0), pady=6)
+        self._status_title = ctk.CTkLabel(readout, text="STATUS", font=F_SMALL_B, width=72,
+                                          text_color=ORANGE, anchor="w")
+        self._status_title.pack(side="left", padx=(14, 0), pady=SPACE["line_pady"])
         self._map_picture_buttons(readout)
         self.status = ctk.CTkLabel(readout, text="", font=F_READOUT,
                                    text_color=DIM, anchor="w")
         self.status.pack(side="left", fill="x", expand=True,
-                         padx=(4, 14), pady=6)
+                         padx=(4, 14), pady=SPACE["line_pady"])
+        self._shortcut_bar(strip)
 
         # Fill it all in from disk before the window is ever shown. Without
         # this the app opens blank with the game shut and stays blank,
         # because the only code that fills it sits past an early return in
         # update_telemetry.
         self.show_records()
+
+    def _shortcut_bar(self, parent):
+        """The bar along the bottom (1.10040, #310): the F-keys for the tabs
+        and the rig keys on the left; the spacing and the theme with its
+        arrows on the right, packed first so the keys give way."""
+        bar = ctk.CTkFrame(parent, fg_color="transparent")
+        bar.pack(fill="x", pady=(0, SPACE["keys_pady"]))
+        self._keys_bar = bar
+        right = ctk.CTkFrame(bar, fg_color="transparent")
+        right.pack(side="right", padx=(8, 12))
+        self._keys_right = right
+        ctk.CTkLabel(right, text="SPACING", font=F_SMALL_B, text_color=ORANGE).pack(
+            side="left", padx=(0, 6))
+        self.spacing_switch = tip(ctk.CTkSegmentedButton(
+            right, values=[UC.SPACING_NAMES[k] for k in UC.SPACING_ORDER], font=F_SMALL_B,
+            height=24, fg_color=PANEL, selected_color=ORANGE,
+            selected_hover_color=AMBER, unselected_color=STEEL,
+            unselected_hover_color=RULE, text_color=TEXT,
+            command=self.spacing_picked), TIPS["spacing"])
+        self.spacing_switch.set(UC.SPACING_NAMES.get(
+            str(self.settings.get("ui_spacing") or ""), UC.SPACING_NAMES["comfortable"]))
+        self.spacing_switch.pack(side="left", padx=(0, 16))
+        ctk.CTkLabel(right, text="THEME", font=F_SMALL_B, text_color=ORANGE).pack(
+            side="left", padx=(0, 6))
+        tip(ctk.CTkButton(right, text="<", width=26, height=24, font=F_STRONG,
+                          **BTN_SECONDARY, command=lambda: self.theme_step(-1)),
+            TIPS["theme_back"]).pack(side="left")
+        self.theme_name = ctk.CTkLabel(right, text="", font=F_SMALL_B, text_color=TEXT,
+                                       width=210)
+        self.theme_name.pack(side="left", padx=4)
+        tip(ctk.CTkButton(right, text=">", width=26, height=24, font=F_STRONG,
+                          **BTN_SECONDARY, command=lambda: self.theme_step(1)),
+            TIPS["theme_next"]).pack(side="left")
+        self.shortcut_line = ctk.CTkLabel(bar, text="", font=F_SMALL, text_color=DIM,
+                                          anchor="w")
+        self.shortcut_line.pack(side="left", fill="x", expand=True, padx=(14, 0))
+        self._keys_font = chrome_font(F_SMALL, self)[1]
+        bar.bind("<Configure>", self._fit_shortcuts, add="+")
+        self.show_theme_name()
+        self._fit_shortcuts()
+
+    def _fit_shortcuts(self, event=None):
+        """As many of the shortcuts as fit beside the spacing and the theme."""
+        bar, right = attr(self, "_keys_bar"), attr(self, "_keys_right")
+        line = attr(self, "shortcut_line")
+        if bar is None or right is None or line is None:
+            return
+        try:
+            width = bar.winfo_width() if bar.winfo_width() > 1 else 4000
+            room = width - right.winfo_reqwidth() - chrome_px(48, self)
+            items = UC.shortcut_items(TS.TABS, OV.rig_keys_words(self.settings))
+            text = UC.fit_line(items, room, self._keys_font.measure)
+            if text != line.cget("text"):
+                line.configure(text=text)
+        except Exception:
+            pass
+
+    def show_theme_name(self):
+        """The app theme by name, between the shortcut bar's arrows."""
+        label = attr(self, "theme_name")
+        if label is None:
+            return
+        theme = str(self.settings.get("app_theme") or "cockpit")
+        try:
+            label.configure(text=OV.THEME_NAMES.get(theme, theme))
+        except Exception:
+            pass
+
+    def theme_step(self, step):
+        """The theme arrows: the next app theme, or the one before, round
+        every theme. Kept at once; the overlay, when it uses the app theme,
+        wears it at once; the window from the next start."""
+        theme = UC.next_theme(OV.THEME_ORDER, str(self.settings.get("app_theme") or ""), step)
+        self.settings["app_theme"] = theme
+        follow_app_theme(self.settings)
+        save_settings(self.settings)
+        overlay = attr(self, "overlay", None)
+        if overlay is not None:
+            overlay.settings = self.settings
+        self.show_theme_name()
+        name = OV.THEME_NAMES.get(theme, theme)
+        if theme == attr(self, "theme_worn", ""):
+            return self.say("%s: the theme this window is wearing." % name, GREEN)
+        return self.say("%s: %sthis window wears it from the next start (Settings > "
+                        "Theme > Save and restart now)." % (
+                            name, "the overlay wears it now; "
+                            if self.settings.get("overlay_follows_app") else ""), GREEN)
+
+    def spacing_picked(self, label):
+        """Comfortable or Compact, from the shortcut bar: kept, and worn at
+        once."""
+        key = next((k for k, name in UC.SPACING_NAMES.items() if name == label),
+                   "comfortable")
+        self.settings["ui_spacing"] = key
+        save_settings(self.settings)
+        self.apply_spacing(key)
+
+    def apply_spacing(self, key):
+        """Every padding and row height from the spacing table (1.10040,
+        #310): the top bar, the strips, the status line and the bar under
+        it now; a table's rows as it next draws them."""
+        SPACE.clear()
+        SPACE.update(UC.spacing(key))
+        for name in ("btn_overlay", "btn_lock", "tour_settings", "btn_help", "btn_update"):
+            button = attr(self, name)
+            if button is not None:
+                try:
+                    button.configure(height=SPACE["button_h"])
+                except Exception:
+                    pass
+        for name, size in (("tab_strip", "tab_h"), ("status_strip", "strip_h")):
+            strip = attr(self, name)
+            if strip is not None:
+                strip.set_height(SPACE[size])
+        try:
+            self._top_badge.grid_configure(pady=SPACE["bar_pady"])
+            self.t_where.grid_configure(pady=(SPACE["bar_pady"] + 1, 0))
+            self.t_earnings.grid_configure(pady=(0, SPACE["bar_pady"] + 1))
+            self._status_title.pack_configure(pady=SPACE["line_pady"])
+            self.status.pack_configure(pady=SPACE["line_pady"])
+            self._keys_bar.pack_configure(pady=(0, SPACE["keys_pady"]))
+        except Exception:
+            pass
+
+    def show_map_cards(self):
+        """The stat cards over the map (1.10040, #310): the session's tonnes
+        and Cr/hr, the rigs down and how much of the survey area is swept."""
+        cards = attr(self, "map_cards", None)
+        if not cards:
+            return
+        for name, (text, colour) in map_card_figures(self).items():
+            try:
+                cards[name][1].configure(text=text, text_color=colour)
+            except Exception:
+                pass
 
     def _map_picture_buttons(self, parent):
         """Save map, Copy map and Share map (1.10035): the plan view as a
@@ -4113,16 +4820,26 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             "Marks a deposit of the commodity just refined, here.")
 
     def _telemetry(self):
-        bar = ctk.CTkFrame(self, fg_color=RAIL, corner_radius=0)
-        bar.grid(row=0, column=0, columnspan=2, sticky="ew")
+        # 1.10040 (#310): the top bar, then the status strip and the tab
+        # strip under it, all in one block across the top of the window.
+        head = ctk.CTkFrame(self, fg_color=RAIL, corner_radius=0)
+        head.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self._head = head
+        bar = ctk.CTkFrame(head, fg_color=RAIL, corner_radius=0)
+        bar.pack(fill="x")
         bracket(bar, colour=ORANGE)
 
         badge = ctk.CTkFrame(bar, fg_color="transparent", width=126)
-        badge.grid(row=0, column=0, rowspan=3, padx=(16, 14), pady=8)
+        badge.grid(row=0, column=0, rowspan=3, padx=(16, 14), pady=SPACE["bar_pady"])
+        self._top_badge = badge
         ctk.CTkLabel(badge, text=APP_NAME, font=F_TITLE,
                      text_color=ORANGE).pack(anchor="w")
         ctk.CTkLabel(badge, text="SURFACE SURVEY", font=F_MICRO,
                      text_color=FAINT).pack(anchor="w")
+        # 1.10040 (#312): while streamer mode is on. follow_streamer packs it.
+        self.streamer_badge = ctk.CTkLabel(badge, text="STREAMER", font=F_SMALL_B,
+                                           text_color=TEXT, fg_color=RED,
+                                           corner_radius=4, height=20)
         # The strip is an instrument panel, so it is separated from the
         # rail and the map by a rule rather than by a change of shade
         # nobody can see. Row 4, so row 3 is free for the buttons when the
@@ -4133,7 +4850,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.t_where = ctk.CTkLabel(bar, text="Looking for Elite Dangerous...",
                                     font=F_HEAD, justify="left",
                                     text_color=TEXT, anchor="w")
-        self.t_where.grid(row=0, column=1, sticky="w", pady=(9, 0))
+        self.t_where.grid(row=0, column=1, sticky="w", pady=(SPACE["bar_pady"] + 1, 0))
         self.t_detail = ctk.CTkLabel(bar, text="", font=F_READOUT,
                                      justify="left", text_color=DIM, anchor="w")
         self.t_detail.grid(row=1, column=1, sticky="w")
@@ -4143,64 +4860,72 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         # so they do not share a line.
         self.t_earnings = ctk.CTkLabel(bar, text="", font=F_READOUT,
                                        justify="left", text_color=AMBER, anchor="w")
-        self.t_earnings.grid(row=2, column=1, sticky="w", pady=(0, 9))
+        self.t_earnings.grid(row=2, column=1, sticky="w", pady=(0, SPACE["bar_pady"] + 1))
 
-        # Two groups. Where things are - Find, My sites, Where to land,
-        # Earnings - sit on the left, straight after the readouts, in the
-        # space that used to be empty. What the overlay is doing and Settings
-        # sit on the right, where they always were.
+        # What the overlay is doing, Settings and Help on the right, where
+        # they always were. The tabs are the chevron strip under the status
+        # strip (1.10040, #310) - the top bar is the readouts' room.
         bar.grid_columnconfigure(1, weight=0, minsize=TOP_READOUT_ROOM)
         bar.grid_columnconfigure(2, weight=1)
-        nav = ctk.CTkFrame(bar, fg_color="transparent")
-        nav.grid(row=0, column=2, rowspan=3, padx=(8, 8), sticky="w")
         side = ctk.CTkFrame(bar, fg_color="transparent")
         side.grid(row=0, column=3, rowspan=3, padx=12, sticky="e")
-        self._top_bar, self._top_buttons, self._top_nav = bar, side, nav
+        self._top_bar, self._top_buttons, self._top_nav = bar, side, None
         self._top_stacked = False
         bar.bind("<Configure>", self._fit_top_bar, add="+")
-        # The tabs (1.10036, #147): the map, then the six tools. With tools
-        # as windows the same buttons open the windows.
-        self.tab_buttons = {}
-        for key, text, width, command in (
-                ("map", "Map", 64, self.show_map),
-                ("find", "Find", 74, self.open_find),
-                ("sites", "My sites", 92, self.open_sites),
-                ("land", "Where to land", 124, self.open_land),
-                ("earnings", "Earnings", 96, self.open_earnings),
-                ("powerplay", "Powerplay", 104, self.open_powerplay),
-                ("leaderboard", "Leaderboard", 116, self.open_leaderboard)):
-            button = tip(ctk.CTkButton(nav, text=text, width=width, height=32,
-                                       font=F_STRONG, **BTN_SECONDARY,
-                                       command=command), TIPS[key])
-            button.pack(side="left", padx=4)
-            self.tab_buttons[key] = button
-        self.tour_find = self.tab_buttons["find"]
-        self.active_tab = "map"
-        self.paint_tabs()
-        self.btn_overlay = ctk.CTkButton(side, text="Overlay", width=88, height=32,
+        self.btn_overlay = ctk.CTkButton(side, text="Overlay", width=88, height=SPACE["button_h"],
                                          font=F_STRONG, **BTN_SECONDARY,
                                          command=self.toggle_overlay)
         tip(self.btn_overlay, TIPS["overlay"]).pack(side="left", padx=4)
         # Arranging the overlay happens WHILE looking at the overlay, so the
         # control is here beside it and not four clicks into Settings.
-        self.btn_lock = ctk.CTkButton(side, text="Unlock", width=84, height=32,
+        self.btn_lock = ctk.CTkButton(side, text="Unlock", width=84, height=SPACE["button_h"],
                                       font=F_STRONG, **BTN_SECONDARY,
                                       command=self.toggle_overlay_lock)
         tip(self.btn_lock, TIPS["lock"]).pack(side="left", padx=4)
         self.tour_settings = tip(ctk.CTkButton(side, text="Settings", width=94,
-                                               height=32, font=F_STRONG,
+                                               height=SPACE["button_h"], font=F_STRONG,
                                                **BTN_SECONDARY,
                                                command=self.open_settings),
                                  TIPS["settings"])
         self.tour_settings.pack(side="left", padx=4)
+        # 1.10040 (#309): the welcome again, the tour and the useful links.
+        self.help_menu = tk.Menu(self, tearoff=0, bg=PANEL, fg=TEXT,
+                                 activebackground=RULE, activeforeground=ORANGE,
+                                 font=F_BODY)
+        for label, command in (
+                ("Welcome", lambda: self.show_welcome(force=True)),
+                ("Show me round", lambda: self.start_tour(force=True)),
+                ("User guide", lambda: self.open_page(WL.GUIDE_URL)),
+                ("Report a bug", lambda: self.open_page(WL.ISSUES_URL)),
+                ("Changelog", lambda: self.open_page(WL.CHANGELOG_URL))):
+            self.help_menu.add_command(label=label, command=command)
+        self.btn_help = tip(ctk.CTkButton(side, text="Help", width=64, height=SPACE["button_h"],
+                                          font=F_STRONG, **BTN_SECONDARY,
+                                          command=self.open_help_menu),
+                            TIPS["help"])
+        self.btn_help.pack(side="left", padx=4)
         # Built but not packed. It appears only if the website says there is
         # a newer build, so an up-to-date app never carries a button that
         # does nothing.
         self.btn_update = ctk.CTkButton(side, text="UPDATE AVAILABLE",
-                                        width=170, height=32, font=F_STRONG,
+                                        width=170, height=SPACE["button_h"], font=F_STRONG,
                                         **BTN_PRIMARY,
                                         command=self.update_button_pressed)
         tip(self.btn_update, TIPS["update"])
+
+        # 1.10040 (#310): who, in what, where, and the overlay - one line.
+        self.status_strip = tip(StatusStrip(head, SPACE["strip_h"]), TIPS["status_strip"])
+        self.status_strip.pack(fill="x")
+        # The tabs (1.10036, #147) as chevrons (1.10040, #310): the map, then
+        # the six tools, F2 to F8. With tools as windows the same tabs open
+        # the windows.
+        self.tab_strip = tip(TabStrip(head, self.pick_tab, SPACE["tab_h"]), TIPS["tabs"])
+        self.tab_strip.pack(fill="x", padx=12, pady=(2, 6))
+        for key, _label, fkey in TS.TABS:
+            self.bind("<%s>" % fkey, lambda _e, k=key: self.pick_tab(k), add="+")
+        self.tour_find = self.tab_strip
+        self.active_tab = "map"
+        self.paint_tabs()
         self.show_overlay_state()
 
     def _fit_top_bar(self, event=None):
@@ -4273,6 +4998,26 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             except Exception:
                 scale = 1.0
             label.configure(wraplength=int(room / scale))
+
+    def open_help_menu(self):
+        """Help's menu, dropped down under the button."""
+        button = attr(self, "btn_help")
+        try:
+            self.help_menu.tk_popup(button.winfo_rootx(),
+                                    button.winfo_rooty() + button.winfo_height())
+        finally:
+            try:
+                self.help_menu.grab_release()
+            except Exception:
+                pass
+
+    def open_page(self, url):
+        """A web page in the browser, said on the status line either way."""
+        if open_link(url):
+            self.say("Opened %s in your browser." % url)
+            return True
+        self.say("Could not open a browser. The page is %s" % url, AMBER)
+        return False
 
     def open_download_page(self):
         """Send them to the download page. Do not fetch or run anything."""
@@ -4441,7 +5186,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.fields = {}
         for label, key, values in reversed((
                 ("Commodity", "commodity", list(SV.KNOWN_COMMODITIES)),
-                ("Rigs", "rigs", [""] + [str(n) for n in range(1, MAX_RIGS + 1)]),
+                ("Rigs", "rigs", [""] + [str(n) for n in range(1, SITE_RIGS + 1)]),
                 ("Amount", "amount", [""] + AMOUNT_LEVELS),
                 ("Density", "density", [""] + DENSITY_LEVELS))):
             row = ctk.CTkFrame(pinned, fg_color="transparent")
@@ -4599,10 +5344,25 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         journal reader for weeks because of it, and the reader was fine.
         The stage is tracked as it goes, so the line on screen names what
         actually broke.
+
+        One chain, however it is called (1.10040): a tick called early takes
+        the place of the one that was waiting, rather than starting another
+        that runs beside it.
         """
+        waiting = attr(self, "_tick_job", None)
+        if waiting:
+            try:
+                self.after_cancel(waiting)
+            except Exception:
+                pass
         stage = "Journal"
         try:
-            self.game = self.watcher.poll()
+            # A long journal is read from the top on a thread of its own
+            # (1.10040, #276); until it is done there is nothing to poll.
+            if self.follow_catch_up():
+                self.game = self.watcher
+            else:
+                self.game = self.watcher.poll()
             self.follow_prompts(self.game)
             stage = "Earnings"
             # Its own stage, and not part of "Journal". The books decide
@@ -4625,6 +5385,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 self.extras_booked(note)
             self.save_refined()
             self.show_tonnes()
+            stage = "Squadron"
+            self.squad_sweep()
+            stage = "EDDN"
+            self.eddn_sweep()
             stage = "Display"
             self.update_telemetry(self.game)
             # Back to Earnings for the readout as well as the bookkeeping.
@@ -4632,7 +5396,11 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             # somebody looking at the map code.
             stage = "Earnings"
             self.update_earnings()
+            if time.time() - attr(self, "_cards_at", 0.0) > MAP_CARDS_EVERY_S:
+                self._cards_at = time.time()
+                self.show_map_cards()
             self.post_discord_sessions()
+            self.follow_streamer()
             stage = "Online reporting"
             self.report_online(self.game)
         except Exception as exc:
@@ -4647,6 +5415,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.follow_layouts()
             self.follow_land()
             self.follow_ledger()
+            self.follow_stream()
             self.follow_update()
             self.follow_input()
             try:
@@ -4658,6 +5427,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             except Exception as exc:
                 self.trouble("Wing link", exc)
             try:
+                self.wing_auto_tick()
+            except Exception as exc:
+                self.trouble("Wing link", exc)
+            try:
                 self.keep_board()
             except Exception as exc:
                 self.trouble("Leaderboard", exc)
@@ -4665,7 +5438,84 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 self.follow_crowd()
             except Exception as exc:
                 self.trouble("Community figures", exc)
-            self.after(700, self.tick)
+            try:
+                # 1.10040 (#302): marks made with no connection go when
+                # there is one.
+                self.send_marks()
+            except Exception as exc:
+                self.trouble("Site marks", exc)
+            try:
+                # 1.10040 (#145, #146, #153): the session's clock said, the
+                # sonar and the spoken directions.
+                self.follow_voice()
+            except Exception as exc:
+                self.trouble("Voice", exc)
+            self._tick_job = self.after(700, self.tick)
+
+    def trace_rewrite(self, name, raw):
+        """Trace mode (1.10040, #273): one line in the trace for each change
+        the game writes to Status.json or Cargo.json while a Rhino session is
+        open, with the time and the few fields journalrows keeps - into the
+        support bundle. Off by default. Never raises."""
+        try:
+            if not (attr(self, "settings", None) or {}).get("trace_files"):
+                return False
+            books = attr(self, "earnings", None)
+            watcher = attr(self, "watcher", None)
+            if getattr(books, "rhino", None) is None and not getattr(watcher, "rhino_out", False):
+                return False
+            last = attr(self, "_trace_last", None)
+            if not isinstance(last, dict):
+                last = self._trace_last = {}
+            entry, last[name] = JR.trace_entry(name, raw, last.get(name), SV.utc_now())
+            if entry is None:
+                return False
+            path = os.path.join(DATA_DIR, SB.TRACE_LOG)
+            if os.path.exists(path) and os.path.getsize(path) > SB.TRACE_MAX_BYTES:
+                os.replace(path, path + ".old")
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, sort_keys=True) + "\n")
+            return True
+        except Exception:
+            return False
+
+    def follow_catch_up(self):
+        """True while the journal is being read from the top on a thread of
+        its own (1.10040, #276). The window carries on meanwhile and says how
+        far it has got; once it is done the app's reader takes over all it
+        read, and the poll that follows goes on from there - Status.json, the
+        market and the hold included, as a first poll always has. A journal
+        too short to need it is read in one go, as it always was."""
+        watcher = attr(self, "watcher")
+        if watcher is None:
+            return False
+        job = attr(self, "_catch_up", None)
+        try:
+            if job is None:
+                if getattr(watcher, "_journal", None) is not None or \
+                        not getattr(watcher, "directory", None) or \
+                        not CU.wants_thread(watcher.directory):
+                    return False
+                job = self._catch_up = CU.CatchUp(
+                    JN.JournalWatcher(watcher.directory)).start()
+            if job.reader.directory != watcher.directory:
+                # Pointed at another folder in Settings meanwhile.
+                job.stop()
+                self._catch_up = None
+                return self.follow_catch_up()
+            if not job.done():
+                note = job.note()
+                if note != attr(self, "_catch_up_said", None):
+                    self._catch_up_said = note
+                    self.say(note, AMBER)
+                return True
+            self._catch_up = None
+            watcher.adopt(job.reader)
+            self.say("Journal read from the top - up to date with the game.", GREEN)
+        except Exception as exc:
+            self._catch_up = None
+            self.trouble("Journal", exc)
+        return False
 
     def fast_tick(self):
         """Ten times a second: the keys, then the compass and the scope.
@@ -4831,9 +5681,9 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         remembered and only the message on screen repeats.
         """
         import traceback
-        detail = traceback.format_exc()
+        detail = self.without_secrets(traceback.format_exc())
         try:
-            self.say("%s problem: %s" % (stage, exc), RED)
+            self.say("%s problem: %s" % (stage, self.without_secrets(exc)), RED)
         except Exception:
             pass
         # isinstance, not "is None". A missing attribute on a Tk widget
@@ -4882,6 +5732,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         return self.location_box.get().strip() or "1"
 
     def update_telemetry(self, state):
+        self.show_status_strip(state)
         if not state.running:
             trouble = bool(getattr(state, "problem", ""))
             self.t_where.configure(text=state.where,
@@ -4901,7 +5752,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.redraw()
             return
 
-        self.t_where.configure(text=state.where, text_color=TEXT)
+        self.t_where.configure(text=self.hide_names(state.where), text_color=TEXT)
         self.follow_target(state)
         self.follow_touchdown(state)
         self.follow_arrival(state)
@@ -4972,6 +5823,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         warned.add(body.lower())
         self.say("HIGH GRAVITY - %s is %.2f g. Take the landing and the Rhino "
                  "slowly." % (body, gravity), RED)
+        self.speak("high_gravity")
         overlay = attr(self, "overlay", None)
         shower = getattr(overlay, "alarm", None)
         if callable(shower):
@@ -5155,6 +6007,51 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             out["why"] = "The map picture could not be drawn: %s" % exc
         return out
 
+    def site_card(self, system, body, spot=""):
+        """A site on the community map as a picture (1.10040, #325): the
+        body's shared finds where they are, the location in the middle, the
+        map's facts under it. Saved in the pictures folder and opened. With
+        the body's finds not fetched yet, they are asked for and the card
+        is drawn when they arrive. Answers a dict: path, note, why."""
+        out = {"path": "", "note": "", "why": ""}
+        ok, why = MI.pillow_status()
+        if not ok:
+            out["why"] = why.replace("Map pictures", "Site cards")
+            self.say(out["why"], AMBER)
+            return out
+        key = (str(system).lower(), str(body).lower())
+        had = (attr(self, "shared", None) or {}).get(key)
+        if not had:
+            self._card_waiting = key + (str(spot or ""),)
+            if self.community.body_deposits(system, body):
+                self.say("Fetching %s's finds from the community map for the card..." % body)
+            else:
+                out["why"] = "The community map cannot be reached for the card."
+                self._card_waiting = None
+                self.say(out["why"], AMBER)
+            return out
+        self._card_waiting = None
+        rows = SCD.rows_for(had.get("rows") or [], spot)
+        got = SCD.facts(had.get("rows") or [], spot)
+        out["note"] = SCD.note(got)
+        if not rows:
+            out["why"] = out["note"]
+            self.say(out["why"], AMBER)
+            return out
+        try:
+            image, _scene = MI.render_map(rows, system=system, body=body, signal=spot or "",
+                                          cmdr="", when=time.time(), version=APP_VERSION,
+                                          colour=colour_for, note=out["note"])
+            folder = MI.pictures_dir(DATA_DIR)
+            out["path"] = MI.save_picture(image, os.path.join(folder, SCD.picture_name(system, body, spot)))
+            MI.tidy_pictures(folder)
+            open_path(out["path"])
+            self.say("Site card saved: %s" % os.path.basename(out["path"]), GREEN)
+        except Exception as exc:
+            self.trouble("Drawing the site card", exc)
+            out["why"] = "The site card could not be drawn: %s" % exc
+        return out
+
     def dock_picture(self, note):
         """The Rhino coming aboard: keep the map as it stood, before the
         rigs come off it (a setting). Only a dock that happens now - the
@@ -5246,9 +6143,6 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         one saved when its Rhino docked, else - for a session that has just
         ended some other way - the map as it is now."""
         try:
-            settings = attr(self, "settings", None) or {}
-            if not settings.get("discord_attach_map", True):
-                return None
             first = SV._epoch(row.get("started")) or 0
             last = SV._epoch(row.get("closed") or row.get("ended")) or time.time()
             path = ""
@@ -5267,38 +6161,48 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         except Exception:
             return None
 
-    def discord_job(self, hook, payload, sid, picture=None):
-        """On the worker thread: post one session summary, with its map when
-        there is one, and answer with JSON that names the session. Never
-        raises - an answer that says what went wrong is still an answer."""
+    def discord_job(self, hook, payload, sid, picture=None, name="", card=None):
+        """On the worker thread: post one session summary to one webhook,
+        with its map and its card (1.10040) when there are, and answer with
+        JSON that names the session, the webhook's key and its name - never
+        its address. Never raises - an answer that says what went wrong is
+        still an answer."""
+        told = {"edsmt_session": sid, "edsmt_hook": WH.hook_key(hook), "name": name}
         try:
             try:
-                if picture:
-                    reply = EDO.discord_post_file(hook, payload, picture[0], picture[1])
+                if picture and card:
+                    reply = EDO.discord_post_file(hook, payload, picture[0], picture[1],
+                                                  more=[card])
+                elif picture or card:
+                    first = picture or card
+                    reply = EDO.discord_post_file(hook, payload, first[0], first[1])
                 else:
                     reply = EDO.discord_post(hook, payload)
             except Exception:
-                if not picture:
+                if not (picture or card):
                     raise
                 # A picture Discord would not take must not cost the summary.
                 bare = json.loads(json.dumps(payload))
                 bare["embeds"][0].pop("image", None)
                 reply = EDO.discord_post(hook, bare)
-            return json.dumps({"edsmt_session": sid, "message": reply})
+            return json.dumps(dict(told, message=reply))
         except Exception as exc:
-            return json.dumps({"edsmt_session": sid, "error": str(exc)})
+            return json.dumps(dict(told, error=str(exc)))
 
-    def discord_edit_job(self, hook, payload, sid, message_id, keep):
+    def discord_edit_job(self, hook, payload, sid, message_id, keep, name=""):
+        told = {"edsmt_session": sid, "edsmt_hook": WH.hook_key(hook), "name": name,
+                "edit": True}
         try:
             reply = EDO.discord_edit(hook, message_id, payload, keep=keep)
-            return json.dumps({"edsmt_session": sid, "edit": True, "message": reply})
+            return json.dumps(dict(told, message=reply))
         except Exception as exc:
-            return json.dumps({"edsmt_session": sid, "edit": True, "error": str(exc)})
+            return json.dumps(dict(told, error=str(exc)))
 
-    def discord_edits(self, hook):
+    def discord_edits(self, hook, name=""):
         """Edit the message of every session whose figures have changed
         since it was posted - the sale, its wages, its merits - once things
-        have gone quiet. The same message, never another one. Never raises;
+        have gone quiet. The same message on the same webhook, never another
+        one, and never one another webhook posted (1.10040). Never raises;
         how many edits were queued."""
         try:
             book, books = attr(self, "post_book", None), attr(self, "earnings")
@@ -5306,12 +6210,16 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if book is None or books is None or not hook \
                     or not settings.get("discord_edit_after_sale", True):
                 return 0
+            mine = WH.hook_key(hook)
             rows = {str(r.get("id")): r for r in books.sessions}
             queued = 0
-            for sid, entry in list(book.posted.items()):
+            for key, entry in list(book.posted.items()):
+                sid, owner = SL.split_key(key)
+                if owner != mine:
+                    continue
                 row = rows.get(sid)
                 state = self.discord_state(row) if row is not None else None
-                if row is None or not book.watch(sid, state):
+                if row is None or not book.watch(key, state):
                     continue
                 summary = self.discord_summary(row)
                 if summary is None:
@@ -5320,11 +6228,11 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                     summary["image"] = entry["image"]
                 payload = EDO.discord_session_message(
                     row, row.get("cmdr") or "", when=entry.get("when"), summary=summary)
-                book.edited(sid, state)
-                self.worker.submit(
+                book.edited(key, state)
+                self.send_discord(
                     EDO.DISCORD_TAG,
                     lambda p=payload, s=sid, m=entry["id"], k=list(entry.get("attachments") or []):
-                    self.discord_edit_job(hook, p, s, m, k))
+                    self.discord_edit_job(hook, p, s, m, k, name))
                 queued += 1
             return queued
         except Exception:
@@ -5340,13 +6248,16 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         if not isinstance(data, dict) or "edsmt_session" not in data:
             return False
         sid, book = str(data["edsmt_session"]), attr(self, "post_book", None)
+        key = SL.post_key(sid, data.get("edsmt_hook") or "")
         if data.get("error"):
             if data.get("edit") and "404" in str(data["error"]) and book is not None:
-                book.gone(sid)
-            self.say("Discord did not take it: %s" % data["error"], AMBER)
+                book.gone(key)
+            name = str(data.get("name") or "")
+            self.say("Discord did not take it: %s" % (
+                "%s - %s" % (name, data["error"]) if name else data["error"]), AMBER)
             return True
         if book is not None:
-            book.answered(sid, data.get("message"))
+            book.answered(key, data.get("message"))
         return True
 
     # -- what the run is worth -------------------------------------------
@@ -5559,6 +6470,23 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         average = self.galactic_average(name)[0]
         return (int(average), None, "average") if average else (0, None, "")
 
+    def mine_price(self, name):
+        """(credits a tonne, where) for what is worth mining (1.10040): the
+        best price known near here, and where it is - "at Hub (Ega)", the
+        same with ", older than a day", or "galactic average". (0, "") when
+        nothing prices it. Never raises."""
+        try:
+            credits, row, how = self.best_price(name)
+        except Exception:
+            return 0, ""
+        if not credits:
+            return 0, ""
+        if row and how in ("fresh", "stale"):
+            where = "at %s (%s)" % (row.get("station") or "a market",
+                                    row.get("system") or "?")
+            return credits, where + (", older than a day" if how == "stale" else "")
+        return credits, "galactic average"
+
     def session_estimate(self, run):
         """What a Rhino session is worth so far, told as plainly as it can be.
 
@@ -5673,7 +6601,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if SV.earned(run):
                 text += ", %s Cr sold" % credits_text(SV.earned(run))
             bits.append(text)
-        label.configure(text="   ".join(bits))
+        label.configure(text=self.hide_names("   ".join(bits)))
 
     def hold_now(self):
         """Everything aboard, ship and SRV together."""
@@ -6059,11 +6987,14 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         survey = self.survey_view(system, body, centre, radius)
         self.plan.map_prefs = self.map_prefs(prices=True)
         self.plan.guidance = self.guidance_view(state, centre, radius) if live else None
+        # The map's title, as streamer mode lets a stream see it.
+        caption = self.hide_names(caption)
         self.plan.show(rows, heading=heading, caption=caption, survey=survey,
                        rigs=rigs, signal=self.signal(),
                        anchor=self.site_offset(system, body, self.signal(),
                                                centre, radius),
-                       place=(system, body, self.signal()))
+                       place=(system, body, self.signal()),
+                       wing=self.wing_marks() if live else None)
         self.draw_overlay(rows if live else [], heading,
                           centre=centre if live else None,
                           radius_m=radius if live else None,
@@ -6132,7 +7063,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         # and Methanol Crystals only come off ice; Iridium and Gold never do.
         # Sorting forty commodities by price and showing the same order on
         # every world puts things at the top that cannot be underneath you.
-        others = [c for c in SV.KNOWN_COMMODITIES if c not in offered]
+        # 1.10040 (#306): only the materials ticked in the picker - what this
+        # body offers stays whatever the ticks.
+        others = MT.offered([c for c in SV.KNOWN_COMMODITIES if c not in offered],
+                            attr(self, "settings", None) or {})
         possible, elsewhere = SV.for_body(others, self.planet_class())
         names = (offered
                  + SV.by_value(possible, self.prices)
@@ -6352,6 +7286,15 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         ctk.CTkLabel(box, text="Shared finds in this signal:",
                      font=F_SMALL_B, text_color=DIM, anchor="w",
                      justify="left").pack(fill="x", padx=6, pady=(8, 2))
+        # 1.10040 (#302): the good and bad marks of the site they are in.
+        system, body = self.here()
+        if system and body:
+            line = tk.Frame(box, bg=PANEL, bd=0)
+            line.pack(fill="x", padx=6, pady=(0, 2))
+            tk.Label(line, text="This site:", font=F_SMALL, fg=DIM, bg=PANEL,
+                     bd=0).pack(side="left", padx=(0, 4))
+            for text, command, lit in self.mark_buttons(system, body, self.signal()):
+                mini_button(line, text, command, lit).pack(side="left", padx=2)
         for row in theirs:
             bits = [row.get("commodity") or "unnamed"]
             if row.get("rigs"):
@@ -6486,6 +7429,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         deposit, metres = found
         if at == attr(self, "_guide_to", None):
             self._guide_to = None
+        self.speak("arrived")
         chosen = attr(self, "selected", None)
         if chosen and str(chosen.get("id")) == at:
             return
@@ -6590,7 +7534,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if picked:
                 self.choose_signal(at[2])
             mine, theirs = self.zone_finds(system, body, at[2])
-            line = ZN.zone_line(zone, mine, theirs)
+            line = ZN.zone_line(zone, mine, theirs, price_of=self.mine_price)
             if picked:
                 line += " - signal %s picked for you." % at[2]
             self.say(line, CYAN)
@@ -6658,7 +7602,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             mine, theirs = self.zone_finds(system, body, signal)
         except Exception:
             return None
-        return ZN.status_card(signal, mine, theirs)
+        return ZN.status_card(signal, mine, theirs, price_of=self.mine_price)
 
     def choose_signal(self, number):
         self._signal_picked = True
@@ -6740,6 +7684,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                      % self.key("deposit", "MARK DEPOSIT"), AMBER)
             self.flash("NOT MARKED - NO COMMODITY",
                        "fill in all four boxes first", AMBER)
+            self.speak("deposit_incomplete")
             return
         if self.refine_ranged(commodity):
             return
@@ -6751,6 +7696,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         if same is not None and not (armed and armed[0] == same[0]["id"]
                                      and time.time() - armed[1] < 6):
             self._mark_armed = (same[0]["id"], time.time())
+            self.speak("deposit_already")
             return self.say("You already marked %s %s from here. Press UPDATE "
                             "to change it, or MARK again to add a separate "
                             "deposit." % (same[0].get("commodity") or "a deposit",
@@ -6804,6 +7750,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                            word.upper() for word in missing),
                        "all four boxes, then %s" % self.key("deposit", "MARK"),
                        AMBER)
+            self.speak("deposit_incomplete")
             return
 
         self._mark_armed = None
@@ -6862,6 +7809,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                        str(record.get("amount") or ""),
                        "signal %s" % record.get("location")
                        if record.get("location") else "") if bit))
+        self.speak("deposit_marked")
 
     def clear_deposit_boxes(self):
         """Empty Rigs, Amount and Density - not the commodity, which the
@@ -6878,7 +7826,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
     def missing_fields(self, state=None):
         """Which of Rigs, Amount and Density are still blank for MARK -
-        in the order the boxes are read. Rigs must be 1 to MAX_RIGS."""
+        in the order the boxes are read. Rigs must be 1 to SITE_RIGS."""
         fields = attr(self, "fields", None) or {}
         state = state if state is not None else attr(self, "game")
 
@@ -6890,7 +7838,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         missing = []
         rigs = box("rigs")
         try:
-            if not 1 <= int(float(rigs)) <= MAX_RIGS:
+            if not 1 <= int(float(rigs)) <= SITE_RIGS:
                 missing.append("rigs")
         except (TypeError, ValueError):
             missing.append("rigs")
@@ -7078,6 +8026,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                    "%d of %d  -  %s" % (down, MAX_RIGS,
                                         "warning past %s" % _metres(limit)
                                         if limit else "distance warning off"))
+        self.speak("rigs_full" if down >= MAX_RIGS and moved_from is None
+                   else VO.rig_line("down", n))
         if moved_from is not None:
             return self.say("Rig %s moved here%s - %s from where it was marked."
                             " %s picks a rig up." % (
@@ -7091,6 +8041,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.flash("RIG %s DOWN - CLOSE TO %s" % (label, clash[0].upper()),
                        "%s from their rig %d" % (_metres(clash[2]), clash[1]),
                        AMBER)
+            self.speak("wing_clash")
         elif crowded:
             # Your own rigs, the same check as a wingmate's (1.10034).
             self.flash("RIG %s DOWN - CLOSE TO RIG %s" % (label, crowded[1]),
@@ -7134,6 +8085,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.refresh_rigs_note()
         self.redraw()
         self.flash("RIG %s UP" % label, "%d still down" % left)
+        self.speak(VO.rig_line("up", n))
         return self.say("Rig %s up. %d still down: %s." % (
             label, left, ", ".join(self.rig_label(r)
                                    for r in self.rigs_at["rigs"])), GREEN)
@@ -7198,6 +8150,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.rig_plan = None
         key = self.key("trace", "the planner key")
         self.flash("TRACING THE EDGE", "drive round the deposit back to here")
+        self.speak("plan_trace_start")
         return self.say("Rig planner: tracing. Drive along the deposit's edge "
                         "and back to where you are now - it closes by itself "
                         "when you get here, or press %s to close it where you "
@@ -7231,6 +8184,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self._trace = None
         self.redraw()
         self.say("Rig planner: %s - trace cancelled." % why, AMBER)
+        self.speak("plan_cancelled")
         return False
 
     def finish_trace(self):
@@ -7268,6 +8222,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         count = len(pins)
         self.flash("RIG PLAN  %d PIN%s" % (count, "" if count == 1 else "S"),
                    "%d m apart - drive to P1" % round(spacing))
+        self.speak("plan_ready")
         return self.say("Rig planner: %d rig%s fit %d m apart in what you "
                         "traced (about %s m2). The pins are on the scope in "
                         "driving order - drop a rig on each; the next one is "
@@ -7346,11 +8301,39 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                              if rig.get("srv") in order else 0),
                          "lat": float(rig["lat"]), "lon": float(rig["lon"])}
                         for rig in self._rigs_here()][:12]
+        if not leave:
+            try:
+                self._wing_survey_beat(beat, state, system, body)
+            except Exception as exc:
+                self.trouble("Wing link survey", exc)
         return beat
+
+    def _wing_survey_beat(self, beat, state, system, body):
+        """1.10040 (#171): the shared survey in one beat - the ground your
+        scanner has swept on this body, the finds marked near you, and your
+        own rig plan's pins. Each small, with a fixed most (wingmates.py)."""
+        radius = getattr(state, "radius_m", None) if state is not None else None
+        here = state is not None and getattr(state, "has_position", False)
+        cmap = self._survey_map()
+        beat["sweep"] = []
+        if cmap is not None and _same_place(cmap.system, system) and \
+                _same_place(cmap.body, body):
+            beat["sweep"] = [list(p) for p in WM.sweep_for_beat(
+                cmap.points, radius or getattr(cmap, "radius_m", 0))]
+            beat["scan_m"] = max(100.0, min(10000.0, float(cmap.scan_m)))
+        store = attr(self, "store", None)
+        rows = list(store.at(system, body)) if store is not None and system and body else []
+        beat["finds"] = WM.finds_for_beat(rows, state.lat if here else None,
+                                          state.lon if here else None, radius)
+        plan = attr(self, "rig_plan", None)
+        beat["pins"] = WM.pins_for_beat(plan, system, body)
+        if beat["pins"]:
+            beat["spacing"] = max(1.0, min(1000.0, float(
+                plan.get("spacing") or self.planner_spacing())))
 
     def wing_leave(self):
         code = attr(self, "_wing_joined", "")
-        self._wing_joined, self.wing_mates = "", []
+        self._wing_joined, self.wing_mates, self._wing_up = "", [], False
         community = attr(self, "community")
         if code and community is not None:
             community.wing(code, self.wing_beat(leave=True))
@@ -7363,6 +8346,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if problem != attr(self, "_wing_problem", ""):
                 self.say("Wing link: %s" % problem, AMBER)
             self._wing_problem = problem
+            # 1.10040: the next answer is the link coming back, and said so.
+            self._wing_up = False
             return
         try:
             data = json.loads(message)
@@ -7376,9 +8361,427 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self._wing_problem = ""
         joined = [str(mate.get("name") or "") or "a wingmate" for mate in mates
                   if str(mate.get("name") or "") not in before]
-        self.wing_mates, self._wing_heard = mates, time.time()
+        left = before - {str(mate.get("name") or "") for mate in mates}
+        first = not attr(self, "_wing_up", False)
+        self.wing_mates, self._wing_heard, self._wing_up = mates, time.time(), True
         if joined:
             self.say("Wing: %s on the link." % ", ".join(joined), GREEN)
+        # 1.10040 (#145): the link up, then wingmates coming and going.
+        self.speak(VO.wing_line(first, joined, left))
+        self.wing_live_marks(mates)
+
+    # -- 1.10040 (#170): linked with your wing in the game, no code --------
+
+    def wing_roster(self):
+        """Who is in your wing in the game, as the journal last said."""
+        return list(getattr(attr(self, "watcher"), "wing", None) or [])
+
+    def wing_cmdr(self):
+        return str(getattr(attr(self, "watcher"), "cmdr", "") or "")[:40]
+
+    def wing_auto_on(self):
+        """The switch on, a commander name from the journal, and somebody
+        in your wing in the game."""
+        settings = attr(self, "settings", None) or {}
+        return bool(settings.get("wing_auto", True)) and bool(self.wing_cmdr()) \
+            and bool(self.wing_roster())
+
+    def wing_active(self):
+        """Linked at all: by a typed code, or with your wing in the game."""
+        return self.wing_on() or (self.wing_auto_on()
+                                  and bool(attr(self, "wing_auto_mates", None)))
+
+    def wing_auto_tick(self, now=None):
+        """Every WING_BEAT_S while you are in a wing in the game, a beat to
+        the in-game wing link: the same as a typed code's, with who you are
+        and who is in your wing, both from the journal. The server answers
+        with the wingmates who have you in their wing too. One in flight at
+        a time; after a failure the next waits WING_AUTO_RETRY_S. Out of
+        the wing, or switched off, it says goodbye once."""
+        now = now or time.time()
+        if not self.wing_auto_on():
+            if attr(self, "_wing_auto_joined", False):
+                self.wing_auto_leave()
+            return False
+        community = attr(self, "community")
+        if community is None or not hasattr(community, "wing_auto"):
+            return False
+        sent = attr(self, "_wing_auto_sent", 0.0) or 0.0
+        if attr(self, "_wing_auto_busy", False) and now - sent < 20.0:
+            return False
+        wait = WING_AUTO_RETRY_S if attr(self, "_wing_auto_problem", "") else WING_BEAT_S
+        if now - sent < wait:
+            return False
+        if not community.wing_auto(self.wing_auto_beat()):
+            return False
+        self._wing_auto_busy, self._wing_auto_sent = True, now
+        self._wing_auto_joined = True
+        return True
+
+    def wing_auto_beat(self, leave=False):
+        beat = self.wing_beat(leave=leave)
+        me = self.wing_cmdr()
+        beat["cmdr"] = beat["name"] = me
+        beat["wing"] = [name for name in self.wing_roster()
+                        if WM.fold(name) != WM.fold(me)][:WM.MAX_MATES]
+        return beat
+
+    def wing_auto_leave(self):
+        """Out of the wing in the game: goodbye, once, and the wingmates it
+        brought go at once."""
+        joined = attr(self, "_wing_auto_joined", False)
+        self._wing_auto_joined, self._wing_auto_busy = False, False
+        self.wing_auto_mates = []
+        community = attr(self, "community")
+        if joined and self.wing_cmdr() and community is not None and \
+                hasattr(community, "wing_auto"):
+            community.wing_auto(self.wing_auto_beat(leave=True))
+
+    # -- the squadron share (1.10040, #301) ------------------------------------
+
+    def squad_sweep(self, now=None):
+        """Each tick: the reader's picked events into the box when the
+        share is on - thrown away when it is off, so nothing waits for a
+        switch to be turned on later - and a batch sent once a minute."""
+        watcher = attr(self, "watcher", None)
+        if watcher is None:
+            return False
+        events = watcher.take_squad_events() if hasattr(watcher, "take_squad_events") else []
+        squadron = getattr(watcher, "squadron", None)
+        if not SQ.wanted(self.settings, squadron):
+            self.squad_box.events = []
+            return False
+        for event in events:
+            self.squad_box.add(event)
+        now = now if now is not None else time.time()
+        if self._squad_busy or not self.squad_box.due(now) or not self.community.ready:
+            return False
+        cmdr = self.board_cmdr()
+        if not cmdr:
+            return False
+        body = self.squad_box.take(squadron["id"], cmdr, now=now)
+        self._squad_sent = body["events"]
+        self._squad_busy = True
+        url = "%s/v1/squadron/report" % self.community.base_url
+        headers = self.community._headers()
+        self.worker.submit(SQ.TAG, lambda: json.dumps(EDO.post_json(url, body, headers=headers)))
+        return True
+
+    def take_squadron(self, ok, message):
+        """The server took the batch, or not: a failed batch waits for the
+        next minute. Nothing is said on the status line either way unless
+        it keeps failing - this is background bookkeeping."""
+        self._squad_busy = False
+        sent = attr(self, "_squad_sent", None) or []
+        self._squad_sent = []
+        if not ok:
+            self.squad_box.give_back(sent)
+            self._squad_failures = attr(self, "_squad_failures", 0) + 1
+            if self._squad_failures in (3, 30):
+                self.say("The squadron share has not got through %d times: %s"
+                         % (self._squad_failures, message), AMBER)
+            return False
+        self._squad_failures = 0
+        return True
+
+    # -- mining locations to EDDN (1.10040, #159) -------------------------------
+
+    def eddn_sweep(self, now=None):
+        """Each tick: the reader's messages into the outbox when the switch
+        is on - thrown away when it is off - and one sent when it is due."""
+        watcher = attr(self, "watcher", None)
+        if watcher is None:
+            return False
+        items = watcher.take_eddn() if hasattr(watcher, "take_eddn") else []
+        if not (self.settings or {}).get(ED.SETTING, ED.DEFAULT):
+            self.eddn_box.items = []
+            return False
+        now = now if now is not None else time.time()
+        for item in items:
+            self.eddn_box.add(item, now=now)
+        if self._eddn_busy or not self.eddn_box.due(now):
+            return False
+        cmdr = self.board_cmdr()
+        if not cmdr:
+            return False
+        item = self.eddn_box.take(now=now)
+        if item is None:
+            return False
+        self._eddn_out = item
+        self._eddn_busy = True
+        env = ED.envelope(item, cmdr, APP_VERSION)
+
+        def job():
+            code, text = ED.upload(env)
+            return json.dumps({"code": code, "text": text})
+        self.worker.submit(ED.TAG, job)
+        return True
+
+    def take_eddn(self, ok, message):
+        """What the network said. Background bookkeeping: nothing on the
+        status line unless messages keep being refused."""
+        self._eddn_busy = False
+        item, self._eddn_out = attr(self, "_eddn_out", None), None
+        if item is None:
+            return False
+        code, text = 0, str(message or "")
+        if ok:
+            try:
+                answer = json.loads(message or "{}")
+                code, text = int(answer.get("code") or 0), str(answer.get("text") or "")
+            except (ValueError, TypeError, AttributeError):
+                code = 0
+        said = self.eddn_box.result(item, code, text=text)
+        if said == "drop" and code in ED.DROP_CODES and self.eddn_box.dropped in (1, 10):
+            self.say("EDDN refused a mining-location message (HTTP %s): %s" % (code, text[:80]), AMBER)
+        return said == "sent"
+
+    def take_wing_auto(self, ok, message):
+        """The wingmates in your wing in the game who have you in theirs -
+        and, whatever the answer says, only commanders in your own wing."""
+        self._wing_auto_busy = False
+        if not ok:
+            problem = str(message or "")
+            if problem != attr(self, "_wing_auto_problem", ""):
+                self.say("Wing link with your wing in the game: %s" % problem, AMBER)
+            self._wing_auto_problem = problem
+            return
+        try:
+            data = json.loads(message)
+        except (TypeError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        self._wing_auto_problem = ""
+        mates = WM.listed(data.get("members"), self.wing_roster())
+        before = {WM.fold(mate.get("name")) for mate in
+                  attr(self, "wing_auto_mates", None) or []}
+        joined = [str(mate.get("name")) for mate in mates
+                  if WM.fold(mate.get("name")) not in before]
+        left = before - {WM.fold(mate.get("name")) for mate in mates}
+        self.wing_auto_mates, self._wing_auto_heard = mates, time.time()
+        if joined:
+            self.say("Wing: %s linked from your wing in the game." % ", ".join(joined),
+                     GREEN)
+        # 1.10040 (#145): linked once somebody in your wing in the game is
+        # there, then wingmates coming and going.
+        self.speak(VO.wing_line(bool(joined) and not before, joined, left))
+        self.wing_live_marks(mates)
+
+    def wing_mates_all(self, now=None):
+        """Everyone on the link, once each - the typed code's wing and your
+        in-game wing's - with how long ago each was last heard ("stale_s").
+        Somebody on both is the one heard from most recently."""
+        now = time.time() if now is None else now
+        best = {}
+        sources = []
+        if self.wing_on():
+            sources.append((attr(self, "wing_mates", None), attr(self, "_wing_heard", 0.0)))
+        if self.wing_auto_on():
+            sources.append((attr(self, "wing_auto_mates", None),
+                            attr(self, "_wing_auto_heard", 0.0)))
+        for mates, heard in sources:
+            for mate in mates or []:
+                if not isinstance(mate, dict):
+                    continue
+                try:
+                    stale = float(mate.get("age_s") or 0) + max(0.0, now - float(heard or 0.0))
+                except (TypeError, ValueError):
+                    stale = 0.0
+                key = WM.fold(mate.get("name")) or "#%d" % id(mate)
+                if key not in best or stale < best[key]["stale_s"]:
+                    best[key] = dict(mate, stale_s=stale)
+        return list(best.values())
+
+    def wing_colour_map(self, mates):
+        """{folded name: colour}, with you counted in so the whole wing
+        works out the same colours."""
+        return WM.colours([self.wing_cmdr()] + [str(m.get("name") or "") for m in mates])
+
+    def wing_here(self, fresh=True):
+        """The wingmates on this body, heard from inside WING_STALE_S."""
+        system, body = self.here()
+        return [mate for mate in self.wing_mates_all()
+                if _same_place(mate.get("system"), system)
+                and _same_place(mate.get("body"), body)
+                and (not fresh or mate["stale_s"] <= WING_STALE_S)]
+
+    def wing_live_marks(self, mates):
+        """#171: a find a wingmate marks is said as it comes in - who, what,
+        and how far and which way from you. What they had before they came
+        on the link, or before they came to this body, is not news."""
+        seen = attr(self, "_wing_seen", None)
+        if not isinstance(seen, dict) or len(seen) > 32:
+            seen = self._wing_seen = {}
+        state = attr(self, "game")
+        system, body = self.here()
+        for mate in mates or []:
+            name = str(mate.get("name") or "") or "A wingmate"
+            key = WM.fold(name)
+            place = (SV.fold(mate.get("system")), SV.fold(mate.get("body")))
+            before = seen.get(key)
+            fresh, keys = WM.new_finds(before[1] if before and before[0] == place else None,
+                                       mate.get("finds"))
+            seen[key] = (place, keys)
+            if not fresh or not (_same_place(mate.get("system"), system)
+                                 and _same_place(mate.get("body"), body)):
+                continue
+            for find in fresh[:3]:
+                where = ""
+                if state is not None and getattr(state, "has_position", False) and \
+                        getattr(state, "radius_m", None):
+                    metres = SV.surface_range_m(state.lat, state.lon, find["lat"],
+                                                find["lon"], state.radius_m)
+                    where = ", %s %s" % (_metres(metres), SV.compass(SV.bearing_deg(
+                        state.lat, state.lon, find["lat"], find["lon"])))
+                self.say("Wing: %s marked %s%s." % (name, find.get("c") or "a find", where),
+                         GREEN)
+
+    def wing_sweep_here(self):
+        """#171: the places the wing's scanners have swept on this body, as
+        (lat, lon) - counted in with yours in the swept figure."""
+        if not self.wing_active():
+            return []
+        out = []
+        for mate in self.wing_here(fresh=False):
+            for place in mate.get("sweep") or []:
+                try:
+                    out.append((float(place[0]), float(place[1])))
+                except (IndexError, TypeError, ValueError):
+                    continue
+        return out
+
+    def survey_cover(self, cmap):
+        """cmap.coverage(), with the ground the wing has swept on this body
+        counted in - and the gaps that leaves under "gaps" - once there is a
+        survey border to count it against. The sum is the costly one, so it
+        is worked out again at most every WING_COVER_S, unless the area
+        itself has changed."""
+        extra = self.wing_sweep_here() if cmap.centre is not None and \
+            cmap.border_m is not None else []
+        if not extra:
+            return cmap.coverage()
+        area = (cmap.centre, cmap.border_m, cmap.scan_m)
+        key = (cmap._version, len(extra), extra[0], extra[-1])
+        memo = attr(self, "_wing_cover", None)
+        now = time.time()
+        if isinstance(memo, tuple) and memo[0] is cmap and memo[1] == area and \
+                (memo[2] == key or now - memo[3] < WING_COVER_S):
+            return memo[4]
+        cover = cmap.coverage_with(extra)
+        self._wing_cover = (cmap, area, key, now, cover)
+        return cover
+
+    def wing_rigs_here(self):
+        """Every wingmate's rigs on this body, as {"lat", "lon"}."""
+        if not self.wing_active():
+            return []
+        out = []
+        for mate in self.wing_here():
+            for rig in mate.get("rigs") or []:
+                try:
+                    out.append({"lat": float(rig["lat"]), "lon": float(rig["lon"])})
+                except (KeyError, TypeError, ValueError):
+                    continue
+        return out
+
+    # -- 1.10040 (#172): one plan for the wing, its pins split -------------
+
+    def wing_plan(self, plan, where):
+        """The one plan the wing follows where you are: yours, or a
+        wingmate's when theirs has more pins - or, between equals, their
+        name comes first. `plan` as it was when no wingmate has one here."""
+        try:
+            return self._wing_plan(plan, where)
+        except Exception:
+            return plan
+
+    def _wing_plan(self, plan, where):
+        if not self.wing_active():
+            return plan
+        state = attr(self, "game")
+        if not (state is not None and state.has_position and state.radius_m):
+            return plan
+
+        def near(pins):
+            return any(SV.surface_range_m(state.lat, state.lon, p["lat"], p["lon"],
+                                          state.radius_m) <= WM.PLAN_REACH_M for p in pins)
+        candidates, mates = [], {}
+        own = plan if plan and not plan.get("shared") and not plan.get("wing") and \
+            where == (plan.get("system"), plan.get("body")) else None
+        if own and not near(own["pins"]):
+            own = None
+        if own:
+            candidates.append((self.wing_cmdr(), own["pins"]))
+
+        def same_deposit(pins):
+            return own is None or any(
+                SV.surface_range_m(p["lat"], p["lon"], q["lat"], q["lon"], state.radius_m)
+                <= WM.SAME_DEPOSIT_M for p in pins for q in own["pins"])
+        for mate in self.wing_here():
+            pins = []
+            for pin in mate.get("pins") or []:
+                try:
+                    pins.append({"n": int(pin["n"]), "lat": float(pin["lat"]),
+                                 "lon": float(pin["lon"])})
+                except (KeyError, TypeError, ValueError):
+                    continue
+            name = str(mate.get("name") or "") or "wingmate"
+            # With a plan of your own here, only theirs for the same deposit.
+            if pins and near(pins) and same_deposit(pins):
+                candidates.append((name, pins))
+                mates[name] = mate
+        if not mates:
+            return plan
+        chosen = WM.pick_plan(candidates)
+        if chosen is None or (own is not None and chosen[1] is own["pins"]):
+            return plan
+        name, pins = chosen
+        try:
+            spacing = float(mates[name].get("spacing") or 0) or self.planner_spacing()
+        except (TypeError, ValueError):
+            spacing = self.planner_spacing()
+        return {"system": where[0], "body": where[1], "wing": True, "by": name,
+                "spacing": spacing, "outline": [],
+                "pins": sorted(pins, key=lambda p: p["n"])}
+
+    def pin_owners(self, plan, pins):
+        """{pin number: (name, colour)} for the plan's pins that are a
+        wingmate's: the split on, and more than one of you working the
+        deposit - near its pins, and kept on it while on the link and on
+        the body. {} otherwise: every pin is yours."""
+        settings = attr(self, "settings", None) or {}
+        if not settings.get("wing_split_pins", True) or not self.wing_active():
+            return {}
+        state = attr(self, "game")
+        mates = [m for m in self.wing_here()
+                 if m.get("lat") is not None and m.get("lon") is not None]
+        if not mates or state is None or not state.radius_m:
+            return {}
+        names = {WM.fold(str(m.get("name") or "") or "wingmate"):
+                 str(m.get("name") or "") or "wingmate" for m in mates}
+        near = []
+        for mate in mates:
+            try:
+                if any(SV.surface_range_m(float(mate["lat"]), float(mate["lon"]),
+                                          pin["lat"], pin["lon"], state.radius_m)
+                       <= WM.DEPOSIT_REACH_M for pin in plan["pins"]):
+                    near.append(str(mate.get("name") or "") or "wingmate")
+            except (TypeError, ValueError):
+                continue
+        key = (plan.get("system"), plan.get("body"),
+               tuple((p["n"], round(p["lat"], 5), round(p["lon"], 5)) for p in plan["pins"]))
+        kept = attr(self, "_pin_crew", None)
+        before = kept[1] if isinstance(kept, tuple) and kept[0] == key else set()
+        crew = WM.crew_after(before, near, list(names.values()))
+        self._pin_crew = (key, crew)
+        if not crew:
+            return {}
+        me = WM.fold(self.wing_cmdr()) or "you"
+        split = WM.split_pins([pin["n"] for pin in pins], list(crew) + [me])
+        colours = self.wing_colour_map(self.wing_mates_all())
+        return {n: (names.get(k, k), colours.get(k) or OV.WING_COLOUR)
+                for n, k in split.items() if k != me}
 
     def wing_marks(self):
         """Wingmates on this body for the scope, as east/north metres from
@@ -7389,34 +8792,52 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             return None
 
     def _wing_marks(self):
-        mates = attr(self, "wing_mates", None)
-        if not mates or not self.wing_on():
+        if not self.wing_active():
             return None
         state = attr(self, "game")
         if not (state is not None and state.has_position and state.radius_m):
             return None
-        heard = time.time() - (attr(self, "_wing_heard", 0.0) or 0.0)
-        system, body = self.here()
+        mates = self.wing_here()
+        if not mates:
+            return None
+        colours = self.wing_colour_map(self.wing_mates_all())
+
+        def rel(lat, lon):
+            return SV.local_offset(state.lat, state.lon, float(lat), float(lon),
+                                   state.radius_m)
         marks = []
         for mate in mates:
-            if not (_same_place(mate.get("system"), system)
-                    and _same_place(mate.get("body"), body)):
-                continue
-            if float(mate.get("age_s") or 0) + heard > WING_STALE_S:
-                continue
             if mate.get("lat") is None or mate.get("lon") is None:
                 continue
-            east, north = SV.local_offset(state.lat, state.lon, mate["lat"],
-                                          mate["lon"], state.radius_m)
+            east, north = rel(mate["lat"], mate["lon"])
             rigs = []
             for rig in mate.get("rigs") or []:
-                re_, rn = SV.local_offset(state.lat, state.lon, rig["lat"],
-                                          rig["lon"], state.radius_m)
+                re_, rn = rel(rig["lat"], rig["lon"])
                 rigs.append({"n": rig.get("n"), "east": re_, "north": rn})
-            marks.append({"name": str(mate.get("name") or "") or "wingmate",
-                          "east": east, "north": north,
+            name = str(mate.get("name") or "") or "wingmate"
+            # 1.10040 (#171): their sweep and their finds, in their colour.
+            sweep, finds = [], []
+            for place in mate.get("sweep") or []:
+                try:
+                    sweep.append(rel(place[0], place[1]))
+                except (IndexError, TypeError, ValueError):
+                    continue
+            for find in mate.get("finds") or []:
+                try:
+                    fe, fn = rel(find["lat"], find["lon"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                finds.append({"commodity": str(find.get("c") or ""), "east": fe,
+                              "north": fn, "depleted": bool(find.get("d"))})
+            try:
+                scan = float(mate.get("scan_m") or CV.SCAN_RADIUS_M)
+            except (TypeError, ValueError):
+                scan = CV.SCAN_RADIUS_M
+            marks.append({"name": name, "east": east, "north": north,
                           "heading": mate.get("heading"),
-                          "in_srv": bool(mate.get("in_srv")), "rigs": rigs})
+                          "in_srv": bool(mate.get("in_srv")), "rigs": rigs,
+                          "colour": colours.get(WM.fold(name)) or OV.WING_COLOUR,
+                          "sweep": sweep, "scan_m": scan, "finds": finds})
         return {"mates": marks} if marks else None
 
     def rig_offset(self):
@@ -7534,15 +8955,11 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         """(name, rig, metres) for a wingmate's rig closer than the rig
         spacing to this spot, or None."""
         state = attr(self, "game")
-        if not self.wing_on() or state is None or not state.radius_m:
+        if not self.wing_active() or state is None or not state.radius_m:
             return None
-        system, body = self.here()
         spacing = self.planner_spacing()
         closest = None
-        for mate in attr(self, "wing_mates", None) or []:
-            if not (_same_place(mate.get("system"), system)
-                    and _same_place(mate.get("body"), body)):
-                continue
+        for mate in self.wing_here(fresh=False):
             for rig in mate.get("rigs") or []:
                 metres = SV.surface_range_m(lat, lon, rig["lat"], rig["lon"],
                                             state.radius_m)
@@ -7594,7 +9011,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 plan = self.shared_plan()
             except Exception:
                 plan = None
-        if trace is None and not plan:
+        if trace is None and not plan and not self.wing_active():
             return None
         state = attr(self, "game")
         if not (state is not None and state.has_position and state.radius_m):
@@ -7612,9 +9029,12 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             return {"tracing": True, "near": True, "pins": [], "spacing": 0,
                     "outline": [offset(lat, lon) for lat, lon in trace.outline()],
                     "next": None, "next_pin": None, "done": 0}
+        # 1.10040 (#172): on the link, the one plan the wing follows here.
+        plan = self.wing_plan(plan, where)
         if not plan or where != (plan["system"], plan["body"]):
             return None
-        rigs = self._rigs_here()
+        # A wingmate's rig on a pin counts it as done for everybody.
+        rigs = self._rigs_here() + self.wing_rigs_here()
         reach = self.pin_reach(plan)
         pins = []
         for pin in plan["pins"]:
@@ -7624,8 +9044,16 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                        for rig in rigs)
             pins.append({"n": pin["n"], "east": east, "north": north,
                          "done": done, "range_m": math.hypot(east, north)})
+        # And its pins split between the wing on the deposit: you are guided
+        # to your own, and the others' carry their name and colour.
+        owners = self.pin_owners(plan, pins)
+        for pin in pins:
+            owner = owners.get(pin["n"])
+            pin["mine"] = owner is None
+            if owner is not None:
+                pin["owner"], pin["colour"] = owner
         waiting = [pin for pin in pins if not pin["done"]]
-        following = waiting[0] if waiting else None
+        following = next((pin for pin in waiting if pin["mine"]), None)
         next_pin = None
         if following is not None:
             bearing = math.degrees(math.atan2(following["east"],
@@ -7635,8 +9063,12 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                         "offset": turn}
         return {"tracing": False, "pins": pins, "spacing": plan["spacing"],
                 "shared": bool(plan.get("shared")), "by": plan.get("by", ""),
+                "wing": bool(plan.get("wing")),
                 "outline": [offset(lat, lon) for lat, lon in plan["outline"]],
-                "near": any(pin["range_m"] <= PLAN_NEAR_M for pin in pins),
+                # The close-up is for pins still to drive to (reported 2
+                # Nov: with every rig down it sat zoomed on the finished
+                # pins). None waiting, and the scope is the scope again.
+                "near": any(pin["range_m"] <= PLAN_NEAR_M for pin in waiting),
                 "next": following["n"] if following is not None else None,
                 "next_pin": next_pin, "done": len(pins) - len(waiting)}
 
@@ -7741,6 +9173,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.rig_event("RigsUp")
         self.refresh_rigs_note()
         self.redraw()
+        self.speak("rigs_all_up")
         if picked is not None:
             self.flash("RIG %s UP" % picked, "all rigs up - warning stood down")
             return self.say("Rig %s up - that was the last. Distance warning "
@@ -7819,6 +9252,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                              RED)
                     self.flash("RIG %s LOST" % names, "past %s - warning cleared"
                                % _metres(RIG_LOST_M), RED)
+                    self.speak("rig_lost")
                     self._rigs_final = False
                     self.clear_rig_alarm()
                     self.refresh_rigs_note()
@@ -7869,6 +9303,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                             round(farthest["bearing"]) % 360), RED)
                 if self.settings.get("rig_warn_sound", True):
                     self.sound_alarm()
+                else:
+                    # The warning sound is itself spoken; the voice says it
+                    # only when that is off, so the two never talk at once.
+                    self.speak("rig_limit_warning")
             elif limit and farthest["range_m"] < limit * 0.9:
                 self._rigs_warned = False
             # The last warning. The game's own comes at 4 km and the rig is
@@ -7887,6 +9325,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                                  round(farthest["bearing"]) % 360), RED)
                     if self.settings.get("rig_warn_sound", True):
                         self.sound_alarm()
+                    else:
+                        self.speak("rig_limit_warning")
                 self.show_rig_alarm(farthest, state)
             else:
                 if farthest["range_m"] < RIG_FINAL_M - 300:
@@ -7990,6 +9430,220 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             return True
         except Exception:
             return False
+
+    # -- 1.10040: Voice Mode, spoken directions and the proximity sonar ------
+
+    def speak(self, line_id, force=False, theme=None, rate=None):
+        """One line of the Basic voice line pack, with Voice Mode on - or
+        `force`d, for Test voice. True when it went to the speaker. Never
+        raises: a voice that cannot speak is never a fault in the window."""
+        settings = attr(self, "settings", None) or {}
+        speaker = attr(self, "voice", None)
+        if speaker is None or not line_id or not (force or settings.get("voice_mode")):
+            return False
+        try:
+            speaker.folders = voice_folders()
+            speaker.set_rate(settings.get("voice_rate", VO.DEFAULT_RATE)
+                             if rate is None else rate)
+            return bool(speaker.say_line(line_id, settings.get("voice_theme")
+                                         if theme is None else theme))
+        except Exception:
+            return False
+
+    def follow_voice(self, now=None):
+        """Once a tick: the session's clock said as it starts, pauses and
+        ends; the sonar told how far the target is; the directions said when
+        they are due. Never raises."""
+        now = time.time() if now is None else now
+        try:
+            was = attr(self, "_voice_session", None)
+            state = VO.session_state(attr(self, "earnings", None))
+            self._voice_session = state
+            cue = VO.session_line(was, state)
+            if cue:
+                self.speak(cue)
+        except Exception:
+            pass
+        settings = attr(self, "settings", None) or {}
+        if settings.get("voice_mode"):
+            try:
+                cue = self.sweep_cue()
+                if cue:
+                    self.speak_sweep(cue)
+            except Exception:
+                pass
+        else:
+            # Switched on again later, the first look is a first look.
+            self._sweep_seen = None
+        view = self.voice_view(now)
+        sonar = attr(self, "sonar", None)
+        if sonar is not None:
+            target = view.get("deposit") if settings.get("sonar") and view.get("rhino") else None
+            try:
+                sonar.follow(target["range_m"] if target else None)
+            except Exception:
+                pass
+        if settings.get("voice_mode") and view.get("pin"):
+            pin = view["pin"]
+            if pin["range_m"] <= pin.get("reach", 0.0) and \
+                    pin["key"] != attr(self, "_pin_said", None):
+                self._pin_said = pin["key"]
+                self.speak("pin_reached")
+        return self.say_directions(view, now)
+
+    def sweep_key(self, cmap=None):
+        """Which survey area the swept figure is about - the body, its
+        centre and its border - or None while there is no area."""
+        cmap = self._survey_map() if cmap is None else cmap
+        if cmap is None or cmap.centre is None or not cmap.border_m:
+            return None
+        return (cmap.system, cmap.body, tuple(cmap.centre), float(cmap.border_m))
+
+    def sweep_cue(self):
+        """The swept figure passing half or all of the survey area, as a
+        line of the pack, or None. The first look at an area says nothing."""
+        cmap = self._survey_map()
+        key = self.sweep_key(cmap)
+        percent = self.survey_cover(cmap).get("percent") if key else None
+        seen = attr(self, "_sweep_seen", None)
+        was = seen[1] if isinstance(seen, tuple) and seen[0] == key else None
+        self._sweep_seen = (key, percent)
+        return VO.sweep_line(was, percent) if key else None
+
+    def speak_sweep(self, line_id):
+        """Half swept, or all of it: once for each survey area, so the
+        guided survey's end and the figure reaching 100% are one line, not
+        two. True when it was said."""
+        key = self.sweep_key()
+        said = attr(self, "_sweep_said", None)
+        if not (isinstance(said, tuple) and said[0] == key):
+            said = self._sweep_said = (key, set())
+        if line_id in said[1] or not self.speak(line_id):
+            return False
+        said[1].add(line_id)
+        return True
+
+    def voice_view(self, now=None):
+        """What the sonar and the directions are about, from where the game
+        says you are: {"rhino", "moving", "deposit", "waypoint", "pin",
+        "rig"}, each target {"key", "name", "range_m", "offset"} or absent.
+        Only worked out while the sonar or the directions are switched on.
+        Never raises."""
+        now = time.time() if now is None else now
+        settings = attr(self, "settings", None) or {}
+        state = attr(self, "game", None)
+        view = {}
+        wanted = settings.get("sonar") or settings.get("voice_directions") \
+            or settings.get("voice_mode")
+        if not wanted or state is None or not getattr(state, "has_position", False) \
+                or not getattr(state, "radius_m", None):
+            self._voice_at = None
+            return view
+        try:
+            system, body = self.here()
+            if not (system and body):
+                return view
+            lat, lon, radius = state.lat, state.lon, state.radius_m
+            heading = float(getattr(state, "heading", 0.0) or 0.0)
+            view["rhino"] = bool(getattr(state, "in_rhino", getattr(state, "in_srv", False)))
+            before = attr(self, "_voice_at", None)
+            self._voice_at = (lat, lon, now)
+            if before is not None:
+                view["moving"] = VO.is_moving(
+                    SV.surface_range_m(before[0], before[1], lat, lon, radius),
+                    now - before[2])
+            if not view["rhino"]:
+                # Both are for the Rhino: the sonar and the directions are
+                # quiet in the ship and on foot.
+                return view
+            rows = self.store.near(system, body, lat, lon, radius)
+            rows = rows + self.shared_near(system, body, (lat, lon), radius, rows)
+            found = PV.guided_target(rows, attr(self, "_guide_to", None))
+            if found is not None:
+                deposit = found.get("deposit") or {}
+                view["deposit"] = {
+                    "key": "deposit:%s" % (deposit.get("id") or deposit.get("commodity")),
+                    "name": str(found.get("commodity") or deposit.get("commodity") or ""),
+                    "range_m": float(found["range_m"]),
+                    "offset": SV.relative_bearing(heading, found["bearing"])}
+            marks = self.plan_marks() or {}
+            pin = marks.get("next_pin")
+            if pin:
+                plan = attr(self, "rig_plan", None)
+                view["pin"] = {"key": "pin:%s" % pin["n"], "name": "Pin %s" % pin["n"],
+                               "range_m": float(pin["range_m"]), "offset": float(pin["offset"]),
+                               "reach": float(self.pin_reach(plan)) if plan else 0.0}
+            guidance = self.guidance_view(state, (lat, lon), radius) or {}
+            point = guidance.get("wp")
+            if point and not point.get("complete") and not point.get("paused"):
+                view["waypoint"] = {"key": "wp:%s" % point.get("n"),
+                                    "name": "Waypoint %s" % point.get("n"),
+                                    "range_m": float(point["range_m"]),
+                                    "offset": SV.relative_bearing(heading, point["bearing"])}
+            rigs = self._rigs_here()
+            if rigs:
+                nearest = min(rigs, key=lambda rig: SV.surface_range_m(
+                    lat, lon, rig["lat"], rig["lon"], radius))
+                view["rig"] = {
+                    "key": "rig:%s" % self.rig_label(nearest),
+                    "name": "Rig %s" % self.rig_label(nearest),
+                    "range_m": SV.surface_range_m(lat, lon, nearest["lat"],
+                                                  nearest["lon"], radius),
+                    "offset": SV.relative_bearing(heading, SV.bearing_deg(
+                        lat, lon, nearest["lat"], nearest["lon"]))}
+        except Exception as exc:
+            self.trouble("Voice", exc)
+        return view
+
+    def say_directions(self, view, now=None):
+        """The distance and clock-face direction to the target, when due -
+        with Spoken directions on, in the Rhino. The words said, or ""."""
+        now = time.time() if now is None else now
+        settings = attr(self, "settings", None) or {}
+        if not settings.get("voice_directions") or not view.get("rhino"):
+            return ""
+        timer = attr(self, "directions", None)
+        if timer is None:
+            timer = self.directions = VO.DirectionsTimer()
+        timer.every_s = VO.directions_every(settings.get("voice_directions_s"))
+        target = VO.spoken_target(view.get("pin"), view.get("waypoint"),
+                                  view.get("deposit"), view.get("rig"))
+        if target is None or not timer.due(now, target["key"], view.get("moving"),
+                                           target["range_m"]):
+            return ""
+        words = VO.direction_words(target["name"], target["range_m"], target["offset"])
+        speaker = attr(self, "voice", None)
+        try:
+            if speaker is None:
+                return ""
+            speaker.set_rate(settings.get("voice_rate", VO.DEFAULT_RATE))
+            if not speaker.say_text(words):
+                return ""
+        except Exception:
+            return ""
+        timer.said(now, target["key"])
+        return words
+
+    def make_voiceattack_profile(self, settings=None, folder=None):
+        """The VoiceAttack profile (1.10040, #152), written to the data folder
+        with the keys bound in `settings` (the app's own by default). (path,
+        what to say) - path "" when it could not be written."""
+        settings = self.settings if settings is None else settings
+        folder = folder or DATA_DIR
+        try:
+            path, made, missing = VA.write_profile(folder, settings, parse_binding,
+                                                   DEFAULT_SETTINGS)
+        except OSError as exc:
+            return "", "Could not write the VoiceAttack profile: %s" % exc
+        words = ("%s saved in %s with %d command%s. In VoiceAttack: Import Profile, "
+                 "then pick that file." % (VA.FILE_NAME, folder, len(made),
+                                           "" if len(made) == 1 else "s"))
+        if missing:
+            words += " No key is set for %s, so %s left out - give %s a key here and " \
+                     "make it again." % (_join_words(['"%s"' % m for m in missing]),
+                                         "that is" if len(missing) == 1 else "those are",
+                                         "it" if len(missing) == 1 else "them")
+        return path, words
 
     # -- the survey area ----------------------------------------------------
 
@@ -8113,6 +9767,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                     _metres(r) for r in rings)) if rings else \
                "the centre alone covers it"
         self.flash("BORDER SET  %s" % _metres(border), plan)
+        self.speak("border_set")
         return self.say("Border set at %s: %s." % (_metres(border), plan), GREEN)
 
     def clear_survey(self):
@@ -8134,7 +9789,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         cmap = self._survey_map()
         if cmap is None:
             return ""
-        cover = cmap.coverage()
+        cover = self.survey_cover(cmap)
         if cmap.centre is None:
             log = self.key("location", "LOG SIGNAL")
             return ("Swept %.1f km2 here. Log the signal (%s) to centre the "
@@ -8143,11 +9798,12 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                     "Log the signal (%s) to centre the survey on it." % log)
         if cmap.border_m is None:
             return "Centre set. Drive to the edge and press BORDER."
-        line = "Swept %d%% of the %s area." % (cover["percent"],
-                                               _metres(cmap.border_m))
+        line = "Swept %d%% of the %s area%s." % (
+            cover["percent"], _metres(cmap.border_m),
+            " with your wing" if "gaps" in cover else "")
         if cover["percent"] >= 100:
             return line + " All of it - nothing left to scan."
-        gaps = cmap.gaps(limit=1)
+        gaps = cover["gaps"][:1] if "gaps" in cover else cmap.gaps(limit=1)
         if gaps:
             gap = gaps[0]
             if gap["distance_m"] < cmap.scan_m:
@@ -8166,7 +9822,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 "Log the signal (%s), then drive to the edge and press %s."
                 % (self.key("location"), self.key("border", "BORDER")))
             cmap = self._survey_map()
-            done = bool(cmap and cmap.border_m and cmap.coverage()["percent"] >= 100)
+            done = bool(cmap and cmap.border_m and self.survey_cover(cmap)["percent"] >= 100)
             note.configure(text=text, text_color=GREEN if done else DIM)
         except Exception:
             pass
@@ -8189,7 +9845,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             kept = attr(self, "_survey_sums", None)
             if quick and not (isinstance(kept, dict) and kept.get("map") is cmap):
                 quick = False
-            cover = kept["cover"] if quick else cmap.coverage()
+            cover = kept["cover"] if quick else self.survey_cover(cmap)
             if not quick:
                 self._survey_sums = {"map": cmap, "cover": cover, "gaps": None}
             view = {"scan_m": cmap.scan_m,
@@ -8205,7 +9861,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 ce, cn = view["centre"]
                 gaps = kept.get("gaps") if quick else None
                 if gaps is None:
-                    gaps = cmap.gaps(limit=3)
+                    gaps = cover["gaps"] if "gaps" in cover else cmap.gaps(limit=3)
                     self._survey_sums["gaps"] = gaps
                 for gap in gaps:
                     rad = math.radians(gap["bearing"])
@@ -8311,7 +9967,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         if not marks:
             return None
         centres = [(m["east"], m["north"]) for m in marks]
-        if self.wing_on():
+        if self.wing_active():
             for mate in (self.wing_marks() or {}).get("mates") or []:
                 centres += [(r["east"], r["north"]) for r in mate.get("rigs") or []]
         # Where the next rig lands: behind the cockpit, as drop_rigs puts it.
@@ -8401,6 +10057,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         if not isinstance(attr(self, "land_sites", None), dict):
             self.land_sites = {}
         self.land_sites[system.strip().lower()] = {"at": time.time(), "rows": rows}
+        self.site_marks().take_rows(rows)
         self._land_error = ""
         self._land_changed()
 
@@ -9125,25 +10782,357 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                          for i, p in enumerate(placed)],
                 "outline": [(float(a), float(b)) for a, b in best.get("outline") or []]}
 
-    # -- your own Discord channel (1.10034) --------------------------------
+    # -- your own Discord channels (1.10034; up to five from 1.10040) -------
 
-    def _discord_hook(self, switch):
+    def discord_targets(self, kind):
+        """The commander's webhooks a post of `kind` ("finds" or "sessions")
+        goes to: that switch on and an address that is a webhook."""
         settings = attr(self, "settings", None) or {}
-        hook = str(settings.get("discord_webhook") or "").strip()
-        if not hook or not settings.get(switch, True) or not EDO.discord_hook_ok(hook):
-            return ""
-        return hook
+        return WH.wanted(settings.get("discord_webhooks"), kind, EDO.discord_hook_ok)
+
+    def discord_send_job(self, hook, payload, name):
+        """A job for the worker: one plain post to one webhook. It answers
+        with the webhook's name, and a refusal comes back with that name in
+        front - never the address."""
+        def job():
+            try:
+                return json.dumps({"name": name, "message": EDO.discord_post(hook, payload)})
+            except Exception as exc:
+                raise RuntimeError("%s - %s" % (name, exc)) from None
+        return job
+
+    def send_discord(self, tag, fn, now=None):
+        """Every post and edit to the commander's own webhooks goes out
+        through here: at once, or in streamer mode with a delay into
+        discord_hold, which follow_streamer sends once the delay has passed.
+        True if it went now."""
+        hold = attr(self, "discord_hold", None)
+        delay = self.streamer_delay_s()
+        if hold is None or delay <= 0:
+            self.worker.submit(tag, fn)
+            return True
+        hold.put((tag, fn), time.time() if now is None else now)
+        self.say("Discord post held for %d min - streamer mode. Closing EDSMT "
+                 "before then drops it." % (delay // 60), AMBER)
+        return False
+
+    # -- streamer mode (1.10040, #312) -------------------------------------
+
+    def streamer_delay_s(self):
+        """Seconds a name stays hidden and a post waits; 0 with streamer
+        mode off."""
+        settings = attr(self, "settings", None) or {}
+        if not settings.get("streamer_mode"):
+            return 0
+        return ST.delay_minutes(settings.get("streamer_delay_min")) * 60
+
+    def streamer_arrival(self, system, now):
+        """When the commander arrived in `system`: the first time the app
+        saw him there, so a restart hides the names for the delay again."""
+        seen = attr(self, "_streamer_seen", None)
+        if not seen or seen[0] != system:
+            self._streamer_seen = (system, float(now))
+            return float(now)
+        return seen[1]
+
+    def streamer_names(self, now=None):
+        """[(real, shown)] for the system and body names a stream must not
+        see yet, the body first; [] when nothing is hidden. Never raises."""
+        try:
+            settings = attr(self, "settings", None) or {}
+            if not settings.get("streamer_mode"):
+                return []
+            system, body = self.here()
+            if not system:
+                return []
+            now = time.time() if now is None else now
+            arrived = self.streamer_arrival(system, now)
+            watcher = attr(self, "watcher")
+            ly = None
+            if str(getattr(watcher, "system", "") or "") == system:
+                ly = ST.from_sol(self.star_position())
+            delay = self.streamer_delay_s()
+            out = []
+            for name, kind in ((body, "body"), (system, "system")):
+                shown = ST.visible_name(name, kind, arrived, now, delay, ly=ly)
+                if name and shown != name:
+                    out.append((name, shown))
+            return out
+        except Exception:
+            return []
+
+    def hide_names(self, text, now=None):
+        """`text` as a stream may see it: in streamer mode, the system and
+        body names swapped for "a system N Ly from Sol" and "a body" until
+        the delay has passed. Never raises."""
+        names = self.streamer_names(now)
+        if not names or not isinstance(text, str):
+            return text
+        return ST.hide(text, names)
+
+    def follow_streamer(self, now=None):
+        """Every tick and on Save: note where the commander is, show or
+        hide the STREAMER badge, and send the held Discord posts that are
+        due - every one at once when streamer mode is off or has no delay.
+        How many went. Never raises."""
+        try:
+            now = time.time() if now is None else now
+            system, _body = self.here()
+            if system:
+                self.streamer_arrival(system, now)
+            settings = attr(self, "settings", None) or {}
+            self.show_streamer_badge(bool(settings.get("streamer_mode")))
+            hold = attr(self, "discord_hold", None)
+            if hold is None or not len(hold):
+                return 0
+            delay = self.streamer_delay_s()
+            due = hold.due(now, delay) if delay > 0 else hold.drain()
+            for tag, fn in due:
+                self.worker.submit(tag, fn)
+            return len(due)
+        except Exception:
+            return 0
+
+    def show_streamer_badge(self, on):
+        badge = attr(self, "streamer_badge")
+        if badge is None:
+            return
+        try:
+            if on and not badge.winfo_manager():
+                badge.pack(anchor="w", pady=(3, 0))
+            elif not on and badge.winfo_manager():
+                badge.pack_forget()
+        except Exception:
+            pass
+
+    def streamer_restart_note(self):
+        """Posts held when EDSMT last closed were dropped with it: say so,
+        once."""
+        settings = attr(self, "settings", None) or {}
+        try:
+            dropped = int(settings.pop("discord_held_dropped", 0) or 0)
+        except (TypeError, ValueError):
+            dropped = 0
+        if dropped > 0:
+            self.say("%d Discord post%s held by streamer mode %s dropped when "
+                     "EDSMT closed - held posts do not survive a restart."
+                     % (dropped, "" if dropped == 1 else "s",
+                        "was" if dropped == 1 else "were"), AMBER)
+        return dropped
+
+    # -- the session on a stream (1.10040, #149, #151, #307) ----------------
+
+    def stream_server(self):
+        """The OBS page's server (streamout.py), made on first use. It
+        listens only while Settings has it on."""
+        server = attr(self, "_stream", None)
+        if server is None:
+            server = self._stream = SO.StreamServer()
+        return server
+
+    def follow_stream(self, now=None):
+        """Every tick: the OBS page's server as Settings has it - on, off or
+        on another port - and the state it shows, once a second while it
+        runs. True while it is listening. Never raises."""
+        try:
+            settings = attr(self, "settings", None) or {}
+            server = self.stream_server()
+            said = server.follow(bool(settings.get("stream_enabled")),
+                                 SO.parse_port(settings.get("stream_port")), now=now)
+            if said:
+                trouble = "could not" in said or "needs" in said
+                self.say(said, AMBER if trouble else GREEN)
+            if server.running and server.due(now):
+                server.publish(self.stream_now(now), now=now)
+            return server.running
+        except Exception as exc:
+            self.trouble("OBS browser source", exc)
+            return False
+
+    def stop_stream(self):
+        """Let the OBS page's port go. Never raises."""
+        try:
+            server = attr(self, "_stream", None)
+            if server is not None:
+                server.stop()
+        except Exception:
+            pass
+
+    def card_session(self, now=None):
+        """(row, running) for the session Earnings leads with: the one in
+        progress, its clock to now, or the last one; (None, False) for
+        none."""
+        books = attr(self, "earnings")
+        if books is None:
+            return None, False
+        live = getattr(books, "rhino", None)
+        if live is not None:
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                  time.gmtime(time.time() if now is None else now))
+            if SV._epoch(stamp) > SV._epoch(live.get("ended")):
+                live = dict(live, ended=stamp)
+            return live, True
+        done = [r for r in books.recent() if str(r.get("closed") or "").strip()]
+        return (done[0], False) if done else (None, False)
+
+    def stream_session(self, now=None):
+        """(row, running) for the OBS page: the session in progress, or the
+        last one for STREAM_LAST_S after it ended."""
+        now = time.time() if now is None else now
+        row, running = self.card_session(now)
+        if row is None or running:
+            return row, running
+        ended = SV._epoch(row.get("ended") or row.get("closed"))
+        return (row, False) if ended and now - ended <= STREAM_LAST_S else (None, False)
+
+    def stream_near(self):
+        """The finds near the commander on this body, as the overlay has
+        them - for the nearest one's distance and bearing."""
+        state = attr(self, "game", None)
+        system, body = self.here()
+        if state is None or not getattr(state, "has_position", False) or not (system and body):
+            return []
+        radius = getattr(state, "radius_m", 0) or 1e6
+        centre = (state.lat, state.lon)
+        rows = self.store.near(system, body, centre[0], centre[1], radius)
+        return rows + self.shared_near(system, body, centre, radius, rows)
+
+    @staticmethod
+    def stream_colours():
+        """The app theme's colours, for the OBS page."""
+        return {"orange": ORANGE, "amber": AMBER, "text": TEXT, "dim": DIM,
+                "void": VOID, "green": GREEN, "red": RED, "cyan": CYAN}
+
+    def stream_now(self, now=None):
+        """What the OBS page shows now (SO.stream_state): the session on
+        show, where, the nearest deposit and the last find - with system and
+        body names as streamer mode lets a stream see them. Never raises."""
+        now = time.time() if now is None else now
+        try:
+            def hide(text):
+                return self.hide_names(text, now=now)
+            system, body = self.here()
+            run, running = self.stream_session(now)
+            mined, seconds, cr_hr, merits, estimated = {}, 0.0, 0.0, None, False
+            if run is not None:
+                est = self.session_estimate(run)
+                mined = SV.unpack_counts(run.get("mined"))
+                seconds = est["hours"] * 3600.0
+                cr_hr = est["cr_hr"] if est["value"] > 0 else 0.0
+                merits = session_merits_earned(self, run) or None
+                if not merits and est["merits_hr"]:
+                    merits, estimated = est["merits_hr"] * est["hours"], True
+                system, body = run.get("system") or system, run.get("body") or body
+            books = attr(self, "earnings")
+            store = attr(self, "store")
+            return SO.stream_state(
+                cmdr=str(getattr(attr(self, "watcher"), "cmdr", "") or ""),
+                system=system, body=body, mined=mined, seconds=seconds,
+                running=running, paused=bool(running and getattr(books, "paused", False)),
+                cr_hr=cr_hr, merits=merits, merits_estimated=estimated,
+                rigs_down=len((attr(self, "rigs_at", None) or {}).get("rigs") or []),
+                near=self.stream_near(),
+                find=SO.last_find(getattr(store, "deposits", None) or [], hide=hide, now=now),
+                colours=self.stream_colours(), hide=hide, now=now)
+        except Exception:
+            return SO.stream_state(now=now)
+
+    def card_map(self, row, picture=None):
+        """The session's map picture, as a Pillow image for its card, or
+        None: `picture` when it is handed in as (name, bytes), else the one
+        saved when its Rhino docked, else the last one in the pictures
+        folder from while it ran. Never raises."""
+        try:
+            import io
+            from PIL import Image
+            source = io.BytesIO(picture[1]) if picture else None
+            if source is None:
+                first = SV._epoch(row.get("started")) or 0
+                closed = str(row.get("closed") or "").strip()
+                last = SV._epoch(row.get("ended") or row.get("closed")) if closed else 0
+                for at, found in attr(self, "_pictures", None) or []:
+                    if first - 60 <= at <= (last or time.time()) + 120 and os.path.isfile(found):
+                        source = found
+                source = source or SC.find_map(MI.pictures_dir(DATA_DIR), row.get("system"),
+                                               row.get("body"), first, last) or None
+            if source is None:
+                return None
+            with Image.open(source) as image:
+                image.load()
+                return image.convert("RGB")
+        except Exception:
+            return None
+
+    def session_card(self, row=None, picture=None, now=None):
+        """The session card (sessioncard.py) of `row` - with none, the
+        session Earnings leads with - saved in the pictures folder and
+        handed to the OBS page as /card.png, names there as streamer mode
+        lets a stream see them. `picture` is the session's map picture as
+        (file name, bytes) when the caller has it. Answers a dict: path, name,
+        png (the saved file's bytes) and why, a sentence when there is no
+        card. Never raises."""
+        out = {"path": "", "name": "", "png": b"", "why": ""}
+        ok, why = MI.pillow_status()
+        if not ok:
+            out["why"] = why.replace("Map pictures are off", "Session cards are off")
+            return out
+        try:
+            if row is None:
+                row, _running = self.card_session(now)
+            if not row:
+                out["why"] = "There is no Rhino session to make a card of yet."
+                return out
+            est = self.session_estimate(row)
+            merits = session_merits_earned(self, row) or None
+            estimated = False
+            if not merits and est["merits_hr"]:
+                merits, estimated = est["merits_hr"] * est["hours"], True
+            cmdr = str(row.get("cmdr") or getattr(attr(self, "watcher"), "cmdr", "") or "")
+            facts = SC.card_facts(row, cmdr, estimate=est, merits=merits,
+                                  merits_estimated=estimated)
+            shown = SC.card_facts(row, cmdr, estimate=est, merits=merits,
+                                  merits_estimated=estimated, hide=self.hide_names)
+            image = self.card_map(row, picture)
+            badge = SC.load_badge(os.path.join(IMAGES_DIR, LG.BADGE_SMALL))
+            card, _texts = SC.render_card(facts, image, colour=colour_for, badge=badge)
+            folder = MI.pictures_dir(DATA_DIR)
+            out["name"] = SC.card_name(row)
+            out["path"] = MI.save_picture(card, os.path.join(folder, out["name"]))
+            MI.tidy_pictures(folder)
+            with open(out["path"], "rb") as handle:
+                out["png"] = handle.read()
+            served = out["png"]
+            if (shown["system"], shown["body"]) != (facts["system"], facts["body"]):
+                served = MI.png_bytes(SC.render_card(shown, image, colour=colour_for,
+                                                     badge=badge)[0])
+            self.stream_server().publish_card(served)
+        except OSError as problem:
+            out["why"] = "The session card could not be saved: %s" % problem
+        except Exception as exc:
+            self.trouble("Making the session card", exc)
+            out["why"] = "The session card could not be made: %s" % exc
+        return out
+
+    def discord_card(self, row, picture=None):
+        """(file name, bytes) of a session's card for its Discord summary,
+        or None."""
+        made = self.session_card(row, picture=picture)
+        if made["png"] and len(made["png"]) <= MI.MAX_BYTES:
+            return made["name"], made["png"]
+        return None
 
     def post_discord_find(self, record):
-        """A find just marked, to the commander's own channel. Never raises."""
-        hook = self._discord_hook("discord_post_finds")
-        if not hook or not record:
+        """A find just marked, to each webhook with Finds on - a job each,
+        so one that fails stops none of the others. Never raises."""
+        targets = self.discord_targets("finds")
+        if not targets or not record:
             return False
         try:
             cmdr = getattr(attr(self, "watcher"), "cmdr", "") or ""
             payload = EDO.discord_find_message(record, cmdr)
-            self.worker.submit(EDO.DISCORD_TAG,
-                               lambda: json.dumps(EDO.discord_post(hook, payload)))
+            for hook in targets:
+                self.send_discord(EDO.DISCORD_TAG,
+                                  self.discord_send_job(hook["url"], payload, hook["name"]))
             return True
         except Exception:
             return False
@@ -9165,35 +11154,54 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             return 0
         fresh = [row for key, row in closed.items() if key not in posted]
         posted.update(closed)
-        hook = self._discord_hook("discord_post_sessions")
+        hooks = self.discord_targets("sessions")
         sent = 0
         book = attr(self, "post_book", None)
         for row in fresh:
-            if not hook or not SV.unpack_counts(row.get("mined") or ""):
+            if not hooks or not SV.unpack_counts(row.get("mined") or ""):
                 continue
-            # One post a session, ever - across a restart too (1.10035). It
-            # is edited when the sale comes in; see discord_edits.
-            if book is not None and book.has(row.get("id")):
+            sid = str(row.get("id"))
+            # One post a session on each webhook, ever - across a restart
+            # too (1.10035). It is edited when the sale comes in; see
+            # discord_edits.
+            todo = [hook for hook in hooks if book is None or not book.has(
+                SL.post_key(sid, WH.hook_key(hook["url"])))]
+            if not todo:
                 continue
             try:
                 # One summary a session (1.10035), with what it is worth
                 # and where, rigs, finds and Cr/hr - not one post a find.
                 summary = self.discord_summary(row)
-                picture = self.discord_picture(row)
-                if picture and summary is not None:
-                    summary["image"] = picture[0]
-                payload = EDO.discord_session_message(
-                    row, row.get("cmdr") or "", summary=summary)
-                sid = str(row.get("id"))
-                if book is not None:
-                    book.sent(sid, self.discord_state(row), picture[0] if picture else "")
-                self.worker.submit(
-                    EDO.DISCORD_TAG,
-                    lambda p=payload, s=sid, pic=picture: self.discord_job(hook, p, s, pic))
-                sent += 1
+                # The map goes with Session map on; the card (1.10040) with
+                # Session card on, and it shows the map too.
+                picture = self.discord_picture(row) \
+                    if any(h["map"] or h.get("card") for h in todo) else None
+                card = self.discord_card(row, picture) if any(h.get("card") for h in todo) else None
+                state = self.discord_state(row)
             except Exception:
                 continue
-        self.discord_edits(hook)
+            for hook in todo:
+                try:
+                    # The map picture only to the webhooks with Session map on.
+                    pic = picture if hook["map"] else None
+                    told = dict(summary) if summary is not None else None
+                    if pic and told is not None:
+                        told["image"] = pic[0]
+                    payload = EDO.discord_session_message(
+                        row, row.get("cmdr") or "", summary=told)
+                    if book is not None:
+                        book.sent(SL.post_key(sid, WH.hook_key(hook["url"])), state,
+                                  pic[0] if pic else "")
+                    self.send_discord(
+                        EDO.DISCORD_TAG,
+                        lambda h=hook, p=payload, s=sid, pic=pic,
+                        c=card if hook.get("card") else None:
+                        self.discord_job(h["url"], p, s, pic, h["name"], card=c))
+                    sent += 1
+                except Exception:
+                    continue
+        for hook in hooks:
+            self.discord_edits(hook["url"], hook["name"])
         return sent
 
     def discord_summary(self, row):
@@ -9229,10 +11237,87 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         return {"materials": got["materials"], "wages": got["wages"],
                 "merits": got["merits"] or None}
 
+    def pair_with_portal(self, code):
+        """Hand a member-page pairing code in, off the UI thread. False, and
+        nothing sent, for a code that cannot be right."""
+        if not PR.looks_right(code):
+            return False
+        import platform
+        self.worker.submit(PR.TAG, PR.claim_job(code, PR.device_name(platform.node()),
+                                                EDO.post_json, cmdr=self.board_cmdr()))
+        return True
+
+    def share_my_week(self):
+        """Share my week (1.10040): your week's card from the community map,
+        saved in the pictures folder and opened. The name is the journal's."""
+        name = self.board_cmdr()
+        if not name:
+            return self.say("EDSMT has not seen your commander name in the journal yet - "
+                            "the card is drawn under it.", AMBER)
+        if not self.community.can_read:
+            return self.say("The community map is off, so there is no card to fetch.", AMBER)
+        folder = MI.pictures_dir(DATA_DIR)
+        self.worker.submit(WC.TAG, WC.fetch_job(name, folder))
+        self.say("Fetching your week's card from the community map...")
+        return True
+
+    def take_weekcard(self, ok, message):
+        """The card arrived, or why not."""
+        if not ok:
+            return self.say(WC.explain(message), AMBER)
+        path = str(message or "")
+        try:
+            MI.tidy_pictures(os.path.dirname(path))
+        except Exception:
+            pass
+        open_path(path)
+        self.say("Your week's card is saved: %s - post it, or share %s"
+                 % (os.path.basename(path), WC.page_url(self.board_cmdr())), GREEN)
+
+    def take_pairing(self, ok, message):
+        """The member page's answer: the token kept and written, or why not
+        in its own words. The token itself is never said."""
+        if not ok:
+            return self.say(PR.explain(message), AMBER)
+        try:
+            got = json.loads(message)
+            token, device = got["token"], got["device"]
+        except (ValueError, TypeError, KeyError):
+            return self.say("The member page sent back nothing EDSMT can use. "
+                            "Make a new code and try again.", AMBER)
+        self.settings["portal_token"] = token
+        self.settings["portal_device"] = device
+        if not save_settings(self.settings):
+            self.say("Paired, but the settings could not be written - it "
+                     "lasts until EDSMT closes.", AMBER)
+        else:
+            self.say("Paired - this computer is on your member page.", GREEN)
+        self._show_pairing_open()
+
+    def forget_pairing(self):
+        """Drop the pairing here. The member page revokes it there."""
+        self.settings = PR.forget(self.settings)
+        save_settings(self.settings)
+        self._show_pairing_open()
+
+    def _show_pairing_open(self):
+        """Any open Settings shows the pairing as it now is."""
+        for child in list(self.winfo_children()):
+            if isinstance(child, SettingsWindow):
+                try:
+                    child.show_pairing()
+                except Exception:
+                    pass
+
     def take_discord(self, tag, ok, message):
         if ok:
             if tag == EDO.DISCORD_TEST_TAG:
-                self.say("Discord took the test message.", GREEN)
+                try:
+                    name = str(json.loads(message).get("name") or "")
+                except (TypeError, ValueError, AttributeError):
+                    name = ""
+                self.say("%sDiscord took the test message."
+                         % (name + ": " if name else ""), GREEN)
             else:
                 self.discord_answer(message)
             return
@@ -9302,6 +11387,20 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                               deposits, locations,
                               self.land_swept(system, sorted(names)),
                               landable_only=landable_only)
+
+    def best_to_mine(self, system):
+        """Where to land's Best to mine (1.10040, #303): the five commodities
+        worth most in this system, from its shared sites, its bodies' ground
+        and the best prices known near here. [] when nothing is known."""
+        system = str(system or "").strip()
+        if not system:
+            return []
+        try:
+            return BM.best_to_mine(self.land_sites_for(system) or [],
+                                   self.land_rows(system), self.mine_price,
+                                   attr(self, "grounds"), system=system)
+        except Exception:
+            return []
 
     def land_signature(self, system):
         """Everything the table depends on, cheaply. Changes = redraw."""
@@ -9387,6 +11486,13 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.shared = {}
         self.shared[(system.lower(), body.lower())] = {"at": time.time(),
                                                        "rows": rows}
+        self.site_marks().take_rows(data.get("deposits") or [])
+        waiting = attr(self, "_card_waiting", None)
+        if waiting and waiting[:2] == (system.lower(), body.lower()):
+            try:
+                self.site_card(system, body, waiting[2])
+            except Exception:
+                self._card_waiting = None
         asked = attr(self, "_shared_asked", None)
         if isinstance(asked, dict):
             asked.pop((system.lower(), body.lower()), None)
@@ -9521,8 +11627,8 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 rigs = int(float(changes["rigs"]))
             except ValueError:
                 return self.say("Rigs must be a number.", RED)
-            if not 0 <= rigs <= MAX_RIGS:
-                return self.say("The Rhino carries %d rigs." % MAX_RIGS, RED)
+            if not 0 <= rigs <= SITE_RIGS:
+                return self.say("A site takes up to %d rigs." % SITE_RIGS, RED)
             changes["rigs"] = str(rigs)
         if not changes:
             return self.say("%s %s from here already says that. Set the Amount "
@@ -9539,6 +11645,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                                          "Updated (%s)" % said)
         row = self.deposit_edited(deposit["id"], changes)
         if row is not None:
+            self.speak("deposit_updated")
             if "commodity" in changes:
                 self.say("Renamed the deposit %s from here: %s. Its position, "
                          "history and tonnes are kept." % (_metres(metres), said),
@@ -9658,6 +11765,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.flash("SIGNAL %s LOGGED" % number,
                    ("centre set, border %s" % _metres(kept)) if kept else
                    "hold the scanner - %s at the edge" % border)
+        self.speak("signal_logged")
 
     def centre_on_signal(self, state):
         """Logging a signal sets the survey centre on it - the signal IS the
@@ -9876,7 +11984,10 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             own = SV.cycle_tonnes({"cycles": cycle[0]})[-1]
             changes["notes"] = SV.stamp_note(self.selected.get("notes"),
                                              "Mined out after %dt" % own)
-        return self.deposit_edited(self.selected["id"], changes)
+        row = self.deposit_edited(self.selected["id"], changes)
+        if row is not None:
+            self.speak("mined_out")
+        return row
 
     def deposit_edited(self, deposit_id, changes):
         """Write an edit back and put every view in step with it."""
@@ -10134,6 +12245,19 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if tag in (EDO.DISCORD_TAG, EDO.DISCORD_TEST_TAG):
                 self.take_discord(tag, ok, message)
                 continue
+            if tag == PR.TAG:
+                # Never the catch-all below: that would show the token.
+                self.take_pairing(ok, message)
+                continue
+            if tag == WC.TAG:
+                self.take_weekcard(ok, message)
+                continue
+            if tag == SQ.TAG:
+                self.take_squadron(ok, message)
+                continue
+            if tag == ED.TAG:
+                self.take_eddn(ok, message)
+                continue
             if tag == EDO.LAYOUTS_TAG:
                 self.take_layouts(ok, message)
                 continue
@@ -10142,8 +12266,14 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             if tag == "landing":
                 self.take_landing(ok, message)
                 continue
+            if tag == EDO.MARK_TAG:
+                self.take_mark(ok, message)
+                continue
             if tag == "wing":
                 self.take_wing(ok, message)
+                continue
+            if tag == EDO.WING_AUTO_TAG:
+                self.take_wing_auto(ok, message)
                 continue
             if tag == QUOTE_TAG:
                 try:
@@ -10299,6 +12429,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             self.update_ready = None
             return self.show_update_button("UPDATE AVAILABLE")
         self.show_update_button("INSTALL UPDATE")
+        self.speak("update_ready")
         self.say("EDSMT %s is downloaded and checked. Press INSTALL UPDATE when "
                  "you are ready - EDSMT backs up your finds and settings to "
                  "Documents > EDSMT backups first, then closes, updates and "
@@ -10389,6 +12520,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                     AUTO_BACKUP_PREFIX, str(version or "next").replace(" ", ""), stamp))
                 os.replace(path, named)
                 tidy_auto_backups(folder)
+                self.speak("backup_done")
                 self.say("Backed up %d file(s) to %s before updating."
                          % (count, named), GREEN)
             return True
@@ -10426,8 +12558,11 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
     def say(self, text, colour=None):
         colour = colour or DIM
-        self.status.configure(text=text, text_color=colour)
-        self._last_said = (text, colour)
+        # What the stream sees has no names streamer mode hides; the app's
+        # own log, which never goes on a stream, keeps them.
+        shown = self.hide_names(text) if text else text
+        self.status.configure(text=shown, text_color=colour)
+        self._last_said = (shown, colour)
         log = attr(self, "applog", None)
         if log is not None:
             log.write(text)
@@ -10441,7 +12576,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         if overlay is None:
             return False
         try:
-            return overlay.flash(title, detail, colour)
+            return overlay.flash(self.hide_names(title), self.hide_names(detail), colour)
         except Exception:
             return False
 
@@ -10458,6 +12593,40 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
     def open_settings(self):
         SettingsWindow(self)
+
+    def open_materials(self):
+        """One materials picker (1.10040, #306); asking again brings it
+        forward."""
+        window = attr(self, "materials_window")
+        try:
+            if window is not None and window.winfo_exists():
+                window.lift()
+                window.focus_force()
+                return window
+        except Exception:
+            pass
+        self.materials_window = MaterialsWindow(self)
+        return self.materials_window
+
+    def materials_changed(self):
+        """The ticks in the picker changed: every commodity list follows.
+        Never raises."""
+        try:
+            self.refresh_commodities()
+        except Exception:
+            pass
+        names = material_names(self.settings)
+        for name, box in (("finder", None), ("lander", "carrying"), ("sites_window", "commodity")):
+            window = attr(self, name)
+            try:
+                if window is None or not window.winfo_exists():
+                    continue
+                if box is None:
+                    window.offer_materials()
+                else:
+                    getattr(window, box).configure(values=names)
+            except Exception:
+                continue
 
     def note_shared(self, message):
         """A share the server answered: the first one opens Find."""
@@ -10548,10 +12717,11 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
             except Exception:
                 return False
             return True
-        try:
-            self.plan.grid_remove()
-        except Exception:
-            pass
+        for shown in (self.plan, attr(self, "map_card_row", None)):
+            try:
+                shown.grid_remove()
+            except Exception:
+                pass
         for other in list(self.docked_tools.values()):
             if other is not tool:
                 try:
@@ -10559,7 +12729,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 except Exception:
                     pass
         try:
-            tool.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+            tool.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=10, pady=10)
             # Tk's own raise. The tool's tkraise means "show this tab" and
             # came straight back here, a few hundred times a press, until
             # the recursion limit stopped it (1.10038).
@@ -10584,10 +12754,12 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
                 tool.grid_remove()
             except Exception:
                 pass
-        try:
-            self.plan.grid()
-        except Exception:
-            pass
+        for shown in (self.plan, attr(self, "map_card_row", None)):
+            try:
+                shown.grid()
+            except Exception:
+                pass
+        self.show_map_cards()
         rail = attr(self, "rail_frame", None)
         try:
             if rail is not None:
@@ -10601,13 +12773,17 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
     def paint_tabs(self):
         """The tab on show lit."""
-        buttons = attr(self, "tab_buttons", None) or {}
-        active = attr(self, "active_tab", "map")
-        for key, button in buttons.items():
-            try:
-                button.configure(**(BTN_PRIMARY if key == active else BTN_SECONDARY))
-            except Exception:
-                pass
+        strip = attr(self, "tab_strip", None)
+        if strip is not None:
+            strip.light(attr(self, "active_tab", "map"))
+
+    def pick_tab(self, key):
+        """A tab clicked, or its F-key pressed: the map, or that tool."""
+        opener = {"map": self.show_map, "find": self.open_find,
+                  "sites": self.open_sites, "land": self.open_land,
+                  "earnings": self.open_earnings, "powerplay": self.open_powerplay,
+                  "leaderboard": self.open_leaderboard}.get(key)
+        return opener() if opener is not None else None
 
     # -- 1.10035: sites, the bin, importing, regrowth, the prompts --------
 
@@ -10617,6 +12793,86 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         if book is None:
             book = self._site_book = SBK.SiteBook(self.store.folder)
         return book
+
+    # -- 1.10040 (#302): good and bad marks on shared sites ----------------
+
+    def site_marks(self):
+        """This commander's good and bad marks, and the map's counts."""
+        book = attr(self, "_site_marks", None)
+        if book is None:
+            book = self._site_marks = SM.MarkBook(
+                os.path.join(self.store.folder, SM.FILE_NAME))
+            book.load()
+        return book
+
+    def mark_site(self, system, planet, spot, mark):
+        """Mark a shared site good or bad: kept, and sent now if it can be,
+        or as soon as it can. Never raises."""
+        try:
+            book = self.site_marks()
+            changed = book.mark(system, planet, spot, mark)
+            if changed:
+                book.save()
+            sent = self.send_marks()
+            if not changed:
+                self.say("Already marked %s." % mark, DIM)
+            elif sent:
+                self.say("Marked %s signal %s %s - sending it to the community map."
+                         % (planet, spot, mark), GREEN)
+            else:
+                self.say("Marked %s signal %s %s. It goes to the community map when "
+                         "sharing is on and the map answers." % (planet, spot, mark), AMBER)
+        except Exception as exc:
+            self.trouble("Site marks", exc)
+        self.marks_changed()
+
+    def send_marks(self, now=None):
+        """Send every mark still waiting that is not already on its way.
+        How many went."""
+        community = attr(self, "community")
+        if community is None or not getattr(community, "ready", False):
+            return 0
+        book = self.site_marks()
+        cmdr = str(getattr(attr(self, "watcher"), "cmdr", "") or "").strip()
+        sent = 0
+        for entry in book.due(now):
+            if community.mark_site(cmdr, entry["system"], entry["planet"],
+                                   entry["spot"], entry["mark"]):
+                book.sending(entry, now)
+                sent += 1
+        return sent
+
+    def take_mark(self, ok, message):
+        """The map's answer to a mark: ticked off with the site's counts, or
+        kept for later."""
+        book = self.site_marks()
+        if not ok:
+            return
+        status, words = book.answered(message)
+        if not status:
+            return
+        book.save()
+        self.say(words, GREEN if status == "sent" else AMBER)
+        self.marks_changed()
+
+    def mark_buttons(self, system, planet, spot):
+        """A site's two marks as row buttons: [(text, command, lit)]."""
+        return [(text, lambda m=mark: self.mark_site(system, planet, spot, m), lit)
+                for text, mark, lit in SM.buttons(self.site_marks(), system, planet, spot)]
+
+    def marks_changed(self):
+        """Every open table that shows marks, drawn again. Never raises."""
+        for name in ("finder", "sites_window"):
+            window = attr(self, name)
+            try:
+                if window is not None and window.winfo_exists():
+                    window._paint()
+            except Exception:
+                continue
+        try:
+            self.refresh_deposits()
+        except Exception:
+            pass
 
     def open_import(self):
         """One import window: asking again replaces it with a fresh one."""
@@ -10886,6 +13142,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         before = attr(self, "settings", None) or {}
         for key in ALWAYS_SHARED:
             data[key] = True
+        follow_app_theme(data)
         self.settings = data
         save_settings(data)
         if LB.changed(before, data):
@@ -10902,6 +13159,7 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self._last_reported = None
         self.hotkeys.start(self.wanted_hotkeys(data))
         self.overlay.settings = data
+        self.show_marker_colour()
         if self.overlay_wanted_now():
             self.overlay.show()
             self.overlay.refresh_settings(data)
@@ -10912,6 +13170,24 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
         self.refresh_key_labels()
         set_high_g(data)
         self.earnings.multi = bool(data.get("earnings_multi_session"))
+        # Streamer mode turned off sends what it held at once; the names
+        # are back on the next tick.
+        self.follow_streamer()
+        # The OBS page on, off or moved as soon as Settings is saved.
+        self.follow_stream()
+
+    def show_marker_colour(self):
+        """The map draws you in the marker colour (1.10040, #304). Never
+        raises."""
+        plan = attr(self, "plan")
+        if plan is None:
+            return
+        try:
+            plan.marker = OV.marker_colour(self.settings, attr(self, "theme_worn", None)
+                                           or "cockpit")
+            plan.redraw()
+        except Exception:
+            pass
 
     def set_mark_ready(self, ready):
         """MARK DEPOSIT is bright when it will work and plainly dark when not.
@@ -10943,10 +13219,17 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
     def _save_on_exit(self):
         """Everything that has to be on disk before the app goes. Never raises."""
+        # First of all, the OBS page's port: a restart's new copy wants it.
+        self.stop_stream()
         try:
             self.persist_rigs()
         except Exception:
             pass
+        # Discord posts held by streamer mode go with the app; the next
+        # start says how many (streamer_restart_note).
+        held = len(attr(self, "discord_hold", None) or ())
+        if held:
+            self.settings["discord_held_dropped"] = held
         try:
             self._backfill_stop.set()
             BB.remember_watcher(self.watcher, self.bodybook,
@@ -11008,6 +13291,15 @@ class EDSMT(GD.GuidanceMixin, ctk.CTk):
 
     def on_close(self):
         self._save_on_exit()
+        # 1.10040 (#323): no longer running, as far as a launcher can see.
+        HM.withdraw(attr(self, "hub_file", None))
+        # 1.10040: the speech process and the sonar go with the window.
+        for player in (attr(self, "voice", None), attr(self, "sonar", None)):
+            try:
+                if player is not None:
+                    player.close()
+            except Exception:
+                pass
         try:
             self.overlay.hide()
             self.hotkeys.stop()
@@ -11058,7 +13350,21 @@ TIPS = {
             "clicks go through them to the game.",
     "settings": "Keys, overlay, rigs, sharing, Discord, Inara, backups and "
                 "the rest.",
-    "update": "A newer EDSMT is ready. Your finds and settings are backed up "
+    "help": "The welcome window, the tour, the user guide, reporting a bug "
+            "and the changelog.",
+    "tabs": "The map and the tools: Find (everybody's shared finds), My sites, "
+            "Where to land, Earnings, Powerplay and the leaderboard. F2 to F8 "
+            "open them from the keyboard.",
+    "status_strip": "Who, in what, where, and whether the overlay is up - as "
+                    "the game's journal says.",
+    "spacing": "Comfortable or Compact: how much room the bars and the tables "
+               "leave round things. Changes at once.",
+    "theme_back": "The theme before this one. The overlay changes at once when "
+                  "it uses the app theme; the window from the next start.",
+    "theme_next": "The next theme - the Powers and the game match among them. "
+                  "The overlay changes at once when it uses the app theme; the "
+                  "window from the next start.",
+    "update":"A newer EDSMT is ready. Your finds and settings are backed up "
               "first, then it installs.",
     "signal": "The mining location signal you are working. Logging one "
               "sets it; pick another to look at it.",
@@ -11098,6 +13404,48 @@ TIPS = {
     "delete": "Deletes the selected deposit. Press twice.",
 }
 
+# Each control on a row of Settings > Sharing > Discord (1.10040, #315). A
+# row saves into the list "discord_webhooks", so its notes are kept here
+# rather than by a settings key.
+HOOK_TIPS = {
+    "name": "What EDSMT calls this channel - in a message saying a post did "
+            "not go, for one. Left blank it is Discord 1, Discord 2 and so on.",
+    "url": "The webhook of a channel of yours. It is a password for that "
+           "channel.",
+    "show": "Shows the address for a few seconds, then hides it again.",
+    "finds": "Off: finds are counted in the session summary. On: each find is "
+             "posted here as well, one message each.",
+    "sessions": "One summary when a Rhino session ends: time, tonnes, t/hr, "
+                "what it is worth and where, rigs, finds, deposits worked, "
+                "Cr/hr.",
+    "map": "Send the map picture with the summary.",
+    "card": "Send the session card with the summary too: tonnes, credits, Cr/hr, "
+            "merits and time mined on one picture, with the map small beside them.",
+    "test": "Posts one message to this webhook, with what is in the box now, "
+            "saved or not.",
+    "remove": "Takes this webhook off the list. Save keeps it that way.",
+    "add": "Another channel of yours - up to five.",
+    "join": "Opens the invite to the Radio Raxxla Discord in your browser.",
+}
+# Every find reaches the Radio Raxxla Discord through the community map: the
+# server posts it, from a webhook that lives only on the server.
+COMMUNITY_FEED_LINE = ("Every find also appears in #edsmt-finds on the Radio "
+                       "Raxxla Discord, posted by the community map - nothing "
+                       "to set up.")
+DISCORD_INVITE = WL.DISCORD_URL
+# Under the streamer mode switch: exactly what it hides, and what it does not.
+STREAM_PORT_WRONG = ("The OBS page's port is a whole number from 1024 to 65535 "
+                     "- 8765 is the usual.")
+STREAMER_NOTE = ("Hidden until you have been in a system for the delay: its "
+                 "name and its bodies' names on the overlay, the OBS page and "
+                 "the card it shows, the map's title, "
+                 "the status line and the readouts at the top, and your own "
+                 "Discord posts, which wait the delay. Not hidden: Find, "
+                 "Earnings and the other tools, station names, and the "
+                 "community map, which has each find at once.")
+NOT_A_WEBHOOK = ("That is not a Discord webhook address. In Discord: channel "
+                 "settings > Integrations > Webhooks > Copy Webhook URL.")
+
 # Every Settings row, by the key it saves.
 SETTING_TIPS = {
     "chat_tags": "Reads the messages you send in the game's chat and runs the "
@@ -11114,14 +13462,26 @@ SETTING_TIPS = {
     "long_press_button": "Primary or Secondary fire, as you bound it for the "
                          "SRV in the game's Controls - mouse, key or joystick.",
     "app_theme": "The colours of this window. A new theme shows after a restart.",
+    "srv_colour": "The colour you are drawn in on the map and the scope, in the "
+                  "Rhino or the ship. Theme's own is a cyan picked for each theme; "
+                  "pick another, or type any hex such as #ff00aa.",
+    "overlay_follows_app": "The boxes over the game wear the app theme and change "
+                           "with it as soon as you Save. Off: pick their own below.",
     "overlay_theme": "The colours of the boxes over the game.",
     "overlay_preset": "A layout for the boxes: Standard, Map focus, Minimal or Streamer.",
     "overlay_swept": "How strongly ground you have scanned is shaded on the scope.",
     "overlay_centre": "What the scope is centred on: the signal you are working, or the Rhino.",
     "overlay_frame": "Whether each box has a frame drawn round it.",
+    "overlay_backdrop": "A see-through dark panel behind each box, so it reads on bright ground. "
+                        "Stronger hides more of the game behind the box.",
+    "overlay_backdrop_auto": "On icy and rocky-ice bodies the backdrop goes to at least Medium by "
+                             "itself, and back again when you leave.",
     "overlay_mode": "The shape used when no box is switched on.",
     "overlay_enabled": "The boxes over the game, on or off. Alt+0 from the game.",
     "overlay_rhino_only": "Only show the boxes while you are driving a Rhino.",
+    "ship_minimap": "In the ship, below 10 km over a body with finds on the map, the "
+                    "scope comes up by itself with the body's sites round you, and goes "
+                    "as you climb away or land.",
     "overlay_only_over_game": "Hide the boxes when the game is not the window in front.",
     "overlay_click_through": "Clicks go through the boxes to the game while they are locked.",
     "overlay_flash": "A few words over the game when a key does something - RIG 2 DOWN.",
@@ -11139,22 +13499,44 @@ SETTING_TIPS = {
     "community_share_cmdr_name": "Every find goes up with your CMDR name on it.",
     "tools_as_tabs": "Find, My sites, Where to land, Earnings, Powerplay and Leaderboard open as tabs in this window. Off: each opens in a window of its own. Pop out, at the right of any tab's header, moves just that one out to a window, and Dock brings it back.",
     "leaderboard_optin": "Your CMDR name and points on the community leaderboard. Leave in the Leaderboard window takes them off.",
+    "squadron_share": SQ.NOTICE,
+    "eddn_upload": ED.NOTICE,
     "show_shared_finds": "Other commanders' finds on your map, scope and compass.",
     "verify_my_finds": "With a staff token: your finds go up already verified.",
     "community_token": "Only if Radio Raxxla gave you one. Most people leave it blank.",
     "inara_enabled": "Send where you are to Inara as you play.",
     "inara_api_key": "Your Inara API key, from your Inara account settings.",
     "inara_is_being_developed": "Marks your Inara events as test data.",
-    "discord_webhook": "The webhook of a channel of yours. It is a password for that channel.",
-    "discord_post_finds": "Off: finds are counted in the session summary. On: each find is posted as well, one message each.",
-    "discord_post_sessions": "One summary when a Rhino session ends: time, tonnes, t/hr, what it is worth and where, rigs, finds, deposits worked, Cr/hr.",
     "map_picture_auto": "Save a picture of the map to the pictures folder each time the Rhino docks.",
-    "discord_attach_map": "Send that picture with the Discord summary.",
     "discord_edit_after_sale": "When the cargo is sold, update the same Discord message with the sale, the crew's wages and the merits. Never a second post.",
+    "streamer_mode": "System and body names out of what a stream sees, and your own Discord posts held, until you have been in the system for the delay. A STREAMER badge shows while it is on.",
+    "streamer_delay_min": "How long you are in a system before its names show, and how long your own Discord posts wait.",
+    "streamer_big_text": "The overlay's text two sizes bigger while streamer mode is on, for viewers on a small screen.",
+    "stream_enabled": "A page of your Rhino session for an OBS Browser Source, served on this PC only "
+                      "- nothing on the network can reach it. Streamer mode hides names on it too.",
+    "stream_port": "The port the OBS page is served on, 1024 to 65535. Change it only if another "
+                   "program already uses 8765.",
+    "overlay_text_shadow": "A dark outline behind the overlay's words, so they read on a stream "
+                           "over bright ground.",
     "journal_dir": "Where the game writes its journal. Blank finds it.",
     "rig_warn_m": "Warn this far from a rig. The game destroys a rig at 5 km. 0 is off.",
     "rig_warn_sound": "Sound the rig warning as well as showing it.",
     "rig_sound_profane": "The rude version of the rig warning.",
+    "voice_mode": "Says what each key and event just did - signal logged, rig two down, "
+                  "update ready - in the voice picked below. Windows only.",
+    "voice_theme": "Which voice of the Basic voice line pack: Ship computer, Flight "
+                   "controller or Radio Raxxla on-air.",
+    "voice_rate": "How quickly Windows' speech reads the lines. A recording plays at "
+                  "its own speed.",
+    "voice_directions": "For a headset, where the overlay cannot be seen: how far and which "
+                        "way, on a clock face, to the next pin, waypoint, the target "
+                        "deposit or the nearest rig. Windows only.",
+    "voice_directions_s": "How often the directions are said while you drive, 5 to 60 "
+                          "seconds. A new target is said at once; never more than one "
+                          "line every 3 seconds.",
+    "sonar": "In the Rhino: a short tone that repeats faster and higher as the target "
+             "deposit nears - every 2 s at 1,500 m, five a second inside 25 m, nothing "
+             "past 2 km. Windows only.",
     "rig_offset_m": "How far behind the cockpit a rig lands. 7 m is the measured figure.",
     "rigs_clear_on_dock": "When a Rhino docks in the ship, its rigs come off the scope.",
     "show_shared_layouts": "With no plan of your own, the best layout other commanders used on this deposit shows as pins. Yours is shared when your rigs come up.",
@@ -11172,11 +13554,14 @@ SETTING_TIPS = {
     "trash_days": "How many days a site you remove from My sites waits in the bin before it is deleted for good. 30 is the usual.",
     "wing_link": "Beta: see your wing's Rhinos and rigs on your scope.",
     "wing_code": "Six letters and digits. Everyone in the wing types the same one.",
+    "wing_auto": "In a wing in the game, linked with each wingmate who runs EDSMT and has you in their wing too. No code needed. Leaving the wing in the game ends it.",
+    "wing_split_pins": "A rig plan's pins divided between the wingmates on that deposit, in turn by name. Each of you is guided to your own.",
     "freshness_half_life_days": "How fast an old report counts for less when ranking finds.",
     "high_g_warn": "Warn above this gravity, in g. 0 is off.",
     "jump_range_ly": "Light years a jump, for selling within 1, 2, 4 or 8 jumps. Blank or 0 uses your ship's own range from the game.",
     "auto_download_updates": "Fetch a new version in the background; it installs only when you press the button.",
     "show_tips": "These notes, when the mouse rests on a control.",
+    "trace_files": "During a Rhino session, a line for each change the game writes to Status.json and Cargo.json - the time and the game's flags and cargo counts, nothing else - into the support bundle. Leave it off unless support asks for it.",
 }
 BINDING_TIP = ("Click, then press the key you want - like binding a key in "
                "the game. Reset puts the default back.")
@@ -11242,8 +13627,7 @@ class Tooltip:
                      bg=PANEL, fg=TEXT, font=F_SMALL, bd=1, relief="solid",
                      padx=8, pady=5).pack()
             win.update_idletasks()
-            x = self.widget.winfo_rootx() + 12
-            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+            x, y = self._where(win)
             right = self.widget.winfo_screenwidth() - win.winfo_reqwidth() - 8
             bottom = self.widget.winfo_screenheight() - win.winfo_reqheight() - 8
             if y > bottom:
@@ -11252,6 +13636,11 @@ class Tooltip:
             self._win = win
         except Exception:
             self._win = None
+
+    def _where(self, _win):
+        """Where the note goes: under the control, a little in."""
+        return (self.widget.winfo_rootx() + 12,
+                self.widget.winfo_rooty() + self.widget.winfo_height() + 6)
 
     def _hide(self):
         if self._win is not None:
@@ -11308,9 +13697,10 @@ TOUR_STEPS = (
     ("btn_overlay", "The overlay",
      "Compass, scope, targets, status and the deposit card over the game. "
      "Alt+0 from the game; Unlock beside it to arrange the boxes."),
-    ("tour_find", "Find, My sites, Where to land, Earnings",
+    ("tour_find", "The tabs: Find, My sites, Where to land, Earnings",
      "Everyone's finds; everything you have logged; the best body in this "
-     "system; and what your Rhino sessions earned."),
+     "system; what your Rhino sessions earned - and Powerplay and the "
+     "leaderboard. F2 to F8 open them; F2 is the map."),
     ("tour_settings", "Settings",
      "Keys, overlay, rigs, Discord, Inara and backups. Your settings are "
      "kept in dated copies - Settings puts any of them back."),
@@ -11465,10 +13855,20 @@ class TourWindow(ctk.CTkToplevel):
                 pass
 
 
+# Said under Settings > Basics > Voice anywhere but Windows (1.10040).
+VOICE_ELSEWHERE = ("Voice Mode, the spoken directions and the proximity sonar "
+                   "use Windows' own speech and tones, so on this system they "
+                   "stay quiet. The switches are kept for when EDSMT runs on "
+                   "Windows.")
 # Settings' tabs, in the order they are read (#142).
 SETTINGS_TABS = ("Basics", "Theme", "Overlay", "Keys", "Rigs", "Sharing", "Your data", "About")
 # The colours a theme picker's swatch row shows, in order (1.10039).
 SWATCH_KEYS = ("ORANGE", "AMBER", "TEXT", "MUTED", "GREEN", "RED", "CYAN")
+# 1.10040 (#304): the colours offered for you on the map and the scope. The
+# theme's own is blank in settings.json, so it follows a change of theme.
+MARKER_COLOURS = (("Theme's own", ""), ("Cyan", "#00e5ff"), ("Pale cyan", "#7df9ff"),
+                  ("White", "#ffffff"), ("Lime", "#b6ff3c"), ("Magenta", "#ff4fd8"),
+                  ("Yellow", "#ffe94a"))
 
 
 class SettingsWindow(ctk.CTkToplevel):
@@ -11484,6 +13884,11 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.fields, self.toggles = {}, {}
         self.secrets, self._hide_timers = {}, {}
+        # Address boxes that save into a list rather than a key of their
+        # own - the Discord rows - shown and hidden like the keys above.
+        self.secret_boxes = {}
+        self.hook_rows = []
+        self._hook_serial = 0
         self.binders, self.bindings = {}, {}
         self.joy_binders, self.joy_bindings = {}, {}
         self._joy_capturing = None
@@ -11526,6 +13931,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self._switch(body, "overlay_enabled", "Show the overlay while I play")
         self._switch(body, "overlay_rhino_only",
                      "Only while I am driving a Rhino")
+        self._switch(body, "ship_minimap",
+                     "Ship minimap: the scope up by itself, low over a body with finds")
         self._switch(body, "overlay_show_guide",
                      "Show the step-by-step guide over the game")
         self._switch(body, "rig_sound_profane",
@@ -11537,12 +13944,52 @@ class SettingsWindow(ctk.CTkToplevel):
                     "blank = my ship's")
         self._switch(body, "show_tips",
                      "A note on what each control does, when the mouse rests on it")
+        # 1.10040 (#306): the same picker as the gear beside Find's filter.
+        materials_row = ctk.CTkFrame(body, fg_color="transparent")
+        materials_row.pack(fill="x", padx=10, pady=(2, 4))
+        self.materials_button = tip(ctk.CTkButton(
+            materials_row, text="Materials the lists offer...", width=230, height=30,
+            font=F_STRONG, **BTN_SECONDARY, command=self.app.open_materials),
+            "Choose which materials the commodity type-ahead and the commodity filters offer.")
+        self.materials_button.pack(side="left")
         tour_row = ctk.CTkFrame(body, fg_color="transparent")
         tour_row.pack(fill="x", padx=10, pady=(2, 4))
         tip(ctk.CTkButton(tour_row, text="Show me round again", width=200,
                           height=30, font=F_STRONG, **BTN_SECONDARY,
                           command=lambda: self.app.start_tour(force=True)),
             "The first-run tour of the main window.").pack(side="left")
+
+        # 1.10040 (#145, #146, #153, #292): the voice, and the sonar.
+        body = self.pages["Basics"]
+        self._section(body, "Voice",
+                      "EDSMT says what it just did - signal logged, rig two "
+                      "down - in a voice from the %s. Spoken directions say "
+                      "how far and which way to go, for a headset, where the "
+                      "overlay cannot be seen. The proximity sonar is a tone "
+                      "that quickens as the target deposit nears. A recording "
+                      "- voice\\ship_computer\\signal_logged.wav, beside EDSMT "
+                      "or in the data folder - is played in place of the "
+                      "spoken line." % VO.PACK_NAME)
+        if os.name != "nt":
+            ctk.CTkLabel(body, text=VOICE_ELSEWHERE, font=F_SMALL, text_color=AMBER,
+                         justify="left", wraplength=560, anchor="w").pack(
+                fill="x", padx=10, pady=(0, 6))
+        self._switch(body, "voice_mode", "Voice Mode")
+        self._choice(body, "voice_theme", "Voice",
+                     [(name, key) for key, name in VO.THEMES])
+        self._choice(body, "voice_rate", "Speaking rate", list(VO.RATES))
+        voice_row = ctk.CTkFrame(body, fg_color="transparent")
+        voice_row.pack(fill="x", padx=10, pady=(2, 4))
+        self.voice_test = tip(ctk.CTkButton(
+            voice_row, text="Test voice", width=150, height=30, font=F_STRONG,
+            **BTN_SECONDARY, command=self.test_voice),
+            "Says the test line in the voice and at the rate picked above, "
+            "saved or not.")
+        self.voice_test.pack(side="left")
+        self._switch(body, "voice_directions", "Spoken directions")
+        self._entry(body, "voice_directions_s", "Say the directions every (seconds)",
+                    str(VO.DIRECTIONS_EVERY_S))
+        self._switch(body, "sonar", "Proximity sonar")
 
         # 1.10039 (#287): a tab of its own for the colours, second from the
         # left so it is seen. Both pickers, a swatch row under each, the
@@ -11562,9 +14009,18 @@ class SettingsWindow(ctk.CTkToplevel):
         tip(ctk.CTkButton(restart_row, text="Save and restart now", width=190,
                       height=28, font=F_STRONG, **BTN_SECONDARY,
                       command=self.save_and_restart), "Saves Settings and starts EDSMT again, so a new app theme shows.").pack(side="left")
+        # 1.10040 (#316): one switch and the overlay wears the app theme.
+        self._switch(body, "overlay_follows_app", "Overlay uses the app theme",
+                     command=self.follow_switched)
         self._choice(body, "overlay_theme", "Overlay theme", themes, "",
                      command=lambda _v: self.theme_picked("overlay_theme"))
+        self.follow_note = ctk.CTkLabel(body, text="", font=F_SMALL, text_color=DIM,
+                                        justify="left", anchor="w", wraplength=560)
+        self.follow_note.pack(fill="x", padx=10, pady=(0, 2))
         self._swatch_row(body, "overlay_theme")
+        # 1.10040 (#304): you, on the map and the scope, in a colour of your own.
+        self._colour(body, "srv_colour", "You on the map and scope (SRV or ship)",
+                     MARKER_COLOURS)
         body = self.pages["Theme"]
         self._section(body, "Match my in-game HUD colours",
                       "Reads the colours the game is using - the HUD colour "
@@ -11610,27 +14066,108 @@ class SettingsWindow(ctk.CTkToplevel):
 
         body = self.pages["Sharing"]
         self._section(body, "Discord",
-                      "Your own channel: one summary of every Rhino session "
-                      "when it ends - and every find you mark as well, if you "
-                      "tick it. In Discord: "
-                      "the channel's settings > Integrations > Webhooks > New "
-                      "Webhook > Copy Webhook URL, and paste it here. It is a "
-                      "password for that channel - it stays behind dots.")
-        self._entry(body, "discord_webhook", "Webhook URL",
-                    "https://discord.com/api/webhooks/...", secret=True)
-        self._switch(body, "discord_post_sessions",
-                     "Post a summary when a Rhino session ends")
-        self._switch(body, "discord_post_finds",
-                     "Also post every find I mark (one message each)")
-        self._switch(body, "discord_attach_map",
-                     "Send the map picture with the summary")
+                      "Your own channels, up to %d: one summary of every Rhino "
+                      "session when it ends, and every find you mark as well "
+                      "where you tick it. In Discord: the channel's settings > "
+                      "Integrations > Webhooks > New Webhook > Copy Webhook "
+                      "URL, and paste it here. It is a password for that "
+                      "channel - it stays behind dots." % WH.MAX_HOOKS)
+        # The community feed is the server's job: one line says so.
+        ctk.CTkLabel(body, text=COMMUNITY_FEED_LINE, font=F_SMALL, text_color=MUTED,
+                     justify="left", wraplength=560, anchor="w").pack(fill="x", padx=10,
+                                                                      pady=(0, 4))
+        join_row = ctk.CTkFrame(body, fg_color="transparent")
+        join_row.pack(fill="x", padx=10, pady=(0, 6))
+        tip(ctk.CTkButton(join_row, text="Join the Discord", width=170, height=30,
+                          font=F_STRONG, **BTN_SECONDARY, command=self.join_discord),
+            HOOK_TIPS["join"]).pack(side="left")
+        # The rows, built by load() from the list as it is saved.
+        self.hooks_box = ctk.CTkFrame(body, fg_color="transparent")
+        self.hooks_box.pack(fill="x")
+        add_row = ctk.CTkFrame(body, fg_color="transparent")
+        add_row.pack(fill="x", padx=10, pady=(2, 4))
+        self.hook_add = tip(ctk.CTkButton(add_row, text="Add a webhook", width=170,
+                                          height=30, font=F_STRONG, **BTN_SECONDARY,
+                                          command=self.add_hook_row), HOOK_TIPS["add"])
+        self.hook_add.pack(side="left")
         self._switch(body, "discord_edit_after_sale",
                      "Update the same message when the cargo is sold")
-        discord_row = ctk.CTkFrame(body, fg_color="transparent")
-        discord_row.pack(fill="x", padx=10, pady=(0, 4))
-        tip(ctk.CTkButton(discord_row, text="Send a test message", width=190,
-                      height=30, font=F_STRONG, **BTN_SECONDARY,
-                      command=self.test_discord), "Posts one message to the webhook in the box, saved or not.").pack(side="left")
+
+        body = self.pages["Sharing"]
+        self._section(body, "Radio Raxxla account",
+                      "Pair EDSMT with your member page: sign in at "
+                      "radioraxxla.com with Discord, open Tools, press Make a "
+                      "pairing code and type it here. A code works once, for "
+                      "ten minutes. Any commander can sign in, in the squadron "
+                      "or not.")
+        pair_row = ctk.CTkFrame(body, fg_color="transparent")
+        pair_row.pack(fill="x", padx=10, pady=(0, 4))
+        self.pair_code = tip(ctk.CTkEntry(pair_row, width=150, height=30, font=F_READOUT,
+                                          placeholder_text=PR.EXAMPLE, **ENTRY),
+                             "The code from your member page: eight letters and "
+                             "digits. Capitals, spaces and the dash do not matter.")
+        self.pair_code.pack(side="left")
+        self.pair_button = tip(ctk.CTkButton(pair_row, text="Pair", width=80, height=30,
+                                             font=F_STRONG, **BTN_PRIMARY,
+                                             command=self.pair_now),
+                               "Hands the code to your member page. Nothing else is "
+                               "sent but this computer's name, so you can tell "
+                               "your devices apart there.")
+        self.pair_button.pack(side="left", padx=(6, 0))
+        tip(ctk.CTkButton(pair_row, text="Member page", width=130, height=30,
+                          font=F_STRONG, **BTN_SECONDARY,
+                          command=lambda: open_link(PR.PORTAL_URL)),
+            "Opens the Tools tab of your member page, where the codes are made "
+            "and paired devices are revoked.").pack(side="left", padx=(6, 0))
+        self.pair_forget = tip(ctk.CTkButton(pair_row, text="Forget pairing", width=140,
+                                             height=30, font=F_STRONG, **BTN_SECONDARY,
+                                             command=self.forget_pairing),
+                               "Drops the pairing on this computer. Revoke it on "
+                               "your member page as well.")
+        self.pair_line = ctk.CTkLabel(body, text="", font=F_SMALL, text_color=MUTED,
+                                      justify="left", wraplength=560, anchor="w")
+        self.pair_line.pack(fill="x", padx=10, pady=(0, 4))
+        self.show_pairing()
+
+        body = self.pages["Sharing"]
+        self._section(body, "Squadron",
+                      "Fills your squadron's site from the game: the four things "
+                      "named below and nothing else. Off unless you turn it on; "
+                      "only offered once the journal has named your squadron.")
+        self._switch(body, "squadron_share", "Share my squadron stats with my squadron's site")
+        squadron = getattr(attr(self.app, "watcher", None), "squadron", None) or {}
+        words = SQ.NOTICE if squadron.get("id") else (
+            "Your squadron is not in the journal yet: it is named when the game starts "
+            "with you in one. Until then this switch does nothing. " + SQ.NOTICE)
+        if squadron.get("name"):
+            words = "Squadron: %s. " % squadron["name"] + words
+        self.squad_line = ctk.CTkLabel(body, text=words, font=F_SMALL, text_color=MUTED,
+                                       justify="left", wraplength=560, anchor="w")
+        self.squad_line.pack(fill="x", padx=10, pady=(0, 4))
+
+        body = self.pages["Sharing"]
+        self._section(body, "EDDN",
+                      "The network other Elite tools read. Only mining locations "
+                      "the FSS reports go from here.")
+        self._switch(body, "eddn_upload", "Send mining locations to EDDN")
+        box = attr(self.app, "eddn_box", None)
+        words = ED.NOTICE
+        if box is not None and (box.sent or box.dropped):
+            words += " This session: %d sent, %d refused." % (box.sent, box.dropped)
+        ctk.CTkLabel(body, text=words, font=F_SMALL, text_color=MUTED, justify="left",
+                     wraplength=560, anchor="w").pack(fill="x", padx=10, pady=(0, 4))
+
+        body = self.pages["Sharing"]
+        self._section(body, "Streamer mode",
+                      "For when you are live: where you are stays off the "
+                      "stream until you have been there a while.")
+        self._switch(body, "streamer_mode", "Streamer mode")
+        ctk.CTkLabel(body, text=STREAMER_NOTE, font=F_SMALL, text_color=MUTED,
+                     justify="left", wraplength=560, anchor="w").pack(fill="x", padx=10,
+                                                                      pady=(0, 4))
+        self._choice(body, "streamer_delay_min", "Delay",
+                     [("%d minutes" % m, str(m)) for m in ST.DELAYS_MIN])
+        self._switch(body, "streamer_big_text", "Bigger text on the overlay")
 
         body = self.pages["Sharing"]
         self._section(body, "Radio Raxxla staff",
@@ -11703,7 +14240,13 @@ class SettingsWindow(ctk.CTkToplevel):
                       "a rig on top of anybody else's, with your commander "
                       "name beside yours. Nothing is "
                       "kept: the server forgets you two minutes after you "
-                      "switch it off or close EDSMT.")
+                      "switch it off or close EDSMT. In a wing in the game, "
+                      "no code is needed: you are linked with each wingmate "
+                      "who has you in their wing too. The ground you have "
+                      "swept, your finds and your rig plan's pins go with it.")
+        self._switch(body, "wing_auto", "Link with my in-game wing by itself")
+        self._switch(body, "wing_split_pins",
+                     "Split the rig plan's pins between the wing")
         self._switch(body, "wing_link", "Wing link (beta): share my Rhino and "
                                         "rigs with my wing")
         self._entry(body, "wing_code", "Wing code (6 letters and digits)",
@@ -11787,6 +14330,24 @@ class SettingsWindow(ctk.CTkToplevel):
             body, text="", font=F_SMALL, text_color=AMBER,
             justify="left", anchor="w")
         self.hotkey_note.pack(fill="x", padx=10, pady=(2, 0))
+        # 1.10040 (#152): the same keys, spoken, through VoiceAttack.
+        body = self.pages["Keys"]
+        self._section(body, "VoiceAttack",
+                      "A profile for VoiceAttack whose commands - mark signal, "
+                      "set border, mark deposit, rig one down to rig six down, "
+                      "rigs up, update deposit, next waypoint, overlay, lock "
+                      "overlay - press the keys above. Made from the keys as "
+                      "they are on this page, so make it again after changing "
+                      "one. Saved in the data folder; in VoiceAttack, Import "
+                      "Profile and pick it.")
+        va_row = ctk.CTkFrame(body, fg_color="transparent")
+        va_row.pack(fill="x", padx=10, pady=(0, 4))
+        self.voiceattack_button = tip(ctk.CTkButton(
+            va_row, text="Make a VoiceAttack profile", width=240, height=30,
+            font=F_STRONG, **BTN_SECONDARY, command=self.make_voiceattack),
+            "Writes %s to the data folder, with the keys on this page, and "
+            "says where it is." % VA.FILE_NAME)
+        self.voiceattack_button.pack(side="left")
         body = self.pages["Keys"]
         self._section(body, "Joystick and HOTAS buttons",
                       ("Each key above has a Joystick button beside it: click "
@@ -11925,6 +14486,8 @@ class SettingsWindow(ctk.CTkToplevel):
         tip(ctk.CTkButton(support_row, text="Make a support bundle", width=200,
                       height=30, font=F_STRONG, **BTN_SECONDARY,
                       command=self.make_support_bundle), "Writes one zip for a bug report, with no keys in it, and opens its folder.").pack(side="left")
+        # 1.10040 (#273): what the game writes while a Rhino works, for support.
+        self._switch(body, "trace_files", "Trace mode - for support")
 
         body = self.pages["Overlay"]
         self._section(body, "In-game overlay",
@@ -11969,6 +14532,12 @@ class SettingsWindow(ctk.CTkToplevel):
                      "The scope is something you look through. A border "
                      "round it sits in your cockpit whether you are looking "
                      "at it or not.")
+        self._choice(body, "overlay_backdrop", "Dark backdrop behind the boxes",
+                     list(OV.BACKDROPS),
+                     "For bright planets: the game shows through a light one, "
+                     "less through a strong one.")
+        self._switch(body, "overlay_backdrop_auto",
+                     "Darker by itself on icy and rocky-ice bodies")
         self._choice(body, "overlay_centre", "Radar centres on",
                      [("The mining location", "site"), ("My SRV", "srv")],
                      "Only used by the radar scope.")
@@ -12055,6 +14624,34 @@ class SettingsWindow(ctk.CTkToplevel):
                           "they follow you between monitors."
                      ).pack(side="left", fill="x", expand=True)
 
+        # 1.10040 (#149, #307, #148): the session for a stream.
+        body = self.pages["Overlay"]
+        self._section(body, "Streaming",
+                      "Your Rhino session as a page for an OBS Browser Source, "
+                      "served on this PC and nowhere else: the overlay page to "
+                      "sit over the game, the viewer card for a corner of the "
+                      "stream or a Twitch panel. Streamer mode hides names on "
+                      "them as it does on screen.")
+        self._switch(body, "stream_enabled", "Serve an OBS browser source on this PC")
+        self._entry(body, "stream_port", "Port (1024 - 65535)", str(SO.DEFAULT_PORT))
+        stream_row = ctk.CTkFrame(body, fg_color="transparent")
+        stream_row.pack(fill="x", padx=10, pady=(2, 4))
+        self.stream_copy = {}
+        for path, label, note in (
+                ("/overlay", "Copy overlay address",
+                 "Copies the overlay page's address - in OBS, add a Browser Source "
+                 "and paste it as the URL."),
+                ("/viewer", "Copy viewer card address",
+                 "Copies the viewer card's address: CMDR, what you are mining and "
+                 "where, tonnes, Cr/hr and the last find.")):
+            button = tip(ctk.CTkButton(stream_row, text=label, width=210, height=30,
+                                       font=F_STRONG, **BTN_SECONDARY,
+                                       command=lambda p=path: self.copy_stream_address(p)),
+                         note)
+            button.pack(side="left", padx=(0, 8))
+            self.stream_copy[path] = button
+        self._switch(body, "overlay_text_shadow", "Text shadow for streaming")
+
         body = self.pages["Sharing"]
         self._section(body, "Ranking",
                       "How fast a shared find loses value. Deposits come back "
@@ -12072,6 +14669,23 @@ class SettingsWindow(ctk.CTkToplevel):
 
         body = self.pages["About"]
         self._section(body, "About EDSMT", ABOUT_LINE)
+        # 1.10040: the badge, the welcome again, and the donation link.
+        self._about_badge = badge_image(LG.ABOUT_PX, self)
+        if self._about_badge is not None:
+            ctk.CTkLabel(body, text="", image=self._about_badge).pack(
+                anchor="w", padx=10, pady=(2, 6))
+        about_row = ctk.CTkFrame(body, fg_color="transparent")
+        about_row.pack(fill="x", padx=10, pady=(0, 6))
+        tip(ctk.CTkButton(about_row, text="Welcome again", width=170, height=30,
+                          font=F_STRONG, **BTN_SECONDARY,
+                          command=lambda: self.app.show_welcome(force=True)),
+            "The welcome window: how EDSMT works, and the useful links.").pack(side="left")
+        for label, url in WL.donate_buttons(EDO.DONATE_URL, EDO.KOFI_URL):
+            tip(ctk.CTkButton(about_row, text=label, width=190, height=30,
+                              font=F_STRONG, **BTN_SECONDARY,
+                              command=lambda u=url: open_link(u)),
+                "Support Radio Raxxla: opens the donation page in your browser.").pack(
+                    side="left", padx=(8, 0))
         self._about_picture = picture(ABOUT_PICTURE, self)
         if self._about_picture is not None:
             tk.Label(body, image=self._about_picture, bg=PANEL, bd=0,
@@ -12136,11 +14750,11 @@ class SettingsWindow(ctk.CTkToplevel):
                          justify="left", wraplength=560, anchor="w").pack(
                 fill="x", padx=10, pady=(0, 6))
 
-    def _switch(self, parent, key, label):
+    def _switch(self, parent, key, label, command=None):
         var = ctk.BooleanVar(value=False)
         tip(ctk.CTkSwitch(parent, text=label, variable=var, font=F_BODY,
-                          **SWITCH), SETTING_TIPS.get(key)).pack(anchor="w",
-                                                                 padx=10, pady=4)
+                          **SWITCH, **({"command": command} if command else {})),
+            SETTING_TIPS.get(key)).pack(anchor="w", padx=10, pady=4)
         self.toggles[key] = var
 
     def _entry(self, parent, key, label, placeholder="", secret=False):
@@ -12165,7 +14779,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def reveal(self, key):
         """Show or hide one key box. Shown, it hides again after REVEAL_S."""
-        entry, button = self.fields.get(key), self.secrets.get(key)
+        entry, button = self._secret_box(key), self.secrets.get(key)
         if entry is None or button is None:
             return
         if button.cget("text") == "Hide":
@@ -12179,8 +14793,11 @@ class SettingsWindow(ctk.CTkToplevel):
         except Exception:
             pass
 
+    def _secret_box(self, key):
+        return self.fields.get(key) or attr(self, "secret_boxes", {}).get(key)
+
     def hide_secret(self, key):
-        entry, button = self.fields.get(key), self.secrets.get(key)
+        entry, button = self._secret_box(key), self.secrets.get(key)
         self._forget_hide(key)
         if entry is None or button is None:
             return
@@ -12199,6 +14816,133 @@ class SettingsWindow(ctk.CTkToplevel):
     def hide_secrets(self):
         for key in list(self.secrets):
             self.hide_secret(key)
+
+    # -- your own Discord webhooks (1.10040, #315) -------------------------
+
+    def add_hook_row(self, values=None):
+        """One webhook's row: its name, its address behind dots with Show,
+        Finds / Sessions / Session map, Test and Remove. None at the most
+        there can be."""
+        if len(self.hook_rows) >= WH.MAX_HOOKS:
+            return None
+        values = WH.clean([values])[0] if values else WH.entry()
+        self._hook_serial += 1
+        key = "discord_webhooks#%d" % self._hook_serial
+        frame = ctk.CTkFrame(self.hooks_box, fg_color=PANEL, corner_radius=0,
+                             border_width=1, border_color=RULE)
+        frame.pack(fill="x", padx=10, pady=4)
+        row = {"key": key, "frame": frame, "vars": {}, "switches": {}}
+        line = ctk.CTkFrame(frame, fg_color="transparent")
+        line.pack(fill="x", padx=8, pady=(6, 2))
+        ctk.CTkLabel(line, text="Name", width=110, anchor="w", font=F_BODY,
+                     text_color=TEXT).pack(side="left")
+        row["name"] = tip(ctk.CTkEntry(line, height=30, font=F_BODY, **ENTRY,
+                                       placeholder_text=WH.default_name(len(self.hook_rows) + 1)),
+                          HOOK_TIPS["name"])
+        row["name"].pack(side="left", fill="x", expand=True)
+        line = ctk.CTkFrame(frame, fg_color="transparent")
+        line.pack(fill="x", padx=8, pady=2)
+        ctk.CTkLabel(line, text="Webhook URL", width=110, anchor="w", font=F_BODY,
+                     text_color=TEXT).pack(side="left")
+        # Packed before the box so it keeps its width when narrow.
+        row["show"] = tip(ctk.CTkButton(line, text="Show", width=68, height=30,
+                                        font=F_STRONG, **BTN_SECONDARY,
+                                        command=lambda: self.reveal(key)), HOOK_TIPS["show"])
+        row["show"].pack(side="right", padx=(6, 0))
+        row["url"] = tip(ctk.CTkEntry(line, height=30, font=F_BODY, **ENTRY, show=MASK,
+                                      placeholder_text="https://discord.com/api/webhooks/..."),
+                         HOOK_TIPS["url"])
+        row["url"].pack(side="left", fill="x", expand=True)
+        line = ctk.CTkFrame(frame, fg_color="transparent")
+        line.pack(fill="x", padx=8, pady=2)
+        for kind, label in (("finds", "Finds"), ("sessions", "Sessions"),
+                            ("map", "Session map"), ("card", "Session card")):
+            var = ctk.BooleanVar(value=bool(values[kind]))
+            row["vars"][kind] = var
+            row["switches"][kind] = tip(ctk.CTkSwitch(line, text=label, variable=var,
+                                                      font=F_BODY, **SWITCH), HOOK_TIPS[kind])
+            row["switches"][kind].pack(side="left", padx=(0, 10))
+        # Test and Remove on a line of their own (1.10040): four switches
+        # and both buttons do not fit across Settings.
+        line = ctk.CTkFrame(frame, fg_color="transparent")
+        line.pack(fill="x", padx=8, pady=(2, 6))
+        row["remove"] = tip(ctk.CTkButton(line, text="Remove", width=84, height=28,
+                                          font=F_STRONG, **BTN_SECONDARY,
+                                          command=lambda: self.remove_hook_row(row)),
+                            HOOK_TIPS["remove"])
+        row["remove"].pack(side="right")
+        row["test"] = tip(ctk.CTkButton(line, text="Test", width=70, height=28,
+                                        font=F_STRONG, **BTN_SECONDARY,
+                                        command=lambda: self.test_discord(row)),
+                          HOOK_TIPS["test"])
+        row["test"].pack(side="right", padx=(0, 6))
+        if values["name"]:
+            row["name"].insert(0, values["name"])
+        if values["url"]:
+            row["url"].insert(0, values["url"])
+        self.secrets[key] = row["show"]
+        self.secret_boxes[key] = row["url"]
+        self.hook_rows.append(row)
+        self._show_hook_add()
+        return row
+
+    def remove_hook_row(self, row):
+        """Take one row off the list. Save keeps it that way."""
+        if row not in self.hook_rows:
+            return
+        self._forget_hide(row["key"])
+        self.secrets.pop(row["key"], None)
+        self.secret_boxes.pop(row["key"], None)
+        self.hook_rows.remove(row)
+        try:
+            row["frame"].destroy()
+            # A blank name is its place in the list, and the places moved.
+            for number, other in enumerate(self.hook_rows, 1):
+                other["name"].configure(placeholder_text=WH.default_name(number))
+        except Exception:
+            pass
+        self._show_hook_add()
+
+    def _show_hook_add(self):
+        """Add a webhook while there is room for another; not at five."""
+        button = attr(self, "hook_add")
+        if button is None:
+            return
+        try:
+            if len(self.hook_rows) >= WH.MAX_HOOKS:
+                button.pack_forget()
+            elif not button.winfo_manager():
+                button.pack(side="left")
+        except Exception:
+            pass
+
+    def load_hooks(self, rows):
+        """The rows as the list is saved now."""
+        for row in list(self.hook_rows):
+            self.remove_hook_row(row)
+        for values in WH.clean(rows):
+            self.add_hook_row(values)
+
+    def hooks_to_save(self):
+        """(list, None) from the rows, or (None, what is wrong). A blank
+        name is Discord N; a blank address is allowed - it posts nothing."""
+        out = []
+        for number, row in enumerate(self.hook_rows, 1):
+            name = row["name"].get().strip() or WH.default_name(number)
+            url = row["url"].get().strip()
+            if url and not EDO.discord_hook_ok(url):
+                return None, "%s: %s" % (name, NOT_A_WEBHOOK)
+            out.append(WH.entry(name, url, **{kind: bool(var.get())
+                                              for kind, var in row["vars"].items()}))
+        return out, None
+
+    def join_discord(self):
+        """The Radio Raxxla Discord's invite, in the browser."""
+        try:
+            import webbrowser
+            webbrowser.open(DISCORD_INVITE)
+        except Exception as exc:
+            self.say("Could not open a browser: %s" % exc, RED)
 
     def _paste_enter(self, event=None):
         """Enter imports; Shift+Enter is a new line in the box."""
@@ -12292,15 +15036,54 @@ class SettingsWindow(ctk.CTkToplevel):
             pass        # the window has gone; there is nothing left to paint
 
     def theme_picked(self, key):
-        """A theme picker changed: repaint its swatches."""
+        """A theme picker changed: repaint its swatches - and, while the
+        overlay follows the app, put the overlay picker on the same theme."""
         self._paint_swatches(key)
+        if key == "app_theme":
+            self.follow_switched()
+
+    def _follows_app(self):
+        var = (attr(self, "toggles", None) or {}).get("overlay_follows_app")
+        try:
+            return bool(var.get()) if var is not None else False
+        except Exception:
+            return False
+
+    def follow_switched(self):
+        """Overlay uses the app theme (1.10040, #316): on, the overlay picker
+        shows the app theme, greyed out, with a note saying why; off, it is
+        the overlay's own again."""
+        choice = (attr(self, "choices", None) or {}).get("overlay_theme")
+        note = attr(self, "follow_note", None)
+        if choice is None:
+            return
+        box, options = choice
+        following = self._follows_app()
+        try:
+            if following:
+                box.configure(state="normal")
+                theme = self._theme_key("app_theme")
+                box.set(next((name for name, value in options if value == theme),
+                             options[0][0]))
+                box.configure(state="disabled")
+            else:
+                box.configure(state="normal")
+            if note is not None:
+                note.configure(text="The overlay wears the app theme. Switch "
+                                    "this off to give it one of its own."
+                               if following else "")
+        except Exception:
+            pass        # the window has gone; there is nothing left to set
+        self._paint_swatches("overlay_theme")
 
     def _pick_theme(self, theme):
         """Put one theme in both pickers, and paint both swatch rows."""
         for key in ("app_theme", "overlay_theme"):
             box, options = self.choices[key]
+            box.configure(state="normal")
             box.set(next((name for name, value in options if value == theme), options[0][0]))
             self._paint_swatches(key)
+        self.follow_switched()
 
     def power_picked(self, power):
         """A Power picked: its theme for the app and the overlay together."""
@@ -12370,6 +15153,9 @@ class SettingsWindow(ctk.CTkToplevel):
         box, options, patch = entry
         chosen = box.get().strip()
         value = next((v for name, v in options if name == chosen), chosen)
+        if value == "" and key == "srv_colour":
+            # The theme's own: the cyan the app theme picked gives.
+            value = OV.srv_colour(self._theme_key("app_theme"))
         try:
             patch.configure(fg_color=value if is_colour(value) else ORANGE)
         except Exception:
@@ -12583,6 +15369,9 @@ class SettingsWindow(ctk.CTkToplevel):
                 entry.insert(0, str(value))
         for key, (box, options) in self.choices.items():
             current = str(data.get(key, DEFAULT_SETTINGS.get(key, "")) or "")
+            # A box greyed out takes no new value; follow_switched below
+            # greys it again where it should be.
+            box.configure(state="normal")
             box.set(next((name for name, value in options if value == current),
                          options[0][0]))
         for key, (box, options, _patch) in self.colours.items():
@@ -12594,6 +15383,9 @@ class SettingsWindow(ctk.CTkToplevel):
             self._show_colour(key)
         for key in list(attr(self, "swatches", None) or {}):
             self._paint_swatches(key)
+        self.follow_switched()
+        if attr(self, "hooks_box") is not None:
+            self.load_hooks(data.get("discord_webhooks"))
         self._show_game_line()
         # The bindings were seeded with the hardcoded fallback when the row
         # was built and load() never touched them again, so Settings showed
@@ -12634,6 +15426,11 @@ class SettingsWindow(ctk.CTkToplevel):
         for key, (box, options, _patch) in self.colours.items():
             chosen = box.get().strip()
             value = next((v for name, v in options if name == chosen), chosen)
+            # A colour that follows the theme is blank, and blank is allowed
+            # where the list offers it (1.10040: the marker colour).
+            if value == "" and any(v == "" for _name, v in options):
+                data[key] = ""
+                continue
             if not is_colour(value):
                 return self.say("%s is not a colour. Pick one from the list "
                                 "or type a hex like #ff7a18." % (chosen or "That"),
@@ -12759,12 +15556,27 @@ class SettingsWindow(ctk.CTkToplevel):
         folder = data.get("journal_dir", "")
         if folder and not os.path.isdir(folder):
             return self.say("That folder does not exist.", RED)
-        hook = str(data.get("discord_webhook") or "").strip()
-        if hook and not EDO.discord_hook_ok(hook):
-            return self.say("That is not a Discord webhook address. In Discord: "
-                            "channel settings > Integrations > Webhooks > Copy "
-                            "Webhook URL.", RED)
-        data["discord_webhook"] = hook
+        if attr(self, "hooks_box") is not None:
+            hooks, wrong = self.hooks_to_save()
+            if wrong:
+                return self.say(wrong, RED)
+            data["discord_webhooks"] = hooks
+        data["streamer_delay_min"] = ST.delay_minutes(data.get("streamer_delay_min"))
+        raw = str(data.get("voice_directions_s") or "").strip().lower().rstrip("s").strip()
+        try:
+            every = int(float(raw)) if raw else VO.DIRECTIONS_EVERY_S
+        except ValueError:
+            every = None
+        if every is None or not VO.DIRECTIONS_MIN_S <= every <= VO.DIRECTIONS_MAX_S:
+            return self.say("The spoken directions are said every %d to %d seconds "
+                            "- 10 is the usual." % (VO.DIRECTIONS_MIN_S,
+                                                    VO.DIRECTIONS_MAX_S), RED)
+        data["voice_directions_s"] = every
+        data["voice_theme"] = VO.clean_theme(data.get("voice_theme"))
+        port = SO.parse_port(data.get("stream_port"))
+        if port is None:
+            return self.say(STREAM_PORT_WRONG, RED)
+        data["stream_port"] = port
 
         # Overlay numbers are clamped rather than rejected: a silly width is a
         # typo, not a reason to lose everything else typed on this screen.
@@ -12785,13 +15597,17 @@ class SettingsWindow(ctk.CTkToplevel):
         except ValueError:
             return self.say("Overlay size, span and opacity must be numbers.", RED)
 
+        overlay_before = str((attr(self.app, "settings", None) or {}).get("overlay_theme") or "")
         self.app.apply_settings(data)
         warn = data.get("rig_warn_m") or 0
         theme = ""
+        if str(data.get("overlay_theme") or "") != overlay_before:
+            theme = " The overlay wears %s now." % OV.THEME_NAMES.get(
+                data.get("overlay_theme"), data.get("overlay_theme"))
         if str(data.get("app_theme") or "cockpit") != \
                 str(attr(self.app, "theme_worn", "cockpit")):
-            theme = " The app theme is worn from the next start - Save and " \
-                    "restart now does it."
+            theme += " The app theme is worn from the next start - Save and " \
+                     "restart now does it."
         self.say("Saved. Live now. %s%s" % (
             ("Rig warning at %s." % _metres(warn)) if warn
             else "Rig warning off.", theme), GREEN)
@@ -12822,6 +15638,48 @@ class SettingsWindow(ctk.CTkToplevel):
         if self._saved_ok:
             self.app.restart_app()
 
+    def copy_stream_address(self, path):
+        """One of the OBS page's addresses on the clipboard, on the port in
+        the box - saved or not."""
+        box = self.fields.get("stream_port")
+        port = SO.parse_port(box.get() if box is not None else "")
+        if port is None:
+            return self.say(STREAM_PORT_WRONG, RED)
+        url = SO.page_url(port, path)
+        try:
+            put_on_clipboard(self, url)
+        except Exception as exc:
+            return self.say("Could not reach the clipboard: %s" % exc, RED)
+        served = (attr(self.app, "settings", None) or {}).get("stream_enabled")
+        return self.say("Copied %s - paste it as the URL of an OBS Browser Source.%s"
+                        % (url, "" if served else " Switch the page on above and "
+                           "Save first."), GREEN)
+
+    def _picked(self, key):
+        """The value a choice box shows now, saved or not."""
+        box, options = self.choices[key]
+        shown = str(box.get() or "").strip()
+        return next((value for name, value in options if name == shown), options[0][1])
+
+    def test_voice(self):
+        """Test voice: the test line, in the voice and at the rate the boxes
+        show now."""
+        theme, rate = self._picked("voice_theme"), self._picked("voice_rate")
+        if not self.app.speak("voice_test", force=True, theme=theme, rate=rate):
+            return self.say("Nothing to speak with here: Voice Mode uses Windows' "
+                            "own speech.", AMBER)
+        return self.say("Speaking: \"%s\" (%s, %s)." % (
+            VO.line_text("voice_test", theme), dict(VO.THEMES).get(theme, theme),
+            dict((v, n) for n, v in VO.RATES).get(rate, rate).lower()), GREEN)
+
+    def make_voiceattack(self):
+        """Make a VoiceAttack profile: from the keys on the Keys page now,
+        into the data folder, and say where."""
+        data = dict(self.app.settings)
+        data.update(attr(self, "bindings", None) or {})
+        path, words = self.app.make_voiceattack_profile(data)
+        return self.say(words, GREEN if path else RED)
+
     def reset_boxes(self):
         """Settings' handle on the app's layout reset."""
         self.app.reset_overlay_layout()
@@ -12843,6 +15701,12 @@ class SettingsWindow(ctk.CTkToplevel):
             var = self.toggles.get("overlay_show_%s" % key)
             if var is not None:
                 var.set(key in on)
+            # A layout that raised the text (the streamer one) shows it
+            # here too, so Save does not put it back.
+            box, options = self.choices.get("overlay_text_%s" % key, (None, ()))
+            current = str(self.app.settings.get("overlay_text_%s" % key, "") or "")
+            if box is not None:
+                box.set(next((n for n, v in options if v == current), box.get()))
         label = dict((v, l) for l, v in OV.LAYOUT_PRESETS).get(name, name)
         self.say("%s layout applied. Unlock the overlay to drag any box from "
                  "there." % label, GREEN)
@@ -12863,6 +15727,7 @@ class SettingsWindow(ctk.CTkToplevel):
             return self.say("Could not write the backup: %s" % problem, RED)
         if not path:
             return self.say("Nothing to back up yet.", AMBER)
+        self.app.speak("backup_done")
         self.say("Backed up %d file(s) to %s" % (count, path), GREEN)
 
     def restore_now(self):
@@ -12898,10 +15763,41 @@ class SettingsWindow(ctk.CTkToplevel):
                      "theme shows after a restart." % restored, GREEN)
         self.destroy()
 
-    def test_discord(self):
-        """Post one message with what is in the box now, saved or not."""
-        entry = self.fields.get("discord_webhook")
-        hook = entry.get().strip() if entry is not None else ""
+    def show_pairing(self):
+        """The pairing line and Forget pairing, as the settings stand."""
+        settings = attr(self.app, "settings", None) or {}
+        if PR.paired(settings):
+            device = str(settings.get("portal_device") or "").strip()
+            self.pair_line.configure(
+                text="Paired%s. Your member page lists this computer."
+                     % (" as device " + device if device else ""), text_color=GREEN)
+            if not self.pair_forget.winfo_manager():
+                self.pair_forget.pack(side="left", padx=(6, 0))
+        else:
+            self.pair_line.configure(text="Not paired.", text_color=MUTED)
+            self.pair_forget.pack_forget()
+
+    def pair_now(self):
+        """Pair: the code in the box goes to the member page."""
+        code = self.pair_code.get()
+        if not self.app.pair_with_portal(code):
+            return self.say("A code is eight letters and digits, like %s - make "
+                            "one on your member page." % PR.EXAMPLE, AMBER)
+        self.pair_code.delete(0, "end")
+        self.say("Sent %s to your member page..." % PR.shown(code))
+
+    def forget_pairing(self):
+        self.app.forget_pairing()
+        self.say("Pairing forgotten here. Revoke it on your member page as well.")
+
+    def test_discord(self, row):
+        """Post one message to one row's webhook, with what is in its box
+        now, saved or not. Never held back by streamer mode: it says
+        nothing about where you are."""
+        if row not in self.hook_rows:
+            return None
+        hook = row["url"].get().strip()
+        name = row["name"].get().strip() or WH.default_name(self.hook_rows.index(row) + 1)
         if not hook:
             return self.say("Paste the webhook URL first.", AMBER)
         if not EDO.discord_hook_ok(hook):
@@ -12911,8 +15807,8 @@ class SettingsWindow(ctk.CTkToplevel):
             [("CMDR", getattr(getattr(self.app, "watcher", None), "cmdr", "") or "")],
             description="Finds and Rhino sessions will be posted here.")
         self.app.worker.submit(EDO.DISCORD_TEST_TAG,
-                               lambda: json.dumps(EDO.discord_post(hook, payload)))
-        self.say("Sent a test message - look in the channel.", GREEN)
+                               self.app.discord_send_job(hook, payload, name))
+        self.say("Sent a test message to %s - look in the channel." % name, GREEN)
 
     def restore_settings_now(self):
         """Put the picked dated copy of the settings back, and wear it."""
@@ -13023,14 +15919,9 @@ class SettingsWindow(ctk.CTkToplevel):
         folder = MI.pictures_dir(DATA_DIR)
         try:
             os.makedirs(folder, exist_ok=True)
-            if os.name == "nt":
-                os.startfile(folder)                      # noqa: S606
-            else:
-                import subprocess
-                subprocess.Popen(["xdg-open", folder])
-            self.say(folder)
-        except Exception:
-            self.say(folder, AMBER)
+        except OSError:
+            pass
+        self.say(folder, None if open_path(folder) else AMBER)
 
     def make_support_bundle(self):
         """One zip for a bug report: no secrets in it, and its folder opened."""
@@ -13083,75 +15974,260 @@ def about_text():
             "affiliated with Frontier Developments." % APP_VERSION)
 
 
-class WelcomeWindow(ctk.CTkToplevel):
-    """What happens to a find, said once, on first run.
+# The welcome window's HOW IT WORKS picture, in pixels before scaling, and
+# what its support panel says (1.10040).
+WELCOME_DIAGRAM_H = 230
+SUPPORT_WORDS = ("EDSMT and the community map's server are run for free by Radio "
+                 "Raxxla. If it has earned you a few credits, a donation helps "
+                 "with the running costs and with the fund for a code-signing "
+                 "certificate, so Windows stops warning about the download.")
 
-    Every commander running EDSMT is a surveyor. Surface deposits are not
-    ring hotspots - nobody has mapped them, there is no third-party database
-    to look them up in, and one person mapping alone will never cover a
-    galaxy. So every find goes on the community map with the name of the
-    commander who found it, and this says so plainly before the first one
-    does. Since 1.10036 there is no choice to make here - one button.
+
+class WelcomeWindow(ctk.CTkToplevel):
+    """Welcome to EDSMT (1.10040, #309) - and what happens to a find.
+
+    Opens by itself on the first start of each new version until "Don't
+    show this again" is ticked, and whenever it is asked for from Help or
+    Settings > About. What the app is, how it works as a picture
+    (welcome.py draws it), how to support it, the useful links, and Get
+    Started.
+
+    It is also the first-run notice. Every commander running EDSMT is a
+    surveyor. Surface deposits are not ring hotspots - nobody has mapped
+    them, there is no third-party database to look them up in, and one
+    person mapping alone will never cover a galaxy. So every find goes on
+    the community map with the name of the commander who found it, and this
+    says so plainly before the first one does. Since 1.10036 there is no
+    choice to make here.
+
+    The footer is laid out first: on a short screen the middle scrolls and
+    Get Started never leaves the window.
     """
 
-    def __init__(self, app):
+    def __init__(self, app, screen=None):
         super().__init__(app)
         self.app = app
-        self.title("EDSMT - The community map")
-        # The Rhino across the top, when the picture is there to show.
-        self._picture = picture(WELCOME_PICTURE, self)
-        self.geometry("%dx%d" % (WELCOME_SIZE if self._picture is not None
-                                 else WELCOME_SIZE_PLAIN))
+        self.title("EDSMT - Welcome")
+        self.icon_worn = wear_icon(self)
         self.configure(fg_color=VOID)
         self.transient(app)
-        self.resizable(False, False)
+        if screen is None:
+            screen = (self.winfo_screenwidth(), self.winfo_screenheight())
+        self.size_wanted = WL.welcome_size(*screen)
+        width, height = self.size_wanted
+        try:
+            app.update_idletasks()
+            over = (app.winfo_rootx(), app.winfo_rooty(),
+                    app.winfo_width(), app.winfo_height())
+        except Exception:
+            over = (0, 0, width, height)
+        self.geometry("%dx%d+%d+%d" % ((width, height)
+                                       + WL.place_over(over, self.size_wanted, screen)))
+        self.minsize(min(width, WL.LEAST_W), min(height, WL.LEAST_H))
+        try:
+            scaling = float(ctk.ScalingTracker.get_widget_scaling(self)) or 1.0
+        except Exception:
+            scaling = 1.0
+        wrap = max(380, width - 110)
 
-        body = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0)
-        body.pack(fill="both", expand=True, padx=12, pady=12)
-        bracket(body, colour=ORANGE)
-        if self._picture is not None:
-            tk.Label(body, image=self._picture, bg=PANEL, bd=0,
-                     highlightthickness=0).pack(padx=16, pady=(16, 0))
+        self.footer = ctk.CTkFrame(self, fg_color=RAIL, corner_radius=0)
+        self.footer.pack(side="bottom", fill="x")
+        ctk.CTkFrame(self.footer, height=1, fg_color=RULE, corner_radius=0).pack(fill="x")
+        row = ctk.CTkFrame(self.footer, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=12)
+        self.never_box = tip(ctk.CTkCheckBox(
+            row, text="Don't show this again", font=F_BODY, text_color=TEXT,
+            fg_color=ORANGE, hover_color=AMBER, border_color=RULE,
+            checkmark_color=VOID, corner_radius=0),
+            "Not by itself again until the next version. Help and Settings > "
+            "About open it whenever you want.")
+        self.never_box.pack(side="left")
+        tip(ctk.CTkButton(row, text="Get Started", width=200, height=44,
+                          font=F_ACTION, **BTN_PRIMARY,
+                          command=lambda: self.answer(True)),
+            "Your finds go on the community map with your CMDR name on them. "
+            "Closes this and goes to the main window.").pack(side="right")
 
-        ctk.CTkLabel(body, text="One map, everybody's", font=F_TITLE,
-                     text_color=ORANGE, anchor="w").pack(fill="x", padx=16, pady=(16, 2))
+        self.scroll = ctk.CTkScrollableFrame(self, **LIST)
+        self.scroll.pack(side="top", fill="both", expand=True, padx=12, pady=(12, 8))
+        body = self.scroll
+        # The badge across the top, when the picture is there to show.
+        self.badge = None
+        self._badge_picture = badge_image(LG.WELCOME_PX, self)
+        if self._badge_picture is not None:
+            self.badge = ctk.CTkLabel(body, text="", image=self._badge_picture)
+            self.badge.pack(pady=(14, 2))
+        head = ctk.CTkFrame(body, fg_color="transparent")
+        head.pack(pady=(10, 2))
+        ctk.CTkLabel(head, text="Welcome to EDSMT", font=F_TITLE,
+                     text_color=ORANGE).pack(side="left")
+        ctk.CTkLabel(head, text=APP_VERSION, font=F_SMALL_B, text_color=VOID,
+                     fg_color=AMBER, corner_radius=0, width=76,
+                     height=22).pack(side="left", padx=(12, 0))
+        ctk.CTkLabel(body, text="Surface mining for the Rhino SRV, read from your journal",
+                     font=F_READOUT, text_color=MUTED, wraplength=wrap).pack(pady=(0, 6))
+
+        # CHECK THE SETTINGS, in a panel of its own with the button to go.
+        call, call_words = WL.SETTINGS_CALL
+        self.settings_call = ctk.CTkFrame(body, fg_color=PANEL, border_color=ORANGE,
+                                          border_width=2, corner_radius=0)
+        self.settings_call.pack(fill="x", padx=16, pady=(10, 6))
+        ctk.CTkLabel(self.settings_call, text=call, font=F_TITLE,
+                     text_color=ORANGE).pack(pady=(14, 2))
+        ctk.CTkLabel(self.settings_call, text=call_words, font=F_BODY, text_color=TEXT,
+                     justify="center", wraplength=max(300, wrap - 40)).pack(
+                         padx=18, pady=(0, 10))
+        tip(ctk.CTkButton(self.settings_call, text=WL.SETTINGS_BUTTON, width=200,
+                          height=40, font=F_ACTION, **BTN_PRIMARY,
+                          command=self.open_settings),
+            "Closes this and opens Settings.").pack(pady=(0, 16))
+
+        # What's new: the headlines of this version's patch notes.
+        self.headlines = WL.read_whats_new(shipped_file("CHANGELOG.md"), APP_VERSION)
+        hud_header(body, "What's new in " + APP_VERSION, padx=16, pady=(10, 4))
+        for line in self.headlines:
+            ctk.CTkLabel(body, anchor="w", justify="left", text="\u2022  " + line,
+                         font=F_BODY, text_color=TEXT, wraplength=wrap,
+                         height=22).pack(fill="x", padx=24)
+        notes = ctk.CTkFrame(body, fg_color="transparent")
+        notes.pack(fill="x", padx=16, pady=(6, 6))
+        tip(ctk.CTkButton(notes, text="Full patch notes", width=160, height=32,
+                          font=F_STRONG, **BTN_SECONDARY,
+                          command=lambda: open_link(WL.CHANGELOG_URL)),
+            "Every change in every version.").pack(side="left")
+        ctk.CTkLabel(notes, anchor="w", justify="left", text_color=DIM, font=F_BODY,
+                     wraplength=max(240, wrap - 190),
+                     text="Worth a read after each update: they say what moved "
+                          "and what is new in Settings.").pack(
+                              side="left", fill="x", padx=(10, 0))
+
+        # The community: the Discord, the website and the member portal.
+        hud_header(body, "Join the community", padx=16, pady=(10, 4))
+        row = ctk.CTkFrame(body, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=(2, 6))
+        across = 3 if width >= 700 else 1
+        for index, (label, url, note) in enumerate(WL.COMMUNITY_LINKS):
+            tip(ctk.CTkButton(row, text=label, width=200, height=36, font=F_STRONG,
+                              **(BTN_PRIMARY if url == WL.DISCORD_URL else BTN_SECONDARY),
+                              command=lambda u=url: open_link(u)),
+                note).grid(row=index // across, column=index % across,
+                           padx=(0, 8), pady=(0, 6), sticky="w")
+
+        hud_header(body, "One map, everybody's", padx=16, pady=(10, 4))
         ctk.CTkLabel(body, anchor="w", justify="left", text_color=TEXT,
-                     font=F_READOUT, wraplength=490,
+                     font=F_READOUT, wraplength=wrap,
                      text="Every deposit you mark goes on the community map "
                           "with your CMDR name on it, and every deposit anybody "
                           "else marks comes back to you under Find and on the "
                           "map. One commander cannot cover a galaxy; a few "
-                          "thousand can.").pack(fill="x", padx=16, pady=(6, 10))
-
-        hud_header(body, "What gets sent", padx=16, pady=(6, 4))
+                          "thousand can.").pack(fill="x", padx=16, pady=(2, 4))
         ctk.CTkLabel(body, anchor="w", justify="left", text_color=DIM,
-                     font=F_BODY, wraplength=490,
-                     text="System, body, commodity, position and how rich it "
-                          "was, and the market prices you open.\n"
+                     font=F_BODY, wraplength=wrap,
+                     text="Sent with a find: system, body, commodity, position "
+                          "and how rich it was, and the market prices you open. "
                           "Not your notes, not your sessions, not your "
                           "settings, not anything else on this "
-                          "machine.").pack(fill="x", padx=16, pady=(0, 10))
+                          "machine.").pack(fill="x", padx=16, pady=(0, 6))
 
-        row = ctk.CTkFrame(body, fg_color="transparent")
-        row.pack(fill="x", padx=16, pady=(4, 12))
-        tip(ctk.CTkButton(row, text="Let's go", width=190, height=40,
-                      font=F_SECTION, **BTN_PRIMARY,
-                      command=lambda: self.answer(True)),
-            "Your finds go on the community map with your CMDR name on them.").pack(side="left")
+        hud_header(body, "How it works", padx=16, pady=(10, 4))
+        self.diagram = tk.Canvas(body, height=int(WELCOME_DIAGRAM_H * scaling),
+                                 bg=VOID, bd=0, highlightthickness=0)
+        self.diagram.pack(fill="x", padx=16, pady=(2, 6))
+        self.diagram.bind("<Configure>", self._draw_diagram, add="+")
+        self._draw_diagram()
 
+        hud_header(body, "Support Radio Raxxla", padx=16, pady=(10, 4))
+        ctk.CTkLabel(body, anchor="w", justify="left", text_color=TEXT,
+                     font=F_BODY, wraplength=wrap, text=SUPPORT_WORDS).pack(
+                         fill="x", padx=16, pady=(2, 4))
+        donate = WL.donate_buttons(EDO.DONATE_URL, EDO.KOFI_URL)
+        if donate:
+            row = ctk.CTkFrame(body, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=(2, 6))
+            for label, url in donate:
+                tip(ctk.CTkButton(row, text=label, width=200, height=34,
+                                  font=F_STRONG, **BTN_SECONDARY,
+                                  command=lambda u=url: open_link(u)),
+                    "Opens the donation page in your browser.").pack(
+                        side="left", padx=(0, 8))
+
+        hud_header(body, "Useful links", padx=16, pady=(10, 4))
+        grid = ctk.CTkFrame(body, fg_color="transparent")
+        grid.pack(fill="x", padx=16, pady=(2, 16))
+        across = 4 if width >= 760 else 2
+        for index, (label, target, note) in enumerate(WL.USEFUL_LINKS):
+            tip(ctk.CTkButton(grid, text=label, width=160, height=32,
+                              font=F_STRONG, **BTN_SECONDARY,
+                              command=lambda t=target: self.follow(t)),
+                note).grid(row=index // across, column=index % across,
+                           padx=(0, 8), pady=(0, 6), sticky="w")
+
+        self.protocol("WM_DELETE_WINDOW", lambda: self.answer(True))
+        self.bind("<Escape>", lambda _e: self.answer(True))
+        self._grab_tries = 0
+        self._hold_keyboard()
+
+    def _hold_keyboard(self):
+        """Nothing behind it can be typed into until it is closed. A window
+        not on screen yet cannot take the keyboard, so it is asked again."""
         try:
+            if not self.winfo_exists():
+                return
             self.grab_set()
         except Exception:
-            pass
+            self._grab_tries += 1
+            if self._grab_tries < 40:
+                try:
+                    self.after(100, self._hold_keyboard)
+                except Exception:
+                    pass
 
-    def answer(self, wanted):
+    def _draw_diagram(self, event=None):
+        """HOW IT WORKS, drawn to the canvas's width in the theme worn."""
+        try:
+            if event is not None:
+                width, height = event.width, event.height
+            else:
+                # On screen it has a width of its own; before that, the one
+                # it asked for.
+                shown = self.diagram.winfo_width() > 1
+                width = self.diagram.winfo_width() if shown else self.diagram.winfo_reqwidth()
+                height = self.diagram.winfo_height() if shown else self.diagram.winfo_reqheight()
+            WL.welcome_diagram(self.diagram, width, height,
+                               {key: globals()[key] for key in WL.FALLBACK})
+        except Exception:
+            pass        # a picture is never a reason for the window to fail
+
+    def open_settings(self):
+        """CHECK THE SETTINGS' button: closed as Get Started closes it, and
+        Settings opens in place of the tour."""
+        return self.answer(True, settings=True)
+
+    def follow(self, target):
+        """A useful link: the page in the browser, or Quick start's tour."""
+        if target == WL.TOUR:
+            return self.answer(True, tour=True)
+        return open_link(target)
+
+    def answer(self, wanted, tour=False, settings=False):
+        """Get Started, the close box, Quick start or Open Settings: the tick
+        is kept if it is ticked, the window goes, and the tour follows -
+        straight away for Quick start, once by itself on a first start -
+        or Settings opens."""
         try:
             self.app.set_name_credit(wanted)
+            if self.never_box.get():
+                self.app.welcome_seen()
         finally:
             self.destroy()
-            # The first question answered, the window is shown round.
             try:
-                self.app.after(500, self.app.start_tour)
+                if settings:
+                    self.app.after(50, self.app.open_settings)
+                elif tour:
+                    self.app.start_tour(force=True)
+                else:
+                    # The first question answered, the window is shown round.
+                    self.app.after(500, self.app.start_tour)
             except Exception:
                 pass
 
@@ -13493,7 +16569,7 @@ class EditWindow(ctk.CTkToplevel):
         self._row(body, "commodity", "Commodity", list(SV.KNOWN_COMMODITIES),
                   deposit.get("commodity", ""))
         self._row(body, "rigs", "Rigs",
-                  [""] + [str(n) for n in range(1, MAX_RIGS + 1)],
+                  [""] + [str(n) for n in range(1, SITE_RIGS + 1)],
                   deposit.get("rigs", ""))
         # Same order as the rail, so correcting a deposit looks like recording
         # one. Two screens that ask the same questions in different orders is
@@ -13551,8 +16627,8 @@ class EditWindow(ctk.CTkToplevel):
                 rigs = int(float(changes["rigs"]))
             except ValueError:
                 return self.say("Rigs must be a number, or blank.", RED)
-            if not 0 <= rigs <= MAX_RIGS:
-                return self.say("The Rhino carries %d rigs." % MAX_RIGS, RED)
+            if not 0 <= rigs <= SITE_RIGS:
+                return self.say("A site takes up to %d rigs." % SITE_RIGS, RED)
             changes["rigs"] = str(rigs)
         if changes["commodity"]:
             changes["commodity"] = SV.remember(changes["commodity"])
@@ -14272,7 +17348,8 @@ def cell_label(table, index, column, text, colour=None, wrap=None, full=None):
     label = tk.Label(table, text=text, font=F_SMALL, fg=colour or TEXT, bg=PANEL,
                      justify="left", anchor="w", wraplength=wrap or CELL_WRAP,
                      bd=0)
-    label.grid(row=index, column=DATA_COLUMN_0 + column, padx=8, pady=2, sticky="w")
+    label.grid(row=index, column=DATA_COLUMN_0 + column, padx=8,
+               pady=SPACE["cell_pady"], sticky="w")
     if full and str(full) != str(text):
         tip(label, full, always=True)
     return label
@@ -14482,6 +17559,674 @@ class ScrollTable(ctk.CTkFrame):
             pass
 
 
+# ---------------------------------------------------------------------------
+# The big tables, on the toolkit's own tree view (1.10040, #308)
+# ---------------------------------------------------------------------------
+# Find, Sessions, My sites and Where to land were grids of labels: a
+# thousand rows were ten thousand widgets, built again on every sort, and
+# that grid is what let the scrollbar loop in 1.10037. They now sit on a tree
+# view holding only the rows on screen (tableview.py does the arithmetic):
+# scrolling changes which rows those are. The small fixed tables - Where to
+# sell, Powerplay, the leaderboard - stay on ScrollTable.
+
+TABLE_STYLE = "EDSMT.Treeview"
+# Rows the wheel moves at a time.
+TABLE_WHEEL_ROWS = 3
+# Rows put in the tree before it has been laid out and can say how tall it is.
+TABLE_FIRST_ROWS = 30
+# The note on the line under a table, where the picked row's buttons are.
+TABLE_NOTE = ("Click a row to pick it - its buttons are on this line. Ctrl or "
+              "Shift picks several, Ctrl+C copies them, a double-click does the "
+              "first thing on the line, and a right-click lists them all. Click "
+              "a heading to sort.")
+
+
+def dress_tables(widget):
+    """The tree view's look, from the palette and the spacing as they are now.
+    One style for every table; the row height in pixels comes back."""
+    style = ttk.Style(widget)
+    try:
+        # The only theme that takes colours on every platform. Nothing else
+        # in the app is a ttk widget, so nothing else changes.
+        if style.theme_use() != "clam":
+            style.theme_use("clam")
+    except tk.TclError:
+        pass
+    try:
+        row = int(tkfont.Font(font=F_SMALL).metrics("linespace")) \
+            + 2 * int(SPACE.get("cell_pady", 2)) + 4
+    except Exception:
+        row = 23
+    style.configure(TABLE_STYLE, background=PANEL, fieldbackground=PANEL,
+                    foreground=TEXT, font=F_SMALL, rowheight=row,
+                    borderwidth=0, relief="flat")
+    style.map(TABLE_STYLE, background=[("selected", RULE)],
+              foreground=[("selected", AMBER)])
+    style.configure(TABLE_STYLE + ".Heading", background=STEEL, foreground=ORANGE,
+                    font=F_SMALL_B, relief="flat", borderwidth=1,
+                    bordercolor=RULE, lightcolor=STEEL, darkcolor=STEEL,
+                    padding=(6, 3))
+    style.map(TABLE_STYLE + ".Heading", background=[("active", RULE)],
+              foreground=[("active", AMBER)])
+    style.layout(TABLE_STYLE, [("Treeview.treearea", {"sticky": "nswe"})])
+    return row
+
+
+class CellTip(Tooltip):
+    """A table's own words for the cell under the mouse: a Why cell's whole
+    sentence, or a cell too long for its column. Shown with tips off too."""
+
+    def __init__(self, widget):
+        super().__init__(widget, "", always=True)
+        self._key, self._at = None, (0, 0)
+
+    def point(self, key, text, x, y):
+        """The mouse is over cell `key`, whose whole text is `text`."""
+        self._at = (int(x), int(y))
+        if key == self._key:
+            return
+        self._key = key
+        self._cancel()
+        self._hide()
+        self.text = str(text or "")
+        if self.text:
+            self._enter()
+
+    def _leave(self, _event=None):
+        self._key = None
+        self.text = ""
+        super()._leave(_event)
+
+    def _where(self, _win):
+        return self._at[0] + 14, self._at[1] + 18
+
+
+class TableTree(ttk.Treeview):
+    """The tree view a NativeTable puts its rows in. texts() is what is on
+    screen - the headings, then every cell of every row in view."""
+
+    def texts(self):
+        out = []
+        try:
+            for column in self["columns"]:
+                out.append(str(ttk.Treeview.heading(self, column, "text")))
+            items = ttk.Treeview.get_children(self)
+        except tk.TclError:
+            return out
+        shown = getattr(self, "_shown", {}) or {}
+        for item in items:
+            out.extend(shown.get(item, ()))
+        return out
+
+
+class NativeTable(tk.Frame):
+    """A table on the toolkit's own tree view, holding only the rows on
+    screen (1.10040, #308).
+
+    show() takes the headings, the rows (whatever the window keeps - a dict
+    each), and the window's own functions: the cells of a row, in the form
+    the row builders have always made ((text, colour, sort key, whole
+    text)), the row's buttons ([(text, command, primary)]), and what a
+    click on a heading does. Sorting stays the window's: a heading click
+    calls on_sort(column) and the window shows the rows again in the new
+    order. A row is coloured by its cells - red, then amber, then green.
+    The picked row's buttons are on the line under the table; a double-click
+    does the first of them and a right-click lists them all. Ctrl+C copies
+    the rows picked, with every cell's whole text. Never raises."""
+
+    def __init__(self, master, copy=None, **kwargs):
+        super().__init__(master, bg=PANEL, bd=0, highlightthickness=1,
+                         highlightbackground=RULE, highlightcolor=RULE, **kwargs)
+        self.copy = copy
+        self._row_px = dress_tables(self)
+        self.tree = TableTree(self, show="headings", selectmode="none",
+                              style=TABLE_STYLE, takefocus=True)
+        self.tree._shown = {}
+        self.vbar = ctk.CTkScrollbar(self, orientation="vertical",
+                                     command=self.yview, button_color=RULE,
+                                     button_hover_color=ORANGE)
+        self.hbar = ctk.CTkScrollbar(self, orientation="horizontal",
+                                     command=self.tree.xview, button_color=RULE,
+                                     button_hover_color=ORANGE)
+        self.tree.configure(xscrollcommand=self._show_h)
+        self.bar = tk.Frame(self, bg=PANEL, bd=0)
+        self.bar_label = tip(tk.Label(self.bar, text="", font=F_SMALL, fg=DIM,
+                                      bg=PANEL, anchor="w"), TABLE_NOTE)
+        self.bar_label.pack(side="left", padx=(8, 4), pady=3)
+        self.advice = tk.Label(self, text="", font=F_BODY, fg=DIM, bg=PANEL,
+                               justify="left", anchor="nw", wraplength=820)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        self.vbar.grid(row=0, column=1, sticky="ns")
+        self.hbar.grid(row=1, column=0, sticky="ew")
+        self.bar.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        for name, colour in (("good", GREEN), ("caution", AMBER), ("bad", RED)):
+            self.tree.tag_configure(name, foreground=colour)
+        self.tree.tag_configure("picked", background=RULE, foreground=AMBER)
+        self._headers, self._rows, self._widths = [], [], []
+        self._cells_of = self._actions_of = self._double = self._on_sort = None
+        self._tone_columns = None
+        self._sort = (None, False)
+        self._cache = {}
+        self._offset, self._visible = 0, TABLE_FIRST_ROWS
+        self._items, self._picked, self._anchor, self._focus = [], set(), None, None
+        self._heading_px = None
+        self._font = None
+        self._empty = False
+        self._settled_width = None
+        self._tip = CellTip(self.tree)
+        tree = self.tree
+        tree.bind("<Configure>", self._resized, add="+")
+        tree.bind("<ButtonPress-1>", self._press, add="+")
+        tree.bind("<Double-Button-1>", self._double_click, add="+")
+        tree.bind("<Button-3>", self._menu, add="+")
+        tree.bind("<Motion>", self._hover, add="+")
+        for sequence in WHEEL_EVENTS:
+            tree.bind(sequence, self.wheel, add="+")
+        for sequence, step in (("<Up>", -1), ("<Down>", 1), ("<Prior>", "page-"),
+                               ("<Next>", "page+"), ("<Home>", "home"),
+                               ("<End>", "end")):
+            tree.bind(sequence, lambda e, s=step: self._key(e, s), add="+")
+        tree.bind("<Return>", lambda _e: self._run_first(), add="+")
+        tree.bind("<Control-c>", lambda _e: (self.copy_rows(), "break")[1], add="+")
+        tree.bind("<Control-a>", lambda _e: (self.pick_all(), "break")[1], add="+")
+
+    # -- taking delivery ---------------------------------------------------
+
+    def show(self, headers, rows, cells, actions=None, double=None,
+             sort=(None, False), on_sort=None, widths=None, tone_columns=None):
+        """Put a result set in the table. The rows picked before stay picked
+        when they are still there; otherwise the first row is."""
+        try:
+            self._empty = False
+            self.advice.grid_forget()
+            if not self.tree.winfo_manager():
+                self.tree.grid(row=0, column=0, sticky="nsew")
+                self.bar.grid(row=2, column=0, columnspan=2, sticky="ew")
+            before = {id(self._rows[i]) for i in self._picked if i < len(self._rows)}
+            focus = (id(self._rows[self._focus]) if self._focus is not None
+                     and self._focus < len(self._rows) else None)
+            changed = list(headers) != self._headers
+            self._headers, self._rows = list(headers), list(rows)
+            self._cells_of, self._actions_of, self._double = cells, actions, double
+            self._on_sort, self._sort = on_sort, tuple(sort or (None, False))
+            self._tone_columns = tone_columns
+            self._cache = {}
+            self._row_px = dress_tables(self)
+            self._font = tkfont.Font(font=F_SMALL)
+            where = {id(row): index for index, row in enumerate(self._rows)}
+            self._picked = {where[key] for key in before if key in where}
+            self._focus = where.get(focus) if focus is not None else None
+            if self._focus is None:
+                self._focus = min(self._picked) if self._picked else (0 if self._rows else None)
+            if not self._picked and self._focus is not None:
+                self._picked = {self._focus}
+            self._anchor = self._focus
+            self._columns(changed, dict(widths or {}))
+            self._fill()
+            self._paint_bar()
+        except Exception:
+            pass
+
+    def show_empty(self, text):
+        """No rows: say what would fill the table instead."""
+        try:
+            self.clear()
+            self._empty = True
+            for widget in (self.tree, self.vbar, self.hbar, self.bar):
+                widget.grid_forget()
+            self.advice.configure(text=str(text or ""))
+            self.advice.grid(row=0, column=0, columnspan=2, sticky="nw",
+                             padx=14, pady=18)
+        except Exception:
+            pass
+
+    def clear(self):
+        """Every row out, the picked ones with them."""
+        self._rows, self._cache = [], {}
+        self._picked, self._anchor, self._focus = set(), None, None
+        try:
+            for item in self._items:
+                self.tree.delete(item)
+        except tk.TclError:
+            pass
+        self._items = []
+        self.tree._shown = {}
+        self._paint_bar()
+
+    # -- what is in it -----------------------------------------------------
+
+    def row_count(self):
+        return len(self._rows)
+
+    def payload(self, index):
+        return self._rows[index] if 0 <= index < len(self._rows) else None
+
+    def picked_rows(self):
+        return [self._rows[i] for i in sorted(self._picked) if i < len(self._rows)]
+
+    def focus_row(self):
+        return self.payload(self._focus) if self._focus is not None else None
+
+    def actions_for(self, index):
+        """The buttons row `index` carries: [(text, command, primary)]."""
+        payload = self.payload(index)
+        if payload is None or self._actions_of is None:
+            return []
+        try:
+            return list(self._actions_of(payload) or [])
+        except Exception:
+            return []
+
+    def texts(self):
+        """The headings, then every cell of the rows on screen."""
+        return self.tree.texts()
+
+    def cell_text(self, index, column):
+        """(as shown, whole text) of one cell."""
+        shown, full, _tone = self._display(index)
+        return shown[column], full[column]
+
+    def row_tone(self, index):
+        return self._display(index)[2]
+
+    def view_width(self):
+        return int(self.tree.winfo_width())
+
+    def content_width(self):
+        return int(sum(self._live_widths()))
+
+    def _live_widths(self):
+        """Each column's width now - a heading's edge can be dragged."""
+        try:
+            return [int(self.tree.column("c%d" % i, "width"))
+                    for i in range(len(self._headers))]
+        except (tk.TclError, ValueError):
+            return list(self._widths)
+
+    def column_on_screen(self, name):
+        """Whether a column is wholly in view, sideways."""
+        try:
+            column = self._headers.index(name)
+        except ValueError:
+            return False
+        widths = self._live_widths()
+        total = float(max(1, sum(widths)))
+        low, high = self.tree.xview()
+        start = sum(widths[:column])
+        return start >= low * total - 1 and start + widths[column] <= high * total + 1
+
+    # -- drawing -----------------------------------------------------------
+
+    def _display(self, index):
+        """(texts as shown, whole texts, tone) of one row, worked out once."""
+        found = self._cache.get(index)
+        if found is not None:
+            return found
+        try:
+            cells = list(self._cells_of(self._rows[index]))
+        except Exception:
+            cells = []
+        shown, full, colours = [], [], []
+        for column in range(len(self._headers)):
+            cell = cells[column] if column < len(cells) else ("",)
+            text, colour, _key = EarningsWindow._cell(cell)
+            shown.append(TV.one_line(text))
+            full.append(cell_full(cell))
+            if self._tone_columns is None or column in self._tone_columns:
+                colours.append(colour)
+        found = (shown, full, TV.row_tone(colours, {"bad": RED, "caution": AMBER,
+                                                    "good": GREEN}))
+        self._cache[index] = found
+        return found
+
+    def _columns(self, changed, widths):
+        ids = ["c%d" % i for i in range(len(self._headers))]
+        if changed or list(self.tree["columns"]) != ids:
+            self.tree.configure(columns=ids, displaycolumns=ids)
+            self.tree.xview_moveto(0)
+        texts = [[] for _ in ids]
+        total = len(self._rows)
+        longest = []
+        if total > TV.WIDTH_SAMPLE:
+            # The longest first cells further down are measured too, so a
+            # long name at row 900 is not cut off.
+            longest = sorted(range(total), key=lambda i: -len(
+                str(self._rows[i].get("system") or self._rows[i].get("body") or "")
+                if isinstance(self._rows[i], dict) else ""))[:TV.WIDTH_LONGEST]
+        for index in TV.sample(total, longest):
+            shown, _full, _tone = self._display(index)
+            for column, text in enumerate(shown):
+                texts[column].append(text)
+        bold = tkfont.Font(font=F_SMALL_B)
+        column, reverse = self._sort
+        self._widths = []
+        for i, cid in enumerate(ids):
+            name = str(self._headers[i])
+            label = "%s %s" % (name, "v" if reverse else "^") if column == i else name
+            self.tree.heading(cid, text=label, anchor="w",
+                              command=lambda c=i: self._sorted(c))
+            head = bold.measure(label) + 16
+            most = max(head, int(widths.get(name, CELL_WRAP)))
+            width = max(head, TV.column_width("", texts[i], self._font.measure,
+                                              least=36, most=most, pad=12))
+            self._widths.append(width)
+            self.tree.column(cid, width=width, minwidth=36,
+                             stretch=(i == len(ids) - 1), anchor="w")
+
+    def _fit_rows(self):
+        height = int(self.tree.winfo_height())
+        if height <= 1:
+            return TABLE_FIRST_ROWS
+        heading = self._heading_px
+        if heading is None and self._items:
+            try:
+                box = self.tree.bbox(self._items[0])
+                if box:
+                    heading = self._heading_px = int(box[1])
+            except tk.TclError:
+                heading = None
+        if heading is None:
+            heading = self._row_px + 6
+        return TV.visible_rows(height, heading, self._row_px)
+
+    def _fill(self):
+        """The rows from the first on screen into the tree's few items."""
+        total = len(self._rows)
+        self._visible = self._fit_rows()
+        self._offset = TV.clamp_offset(self._offset, self._visible, total)
+        want = max(0, min(total - self._offset, self._visible + 1))
+        try:
+            while len(self._items) < want:
+                self._items.append(self.tree.insert("", "end", values=()))
+            while len(self._items) > want:
+                self.tree.delete(self._items.pop())
+            shown = {}
+            for slot, item in enumerate(self._items):
+                index = self._offset + slot
+                texts, _full, tone = self._display(index)
+                tags = ("picked",) if index in self._picked else ((tone,) if tone else ())
+                self.tree.item(item, values=texts, tags=tags)
+                shown[item] = texts
+            self.tree._shown = shown
+        except tk.TclError:
+            return
+        self._set_vbar()
+
+    def _set_vbar(self):
+        first, last = TV.fractions(self._offset, self._visible, len(self._rows))
+        try:
+            self.vbar.set(first, last)
+            needed = len(self._rows) > self._visible and not self._empty
+            if needed and not self.vbar.winfo_manager():
+                self.vbar.grid(row=0, column=1, sticky="ns")
+            elif not needed and self.vbar.winfo_manager():
+                self.vbar.grid_forget()
+        except Exception:
+            pass
+
+    def _show_h(self, low, high):
+        ScrollTable._toggle(self.hbar, low, high, dict(row=1, column=0, sticky="ew"))
+
+    def _resized(self, _event=None):
+        try:
+            width = int(self.tree.winfo_width())
+            if self._settled_width is not None and \
+                    abs(width - self._settled_width) > SCROLL_RESIZE_PX:
+                ScrollTable.settle(self.hbar)
+            self._settled_width = width
+            if self._fit_rows() != self._visible or len(self._items) < min(
+                    len(self._rows), self._visible):
+                self._fill()
+        except Exception:
+            pass
+
+    def _paint_bar(self):
+        """The picked row's buttons, on the line under the table."""
+        try:
+            for widget in self.bar.winfo_children():
+                if widget is not self.bar_label:
+                    widget.destroy()
+            if self._focus is None or not self._rows:
+                self.bar_label.configure(text="")
+                return
+            count = len(self._picked)
+            if count > 1:
+                self.bar_label.configure(text="%d rows picked:" % count)
+            else:
+                first = self._display(self._focus)[0]
+                self.bar_label.configure(text="%s:" % ((first[0] if first else "")[:48]
+                                                       or "row %d" % (self._focus + 1)))
+            buttons = []
+            if self.copy is not None:
+                buttons.append(("copy rows" if count > 1 else "copy row",
+                                self.copy_rows, False))
+            buttons += self.actions_for(self._focus)
+            for text, command, primary in buttons:
+                mini_button(self.bar, text, command, primary).pack(side="left", padx=2, pady=3)
+        except Exception:
+            pass
+
+    # -- moving about ------------------------------------------------------
+
+    def yview(self, *args):
+        """The scrollbar's command; with nothing, where the view is."""
+        total = len(self._rows)
+        if not args:
+            return TV.fractions(self._offset, self._visible, total)
+        try:
+            if args[0] == "moveto":
+                self._offset = TV.offset_at(args[1], self._visible, total)
+            elif args[0] == "scroll":
+                self._offset = TV.scrolled(self._offset, args[1], args[2],
+                                           self._visible, total)
+            self._fill()
+        except Exception:
+            pass
+        return None
+
+    def wheel(self, event):
+        """Scroll with the wheel; hold Shift to go sideways. Only while the
+        table is on screen - the window's wheel reaches every table in it."""
+        try:
+            if not self.winfo_ismapped():
+                return None
+            delta = getattr(event, "delta", 0) or 0
+            num = getattr(event, "num", 0)
+            step = -1 if (delta > 0 or num == 4) else 1
+            if int(getattr(event, "state", 0) or 0) & 0x0001:
+                self.tree.xview_scroll(step * 3, "units")
+            else:
+                self._offset = TV.scrolled(self._offset, step * TABLE_WHEEL_ROWS,
+                                           "units", self._visible, len(self._rows))
+                self._fill()
+        except Exception:
+            pass
+        return "break"
+
+    def top(self):
+        """Back to the top-left, for a fresh result set."""
+        try:
+            self._offset = 0
+            self.tree.xview_moveto(0)
+            self._fill()
+        except Exception:
+            pass
+
+    def scroll_to(self, index):
+        self._offset = TV.into_view(index, self._offset, self._visible, len(self._rows))
+        self._fill()
+
+    def _index_of(self, item):
+        try:
+            return self._offset + self._items.index(item)
+        except ValueError:
+            return None
+
+    def _row_at(self, event):
+        try:
+            if self.tree.identify_region(event.x, event.y) not in ("cell", "tree"):
+                return None
+            return self._index_of(self.tree.identify_row(event.y))
+        except tk.TclError:
+            return None
+
+    def _column_at(self, x):
+        """The column under `x`, worked out from the widths and the sideways
+        scroll: the tree's own identify is a column out when the headings
+        are all it shows."""
+        try:
+            low = float(self.tree.xview()[0])
+        except (tk.TclError, ValueError, IndexError):
+            low = 0.0
+        widths = self._live_widths()
+        at = int(x) + low * sum(widths)
+        start = 0
+        for column, width in enumerate(widths):
+            if start <= at < start + width:
+                return column
+            start += width
+        return None
+
+    def pick(self, index, shift=False, ctrl=False):
+        """Pick row `index` as a click would."""
+        if not (0 <= index < len(self._rows)):
+            return
+        self._picked, self._anchor = TV.picked_after(self._picked, index, self._anchor,
+                                                     shift, ctrl)
+        self._focus = index
+        self.scroll_to(index)
+        self._paint_bar()
+
+    def pick_all(self):
+        if self._rows:
+            self._picked = set(range(len(self._rows)))
+            self._fill()
+            self._paint_bar()
+
+    def _press(self, event):
+        try:
+            if self.tree.identify_region(event.x, event.y) in ("heading", "separator"):
+                return None
+        except tk.TclError:
+            return None
+        index = self._row_at(event)
+        try:
+            self.tree.focus_set()
+        except tk.TclError:
+            pass
+        if index is not None:
+            state = int(getattr(event, "state", 0) or 0)
+            self.pick(index, shift=bool(state & 0x0001), ctrl=bool(state & 0x0004))
+        return "break"
+
+    def _key(self, event, step):
+        if not self._rows:
+            return "break"
+        here = self._focus if self._focus is not None else 0
+        if step == "home":
+            there = 0
+        elif step == "end":
+            there = len(self._rows) - 1
+        elif step in ("page-", "page+"):
+            jump = max(1, self._visible - 1)
+            there = here - jump if step == "page-" else here + jump
+        else:
+            there = here + step
+        there = max(0, min(len(self._rows) - 1, there))
+        shift = bool(int(getattr(event, "state", 0) or 0) & 0x0001)
+        self.pick(there, shift=shift)
+        return "break"
+
+    def _sorted(self, column):
+        if self._on_sort is not None:
+            try:
+                self._on_sort(column)
+            except Exception:
+                pass
+
+    def _run_first(self, index=None):
+        index = self._focus if index is None else index
+        if index is None:
+            return "break"
+        payload = self.payload(index)
+        try:
+            if self._double is not None:
+                self._double(payload)
+            else:
+                buttons = self.actions_for(index)
+                if buttons:
+                    buttons[0][1]()
+                elif self.copy is not None:
+                    self.copy_rows()
+        except Exception:
+            pass
+        return "break"
+
+    def _double_click(self, event):
+        index = self._row_at(event)
+        if index is None:
+            return None
+        return self._run_first(index)
+
+    def _menu(self, event):
+        index = self._row_at(event)
+        if index is None:
+            return None
+        if index not in self._picked:
+            self.pick(index)
+        try:
+            menu = tk.Menu(self, tearoff=0, bg=PANEL, fg=TEXT, activebackground=RULE,
+                           activeforeground=AMBER, font=F_SMALL, bd=1)
+            for text, command, _primary in self.actions_for(index):
+                menu.add_command(label=text, command=command)
+            if self.copy is not None:
+                if menu.index("end") is not None:
+                    menu.add_separator()
+                menu.add_command(label="copy rows" if len(self._picked) > 1
+                                 else "copy row", command=self.copy_rows)
+            if menu.index("end") is not None:
+                menu.tk_popup(event.x_root, event.y_root)
+        except Exception:
+            pass
+        return "break"
+
+    def _hover(self, event):
+        try:
+            index = self._row_at(event)
+            column = self._column_at(event.x)
+            if index is None or column is None:
+                return self._tip.point(None, "", event.x_root, event.y_root)
+            shown, full = self.cell_text(index, column)
+            room = int(self.tree.column("c%d" % column, "width"))
+            text = full if (full != shown or self._font.measure(shown) + 12 > room) else ""
+            self._tip.point((index, column) if text else None, text,
+                            event.x_root, event.y_root)
+        except Exception:
+            pass
+        return None
+
+    # -- copying -----------------------------------------------------------
+
+    def copy_rows(self):
+        """The rows picked - or the one in focus - onto the clipboard, every
+        cell whole. The text, or None."""
+        picked = sorted(i for i in self._picked if i < len(self._rows))
+        if not picked and self._focus is not None:
+            picked = [self._focus]
+        if not picked or self.copy is None:
+            return None
+        rows = [self._display(i)[1] for i in picked]
+        if len(rows) == 1:
+            text = TV.line_of(rows[0])
+            self.copy("this row", text)
+        else:
+            text = TV.block_of(self._headers, rows)
+            self.copy("%d rows" % len(rows), text)
+        return text
+
+
 def fit_to_content(window, least_w, least_h):
     """Size a dialogue to what is in it, then stop it shrinking below that.
 
@@ -14535,6 +18280,82 @@ def unbind_one(widget, sequence, funcid):
         return True
     except Exception:
         return False
+
+
+def material_names(settings):
+    """A commodity filter's list: Any, then the materials ticked in the
+    picker (1.10040, #306)."""
+    return ["Any"] + MT.offered(list(SV.KNOWN_COMMODITIES), settings or {})
+
+
+class MaterialsWindow(ctk.CTkToplevel):
+    """Which materials the commodity type-ahead and the commodity filters
+    offer (1.10040, #306): a tick for each of the thirteen and each extra.
+    Opened from Settings -> Basics and from the gear beside Find's commodity
+    filter - the same window either way."""
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.title("EDSMT - Materials the lists offer")
+        width, height = screen_fraction(self, 0.3, 0.7, 480, 680, 380, 420)
+        self.geometry("%dx%d" % (width, height))
+        self.configure(fg_color=VOID)
+        self.transient(app)
+        hud_header(self, "Materials", padx=12, pady=(12, 4))
+        ctk.CTkLabel(self, text="Tick what the commodity type-ahead and the commodity "
+                                "filters offer. What the body under you is known to "
+                                "carry is offered either way.",
+                     font=F_SMALL, text_color=DIM, justify="left", anchor="w",
+                     wraplength=max(300, width - 40)).pack(fill="x", padx=12, pady=(0, 6))
+        quick = ctk.CTkFrame(self, fg_color="transparent")
+        quick.pack(fill="x", padx=12)
+        for text, command in (("All", lambda: self.tick_all(True)),
+                              ("None", lambda: self.tick_all(False)),
+                              ("The thirteen", self.tick_thirteen)):
+            ctk.CTkButton(quick, text=text, width=110, height=28, font=F_STRONG,
+                          **BTN_SECONDARY, command=command).pack(side="left", padx=(0, 6))
+        bottom = ctk.CTkFrame(self, fg_color="transparent")
+        bottom.pack(side="bottom", fill="x", padx=12, pady=(4, 12))
+        ctk.CTkButton(bottom, text="Save", width=110, height=32, font=F_STRONG,
+                      **BTN_PRIMARY, command=self.save).pack(side="left")
+        ctk.CTkButton(bottom, text="Cancel", width=110, height=32, font=F_STRONG,
+                      **BTN_SECONDARY, command=self.destroy).pack(side="left", padx=8)
+        self.status = ctk.CTkLabel(bottom, text="", font=F_SMALL, text_color=DIM, anchor="w")
+        self.status.pack(side="left", fill="x", expand=True)
+        page = ctk.CTkScrollableFrame(self, **LIST)
+        page.pack(fill="both", expand=True, padx=12, pady=6)
+        self.ticks = {}
+        settings = getattr(app, "settings", None) or {}
+        for group, names in MT.choices(SV.KNOWN_COMMODITIES):
+            ctk.CTkLabel(page, text=group, font=F_SMALL_B, text_color=AMBER,
+                         anchor="w").pack(fill="x", padx=4, pady=(8, 2))
+            for name in names:
+                var = ctk.BooleanVar(value=MT.is_offered(name, settings))
+                ctk.CTkCheckBox(page, text=name, variable=var, onvalue=True, offvalue=False,
+                                font=F_BODY, checkbox_width=18, checkbox_height=18,
+                                border_width=2, fg_color=ORANGE, hover_color=AMBER,
+                                text_color=TEXT).pack(anchor="w", padx=8, pady=1)
+                self.ticks[name] = var
+
+    def tick_all(self, on):
+        for var in self.ticks.values():
+            var.set(bool(on))
+
+    def tick_thirteen(self):
+        thirteen = {SV.fold(name) for name in MT.choices([])[0][1]}
+        for name, var in self.ticks.items():
+            var.set(SV.fold(name) in thirteen)
+
+    def save(self):
+        """Keep the ticks, and every list follows at once."""
+        ticked = [name for name, var in self.ticks.items() if var.get()]
+        if not ticked:
+            return self.status.configure(text="Tick at least one.", text_color=RED)
+        self.app.settings[MT.SETTING] = MT.hidden_from(ticked, list(self.ticks))
+        save_settings(self.app.settings)
+        self.app.materials_changed()
+        self.destroy()
 
 
 class ToolShell(ctk.CTkToplevel):
@@ -14941,6 +18762,8 @@ FIND_MODE_TIPS = {
     "prices": "Where to sell the ticked commodities, nearest first.",
     "bodies": "Bodies with mining locations near where you are, nearest first, "
               "with the odds for the first ticked commodity on that kind of ground.",
+    "powerplay": "Where to mine and where to sell for a Powerplay goal: one row "
+                 "for each pair, with what it is worth an hour where that is known.",
 }
 PLACE_WORDS = {
     # The system box narrows finds to a system or body; for prices it says
@@ -15019,7 +18842,7 @@ class FindWindow(ToolWindow):
         self.mode = None
         self._tables = {}
         self.mode_switch = tip(ctk.CTkSegmentedButton(
-            top, values=[label for _key, label in FD.MODES], height=30,
+            top, values=[label for _key, label in self._modes()], height=30,
             font=F_STRONG, fg_color=PANEL, selected_color=ORANGE,
             selected_hover_color=AMBER, unselected_color=STEEL,
             unselected_hover_color=RULE, text_color=TEXT,
@@ -15045,9 +18868,16 @@ class FindWindow(ToolWindow):
         # Several at once (#188): tick Monazite AND Bastnasite and every
         # search asks for either. Wider than one name needs, for two.
         self.commodity = tip(ctk.CTkComboBox(row, width=240, font=F_BODY, **BOX,
-                                         values=["Any"] + list(SV.KNOWN_COMMODITIES)), "Tick one or several commodities; Any clears them. Or type them, comma separated, and press Enter.")
+                                         values=material_names(app.settings)), "Tick one or several commodities; Any clears them. Or type them, comma separated, and press Enter.")
         self.commodity.set("Any")
-        self.commodity.pack(side="left", padx=(6, 14))
+        self.commodity.pack(side="left", padx=(6, 4))
+        # 1.10040 (#306): which materials the lists offer, beside the filter.
+        self._server_names = []
+        self.materials_button = tip(ctk.CTkButton(
+            row, text="\u2699", width=32, height=30, font=F_STRONG,
+            **BTN_SECONDARY, command=app.open_materials),
+            "Choose which materials the commodity lists offer.")
+        self.materials_button.pack(side="left", padx=(0, 14))
         self._labels["min_rigs"] = ctk.CTkLabel(row, text="Min rigs", font=F_BODY,
                                                 text_color=DIM)
         self._labels["min_rigs"].pack(side="left")
@@ -15136,6 +18966,45 @@ class FindWindow(ToolWindow):
             font=F_SMALL, text_color=DIM, anchor="w", justify="left")
         self.bodies_note.pack(side="left")
 
+        # 1.10040 (#231): Powerplay's own filters. My power, Goal and
+        # Contested by on one row; State, Show and how fresh the Powerplay
+        # state is on another. Commodity, Within, Pad, Demand and Price age
+        # are the boxes the other searches use. They act when Search is
+        # pressed: the server decides which pairs count.
+        pp = self._row_pp = ctk.CTkFrame(self.filter_box, fg_color="transparent")
+        pp.pack(fill="x", pady=(0, 8))
+        self._labels["pp_power"] = filter_label(pp, "My power", first=True)
+        self.pp_power_box = filter_combo(
+            pp, PPS.POWER_CHOICES, 180,
+            "Auto is the Power your journal says you are pledged to. None shows "
+            "every row, though none of them earns merits.", self._pp_changed)
+        self._labels["pp_goal"] = filter_label(pp, "Goal")
+        self.pp_goal_box = filter_combo(
+            pp, [name for name, _key in PPS.GOALS], 120,
+            "Reinforce: mine and sell in your own system. Acquire: mine in your "
+            "Stronghold or Fortified system, sell in an Unoccupied one in reach. "
+            "Undermine: mine and sell in a rival's system in reach of yours.",
+            self._pp_changed)
+        self._labels["pp_contested"] = filter_label(pp, "Contested by")
+        self.pp_contested_box = filter_combo(
+            pp, [name for name, _key in PPS.CONTESTED], 150,
+            "Undermine: whose systems. Reinforce and Acquire: how many other "
+            "Powers are there - Multiple is three or more.", self._pp_changed)
+        pp2 = self._row_pp2 = ctk.CTkFrame(self.filter_box, fg_color="transparent")
+        pp2.pack(fill="x", pady=(0, 8))
+        self._labels["pp_state"] = filter_label(pp2, "State", first=True)
+        self.pp_state_box = filter_combo(
+            pp2, PPS.STATES, 120,
+            "The Powerplay state of the system you mine in. Contested: another "
+            "Power is there too.", self._pp_changed)
+        self._labels["pp_show"] = filter_label(pp2, "Show")
+        self.pp_show_box = filter_combo(
+            pp2, PPS.SHOW, 70, "How many rows to ask for, best first.",
+            self._pp_changed, PPS.DEFAULT_SHOW)
+        self.pp_note = ctk.CTkLabel(pp2, text=PPS.NOT_ASKED, font=F_SMALL,
+                                    text_color=DIM, anchor="w", justify="left")
+        self.pp_note.pack(side="left", padx=(14, 0))
+
         # 1.10035: pad, price age, demand, price, station type, Powerplay
         # and the best five of each commodity. From goes on the first row,
         # beside Within: the two ends of one distance window.
@@ -15173,10 +19042,12 @@ class FindWindow(ToolWindow):
         # the ones out of sight are stepped over. Enter in any of them runs
         # the search - unless a list is open, where Enter takes its choice.
         f = self._filters
-        boxes = [self.commodity, self.min_rigs, self.min_types, self.max_age,
+        boxes = [self.pp_power_box, self.pp_goal_box, self.pp_contested_box,
+                 self.commodity, self.min_rigs, self.min_types, self.max_age,
                  f.far_box, self.within, self.query, f.pad_box, f.age_box,
                  f.price_box, f.demand_low, f.demand_high, f.station_box,
-                 f.power_state_box, f.power_side_box, f.show_box]
+                 f.power_state_box, f.power_side_box, f.show_box,
+                 self.pp_state_box, self.pp_show_box]
         chain_tab(boxes)
         for box in boxes:
             for sequence in ("<Return>", "<KP_Enter>"):
@@ -15189,9 +19060,10 @@ class FindWindow(ToolWindow):
         self.status = ctk.CTkLabel(self, text="", font=F_READOUT,
                                    text_color=DIM, anchor="w")
         self.status.pack(fill="x", padx=14, pady=(0, 4))
-        self.scroller = ScrollTable(self)
+        # 1.10040 (#308): on the toolkit's tree view, every row in it at once.
+        self.scroller = NativeTable(self, copy=self.copy_text)
         self.scroller.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-        self.table = self.scroller.inner
+        self.table = self.scroller
         for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
                          "<Button-4>", "<Button-5>"):
             self.bind(sequence, self.scroller.wheel, add="+")
@@ -15235,6 +19107,8 @@ class FindWindow(ToolWindow):
         leaves the table to the caller - an answer that is about to draw
         its own. Remembered in settings as find_mode."""
         mode = FD.mode_key(mode)
+        if mode == "powerplay" and attr(self.app, "_powerplay_older", False):
+            mode = FD.DEFAULT_MODE
         switch = attr(self, "mode_switch")
         if switch is not None and switch.get() != FD.mode_label(mode):
             switch.set(FD.mode_label(mode))
@@ -15284,8 +19158,14 @@ class FindWindow(ToolWindow):
         Read once, when everything is packed, so a mode can take widgets
         away and put them back exactly where they were."""
         f, labels = self._filters, self._labels
-        rows = [(self._row_main, [
+        rows = [(self._row_pp, [
+                    (labels["pp_power"], "pp_power"), (self.pp_power_box, "pp_power"),
+                    (labels["pp_goal"], "pp_goal"), (self.pp_goal_box, "pp_goal"),
+                    (labels["pp_contested"], "pp_contested"),
+                    (self.pp_contested_box, "pp_contested")]),
+                (self._row_main, [
                     (labels["commodity"], "commodity"), (self.commodity, "commodity"),
+                    (self.materials_button, "commodity"),
                     (labels["min_rigs"], "min_rigs"), (self.min_rigs, "min_rigs"),
                     (labels["min_types"], "min_types"), (self.min_types, "min_types"),
                     (labels["seen"], "seen"), (self.max_age, "seen"),
@@ -15297,6 +19177,10 @@ class FindWindow(ToolWindow):
                     (labels["place"], "place"), (self.verified_box, "verified"),
                     (self.hide_worked_box, "hide_worked"), (self.query, "place")])]
         rows += list(zip(f.rows, f.parts))
+        rows.append((self._row_pp2, [
+            (labels["pp_state"], "pp_state"), (self.pp_state_box, "pp_state"),
+            (labels["pp_show"], "pp_show"), (self.pp_show_box, "pp_show"),
+            (self.pp_note, "pp_note")]))
         rows.append((self._row_note, [(self.bodies_note, "bodies_note")]))
         return [(row, packed_with(row),
                  [(widget, key, packed_with(widget)) for widget, key in items])
@@ -15309,6 +19193,8 @@ class FindWindow(ToolWindow):
         wanted = set(FD.mode_filters(mode))
         if mode == "bodies":
             wanted.add("bodies_note")
+        if mode == "powerplay":
+            wanted.add("pp_note")
         layout = attr(self, "_layout", None) or []
         for row, _row_pack, items in layout:
             for widget, _key, _pack in items:
@@ -15336,7 +19222,7 @@ class FindWindow(ToolWindow):
         mode = attr(self, "mode", None) or FD.DEFAULT_MODE
         return {"sites": self.search_sites, "intact": self.search_intact,
                 "deposits": self.search_deposits, "prices": self.search_prices,
-                "bodies": self.search_bodies}[mode]()
+                "bodies": self.search_bodies, "powerplay": self.search_powerplay}[mode]()
 
     def _enter_key(self, _event=None):
         self.search()
@@ -15672,6 +19558,101 @@ class FindWindow(ToolWindow):
                    lambda: call(near=near, within_ly=within,
                                 commodity=names[0] if names else "", tag=GX.TAG))
 
+    # -- Powerplay (1.10040, #231) ------------------------------------------
+
+    def _modes(self):
+        """The searches on the switch: all of finder.MODES, less Powerplay
+        once a server has said it has no such search."""
+        older = attr(attr(self, "app"), "_powerplay_older", False)
+        return [(key, label) for key, label in FD.MODES
+                if not (older and key == "powerplay")]
+
+    def _pp_changed(self):
+        """A Powerplay filter changed. They act when Search is pressed - the
+        server decides which pairs count - so there is nothing to redraw."""
+
+    def _pp_state(self):
+        return {"power": self.pp_power_box.get(), "goal": self.pp_goal_box.get(),
+                "contested": self.pp_contested_box.get(),
+                "state": self.pp_state_box.get(), "show": self.pp_show_box.get()}
+
+    def _pp_restore(self, state):
+        state = state if isinstance(state, dict) else {}
+        defaults = PPS.spec()
+        for box, key in ((self.pp_power_box, "power"), (self.pp_goal_box, "goal"),
+                         (self.pp_contested_box, "contested"),
+                         (self.pp_state_box, "state"), (self.pp_show_box, "show")):
+            box.set(str(state.get(key) or defaults[key]))
+
+    def _pp_spec(self):
+        """The Powerplay filters on screen, as ppsearch.query takes them."""
+        f = self._filters
+        book = attr(self.app, "powerbook")
+        books = attr(self.app, "earnings")
+        return PPS.spec(
+            power=self.pp_power_box.get(), goal=self.pp_goal_box.get(),
+            contested=self.pp_contested_box.get(), state=self.pp_state_box.get(),
+            show=self.pp_show_box.get(), commodities=self._commodities(),
+            pad=dict(FD.PAD_CHOICES).get(f.pad_box.get(), ""),
+            min_demand=entry_number(f.demand_low), max_demand=entry_number(f.demand_high),
+            age_s=dict(FD.PRICE_AGES).get(f.age_box.get(), 0),
+            range_rule=bool(getattr(book, "range_rule", True)),
+            # The estimates an hour are for how this commander mines.
+            tonnes_hr=PPS.own_rate(getattr(books, "sessions", None)))
+
+    def search_powerplay(self):
+        """Where to mine and where to sell for the goal picked, near where
+        the commander is, within the window's distance (Anywhere is the
+        whole map). My power Auto is the pledge from the journal."""
+        try:
+            chosen = DISTANCE_CHOICES.get(self.within.get(), 0)
+        except Exception:
+            chosen = 0
+        near = self._here() or (str(getattr(attr(self.app, "watcher"), "system", "")
+                                    or "").strip() or None)
+        if chosen and not near:
+            return self.say("The game has not said where you are yet - jump or log "
+                            "in, or set Within to %s." % NO_DISTANCE_LIMIT, AMBER)
+        call = getattr(self.app.community, "powerplay_search", None)
+        if not callable(call):
+            return self.say("This build cannot search Powerplay.", AMBER)
+        book = attr(self.app, "powerbook")
+        params = PPS.query(self._pp_spec(), pledge=book.power if book is not None else "")
+        self._fire("Looking for %s rows%s" % (self.pp_goal_box.get(),
+                                              " within %d Ly" % chosen if chosen else ""),
+                   lambda: call(near=near, within_ly=chosen, tag=PPS.TAG, **params))
+
+    def _powerplay(self, data):
+        """Draw a Powerplay answer, or put the search away if the server is
+        too old to have one (the `_older_server` pattern)."""
+        if PPS.older(data):
+            return self._hide_powerplay()
+        goal = str(data.get("goal") or "")
+        self._cut = bool(data.get("more"))
+        self._render(PPS.rows(data), list(PPS.headers(goal)),
+                     lambda row, g=goal: self._pp_cells(row, g),
+                     PPS.empty_text(data), kind="powerplay")
+        self.pp_note.configure(text=PPS.freshness(data))
+        note = PPS.pledge_note(data)
+        if note:
+            self.say(note, AMBER)
+
+    @staticmethod
+    def _pp_cells(row, goal):
+        shades = {"good": GREEN, "warn": AMBER, "dim": DIM}
+        return [(text, shades.get(key), sort) for text, key, sort in PPS.cells(row, goal=goal)]
+
+    def _hide_powerplay(self):
+        """A community server from before the Powerplay search: the search
+        leaves the switch, in this Find and any opened later this session."""
+        self.app._powerplay_older = True
+        switch = attr(self, "mode_switch")
+        if switch is not None:
+            switch.configure(values=[label for _key, label in self._modes()])
+        self.set_mode(FD.DEFAULT_MODE)
+        self.say("The community map has not been updated for the Powerplay search "
+                 "yet - it will be back on the switch once it has.", AMBER)
+
     def _bodies(self, data):
         """Draw a mining bodies answer, with its headline over it."""
         self._cut = False
@@ -15762,6 +19743,14 @@ class FindWindow(ToolWindow):
             return self._offer(data.get("commodities") or [])
         if tag == GX.TAG:
             return self._bodies(data)
+        if tag == PPS.TAG:
+            return self._powerplay(data)
+        if tag in ("sites", "intact", "search"):
+            # What the map says of each site's marks (1.10040, #302).
+            try:
+                self.app.site_marks().take_rows(data.get("sites") or data.get("deposits") or [])
+            except Exception:
+                pass
         if tag in ("sites", "intact", "search", "market") \
                 and self._older_server(data):
             return self._forget()
@@ -15825,8 +19814,9 @@ class FindWindow(ToolWindow):
     # -- the table -------------------------------------------------------
 
     def _clear(self):
-        for widget in self.table.winfo_children():
-            widget.destroy()
+        table = attr(self, "table")
+        if table is not None:
+            table.clear()
 
     def _forget(self):
         """Throw the last result set away as well as the widgets showing it.
@@ -15891,93 +19881,46 @@ class FindWindow(ToolWindow):
         if table is None or self._builder is None:
             return
         try:
-            self._clear()
             rows = self._sorted(self._visible())
             if not rows:
-                ctk.CTkLabel(table, text=self._advice(), font=F_BODY,
-                             text_color=DIM, justify="left",
-                             wraplength=820).grid(row=0, column=0, padx=14,
-                                                  pady=18, sticky="w")
+                table.show_empty(self._advice())
             else:
-                self._headings(rows)
-                self._shown_rows, self._drawn = rows, 0
-                self._more_button = None
+                self._shown_rows = rows
                 self._draw_page()
             self._count(len(rows))
         except Exception as exc:
             self.say("Could not draw those results: %s" % exc, RED)
 
     def _draw_page(self):
-        """The next PAGE_ROWS rows, and a button for the rest if any are
-        left. Appends: the rows already drawn stay where they are."""
-        rows = attr(self, "_shown_rows", None) or []
-        start = attr(self, "_drawn", 0) or 0
-        more = attr(self, "_more_button", None)
-        if more is not None:
-            try:
-                more.destroy()
-            except Exception:
-                pass
-            self._more_button = None
-        end = min(len(rows), start + PAGE_ROWS)
-        for index in range(start, end):
-            self._row(index + 1, rows[index])
-        self._drawn = end
-        left = len(rows) - end
-        if left > 0:
-            self._more_button = tip(ctk.CTkButton(
-                self.table, text="Show %d more  (%d not drawn yet)"
-                % (min(PAGE_ROWS, left), left),
-                font=F_STRONG, **BTN_SECONDARY, height=30,
-                command=self._draw_page), "Draws the next page of results.")
-            self._more_button.grid(row=end + 1, column=DATA_COLUMN_0,
-                                   columnspan=4, padx=8, pady=10, sticky="w")
+        """Every row in hand into the table (1.10040, #308). It holds only
+        the rows on screen, so there is no page to draw and no Show more:
+        twenty thousand rows cost what twenty do."""
+        self.table.show(self._headers, attr(self, "_shown_rows", None) or [],
+                        self._builder, actions=self._buttons,
+                        sort=(self._sort_column, self._sort_reverse),
+                        on_sort=self.sort_by,
+                        tone_columns=() if self._kind in PRICE_KINDS + ("published",)
+                        else None)
 
-    def _headings(self, rows):
-        """Clickable headers. Click to sort, click again to turn it round."""
-        for column, name in enumerate(self._headers):
-            text = name
-            if column == self._sort_column:
-                text = "%s %s" % (name, "v" if self._sort_reverse else "^")
-            # width=0 lets the words decide. Left at the toolkit's default
-            # every heading was a 140-pixel button, every column at least
-            # that wide, and the table ran off the side of the window.
-            tip(ctk.CTkButton(self.table, text=text, font=F_SMALL_B,
-                          **BTN_HEADING, anchor="w", height=24, width=0,
-                          command=lambda c=column: self.sort_by(c)), "Click to sort by this column; click again to turn it round.").grid(
-                              row=0, column=DATA_COLUMN_0 + column,
-                              padx=4, pady=4, sticky="w")
-        # Asked of every row on screen, not just the first. A site row
-        # with no system name would otherwise take the column away from
-        # the twenty rows below it that do have one.
-        staff = any(self._verifiable(row) or self._removable(row) for row in rows)
-        if staff or any(self._copies(row) for row in rows):
-            ctk.CTkLabel(self.table,
-                         text="Copy / staff" if staff else "Copy",
-                         font=F_SMALL_B,
-                         text_color=ORANGE).grid(row=0, column=COPY_COLUMN,
-                                                 padx=8, pady=5, sticky="w")
-
-    def _row(self, index, row):
-        cells = [self._cell(c) for c in self._builder(row)]
-        for column, (text, colour, _key) in enumerate(cells):
-            # A list of five commodities or a long commander name wraps
-            # inside its column instead of widening the whole table.
-            # A plain label, not the toolkit's: a table is hundreds of cells,
-            # and each toolkit label is a canvas of its own - the difference
-            # between a page drawing at once and the window looking hung.
-            tk.Label(self.table, text=text, font=F_SMALL,
-                     fg=colour or TEXT, bg=PANEL, justify="left",
-                     anchor="w", wraplength=CELL_WRAP, bd=0).grid(
-                         row=index, column=DATA_COLUMN_0 + column,
-                         padx=8, pady=2, sticky="w")
+    def _buttons(self, row):
+        """A result row's buttons: its copies, and verify, remove and the
+        marks where they belong. [(text, command, primary)]."""
         buttons = [(label, lambda w=what, t=text: self.copy_text(w, t), False)
                    for label, what, text in self._copies(row)]
         if self._verifiable(row):
             buttons.append(("verify", lambda r=row: self.verify_site(r), True))
         if self._removable(row):
             buttons.append(("remove", lambda r=row: self.remove_find(r), False))
-        row_buttons(self.table, index, buttons)
+        # 1.10040 (#302): a site's good and bad marks, yours lit.
+        if self._kind in ("sites", "intact"):
+            system = str(row.get("system") or "").strip()
+            planet = str(row.get("planet") or row.get("body") or "").strip()
+            if system and planet:
+                spot = str(row.get("spot") or "1").strip() or "1"
+                buttons += self.app.mark_buttons(system, planet, spot)
+                # 1.10040 (#325): the site as a picture.
+                buttons.append(("card", lambda s=system, p=planet, l=spot: self.app.site_card(s, p, l), False))
+        return buttons
 
     # -- filtering and sorting -------------------------------------------
 
@@ -15994,7 +19937,7 @@ class FindWindow(ToolWindow):
         # markets that are not called Sol. Filtering the answer by the word
         # that produced it would throw all of them away. The published
         # figures belong to Sell prices too (1.10038), so the same goes.
-        if text and self._kind not in PRICE_KINDS + ("published",):
+        if text and self._kind not in PRICE_KINDS + ("published", "powerplay"):
             hay = " ".join(str(row.get(key) or "") for key in
                            ("system", "planet", "body", "spot", "station",
                             "commodity", "type"))
@@ -16214,10 +20157,19 @@ class FindWindow(ToolWindow):
         wanted = [str(n).strip() for n in names if str(n).strip()]
         if not wanted:
             return
+        self._server_names = sorted(set(list(attr(self, "_server_names", None) or [])
+                                        + wanted), key=SV.fold)
+        self.offer_materials()
+
+    def offer_materials(self):
+        """The commodity filter's list: the materials ticked in the picker
+        (1.10040, #306), with whatever the server has added."""
         try:
             chosen = self._commodities()
-            values = ["Any"] + sorted(set(list(SV.KNOWN_COMMODITIES) + wanted),
-                                      key=SV.fold)
+            server = list(attr(self, "_server_names", None) or [])
+            names = (sorted(set(list(SV.KNOWN_COMMODITIES) + server), key=SV.fold)
+                     if server else list(SV.KNOWN_COMMODITIES))
+            values = ["Any"] + MT.offered(names, self.app.settings)
             self.commodity.configure(values=values)
             # Whatever was ticked stays ticked - several names are not one
             # of the values, and must not be mistaken for a stale one.
@@ -16296,6 +20248,11 @@ class FindWindow(ToolWindow):
                     "Narrowing it down: %s.\nUntick one, or clear the "
                     "system/body box." % (len(self._rows),
                                           "; ".join(self._active()) or "none"))
+        if self._kind == "powerplay":
+            # Its own filters, not Sites': Min rigs and the rest do not act here.
+            return (self._empty + '\n\nTry again wider: set Within to "%s", '
+                    'Contested by and State to Any, Commodity to Any, or try '
+                    'another Goal.' % NO_DISTANCE_LIMIT)
         widen = []
         if self.within.get() != NO_DISTANCE_LIMIT:
             widen.append('set Within to "%s"' % NO_DISTANCE_LIMIT)
@@ -16644,6 +20601,14 @@ class EarningsWindow(ToolWindow):
             **BTN_SECONDARY, command=self.copy_session),
             "Copies this session as text, ready to paste into Discord.")
         self.session_copy.pack(side="right")
+        # 1.10040 (#151): the session as a picture, for Discord or a stream.
+        self.card_button = tip(ctk.CTkButton(
+            buttons, text="Session card", width=120, height=32, font=F_STRONG,
+            **BTN_SECONDARY, command=self.make_card),
+            "Makes a picture of this session - tonnes, credits, Cr/hr, merits and "
+            "time mined, with the map - in the pictures folder. The OBS page shows "
+            "the latest one.")
+        self.card_button.pack(side="right", padx=(0, 6))
         # A session opens on the first rig down or the first tonne refined
         # in the Rhino, and closes on every rig up or the Rhino aboard. These
         # are for doing it by hand: Start before anything is down, Pause for
@@ -16747,7 +20712,7 @@ class EarningsWindow(ToolWindow):
         self.best_box.pack(side="right", padx=(10, 8))
         self.system_pick = tip(ctk.CTkComboBox(
             self.prices_bar, width=240, font=F_BODY, **BOX,
-            values=["Any"] + list(SV.KNOWN_COMMODITIES)), "Tick the commodities to price; Any is all of them.")
+            values=material_names(app.settings)), "Tick the commodities to price; Any is all of them.")
         self.system_pick.set("Any")
         self.system_pick.pack(side="right", padx=(6, 0))
         ctk.CTkLabel(self.prices_bar, text="for", font=F_BODY,
@@ -16759,7 +20724,7 @@ class EarningsWindow(ToolWindow):
         self.system_box.bind("<Return>", lambda _e: self.search_system(),
                              add="+")
         Suggest(self.system_pick,
-                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES),
+                lambda typed: ["Any"] + SV.matches(material_names(self.app.settings)[1:],
                                                    typed), multi=True)
         chain_tab([self.system_box, self.system_pick])
 
@@ -16775,8 +20740,10 @@ class EarningsWindow(ToolWindow):
         self.summary = ctk.CTkLabel(self, text="", font=F_READOUT,
                                     text_color=AMBER, anchor="w",
                                     justify="left")
-        self.scroller = ScrollTable(self)
-        self.table = self.scroller.inner
+        # 1.10040 (#308): Sessions and System prices on the toolkit's tree
+        # view; Where to sell is a few rows and stays as it was.
+        self.scroller = NativeTable(self, copy=self.copy_text)
+        self.table = self.scroller
         for scroller in (self.scroller, self.sell_scroller):
             for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
                              "<Button-4>", "<Button-5>"):
@@ -17007,41 +20974,21 @@ class EarningsWindow(ToolWindow):
         if table is None:
             return
         try:
-            for widget in table.winfo_children():
-                widget.destroy()
             self._summarise()
             answer = attr(self, "_system_answer")
             if not answer:
-                ctk.CTkLabel(table, text=SYSTEM_PRICE_ADVICE, font=F_BODY,
-                             text_color=DIM, justify="left",
-                             wraplength=820).grid(row=0, column=0, padx=14,
-                                                  pady=18, sticky="w")
+                table.show_empty(SYSTEM_PRICE_ADVICE)
                 return self._table_say("No system searched yet.", AMBER)
             rows = self._price_rows()
             if not rows:
-                ctk.CTkLabel(table, text=system_price_empty(answer),
-                             font=F_BODY, text_color=DIM, justify="left",
-                             wraplength=820).grid(row=0, column=0, padx=14,
-                                                  pady=18, sticky="w")
+                table.show_empty(system_price_empty(answer))
                 return self._table_say(system_price_status(answer, rows), AMBER)
-            column_now, backwards = attr(self, "_price_sort") or (None, False)
-            for column, name in enumerate(PRICE_HEADERS):
-                text = name
-                if column == column_now:
-                    text = "%s %s" % (name, "v" if backwards else "^")
-                tip(ctk.CTkButton(table, text=text, font=F_SMALL_B,
-                              **BTN_HEADING, anchor="w", height=24, width=0,
-                              command=lambda c=column: self.sort_prices(c)), "Click to sort by this column; click again to turn it round.").grid(
-                                  row=0, column=DATA_COLUMN_0 + column,
-                                  padx=4, pady=4, sticky="w")
-            for index, row in enumerate(rows, start=1):
-                for column, cell in enumerate(self._price_cells(row)):
-                    text, colour, _key = self._cell(cell)
-                    tk.Label(table, text=text, font=F_SMALL, fg=colour or TEXT,
-                             bg=PANEL, justify="left", anchor="w",
-                             wraplength=CELL_WRAP, bd=0).grid(
-                                 row=index, column=DATA_COLUMN_0 + column,
-                                 padx=8, pady=2, sticky="w")
+            # Coloured by the price's age: green read today.
+            table.show(PRICE_HEADERS, rows, self._price_cells,
+                       actions=lambda row: [("station", lambda r=row: self.copy_text(
+                           "the station name", str(r.get("station") or "")), False)],
+                       sort=attr(self, "_price_sort") or (None, False),
+                       on_sort=self.sort_prices, tone_columns=(6,))
             colour = GREEN if answer.get("status") in ("live", "cached", "off",
                                                        "not configured") else AMBER
             self._table_say(system_price_status(answer, rows), colour)
@@ -17383,59 +21330,36 @@ class EarningsWindow(ToolWindow):
         if attr(self, "_view") == "prices":
             return self._paint_prices()
         try:
-            for widget in table.winfo_children():
-                widget.destroy()
             self._summarise()
             rows = self._sorted(list(self._rows))
             if not rows:
-                ctk.CTkLabel(table, text=self._advice(), font=F_BODY,
-                             text_color=DIM, justify="left",
-                             wraplength=820).grid(row=0, column=0, padx=14,
-                                                  pady=18, sticky="w")
+                table.show_empty(self._advice())
                 return self._table_say("No Rhino sessions recorded yet.", AMBER)
-            self._headings()
-            for index, row in enumerate(rows, start=1):
-                self._row(index, row)
+            # 1.10040 (#308): every session in the tree view at once.
+            table.show(RUN_HEADERS, rows, self._run_row, actions=self._buttons,
+                       sort=(self._sort_column, self._sort_reverse),
+                       on_sort=self.sort_by)
             self._table_say("%d Rhino session(s)." % len(rows), GREEN)
         except Exception as exc:
             self.say("Could not draw the ledger: %s" % exc, RED)
 
-    def _headings(self):
-        """Clickable headers. Click to sort, click again to turn it round."""
-        for column, name in enumerate(RUN_HEADERS):
-            text = name
-            if column == self._sort_column:
-                text = "%s %s" % (name, "v" if self._sort_reverse else "^")
-            # width=0 lets the words decide. Left at the toolkit's default
-            # every heading was a 140-pixel button, every column at least
-            # that wide, and the table ran off the side of the window.
-            tip(ctk.CTkButton(self.table, text=text, font=F_SMALL_B,
-                          **BTN_HEADING, anchor="w", height=24, width=0,
-                          command=lambda c=column: self.sort_by(c)), "Click to sort by this column; click again to turn it round.").grid(
-                              row=0, column=DATA_COLUMN_0 + column,
-                              padx=4, pady=4, sticky="w")
-        ctk.CTkLabel(self.table, text="Copy / delete", font=F_SMALL_B,
-                     text_color=ORANGE).grid(row=0, column=COPY_COLUMN,
-                                             padx=8, pady=5, sticky="w")
-
-    def _row(self, index, row):
-        for column, cell in enumerate(self._run_row(row)):
-            text, colour, _key = self._cell(cell)
-            # A list of five commodities or a long commander name wraps
-            # inside its column instead of widening the whole table.
-            # A plain label, not the toolkit's: a table is hundreds of cells,
-            # and each toolkit label is a canvas of its own - the difference
-            # between a page drawing at once and the window looking hung.
-            tk.Label(self.table, text=text, font=F_SMALL,
-                     fg=colour or TEXT, bg=PANEL, justify="left",
-                     anchor="w", wraplength=CELL_WRAP, bd=0).grid(
-                         row=index, column=DATA_COLUMN_0 + column,
-                         padx=8, pady=2, sticky="w")
+    def _buttons(self, row):
+        """A session's buttons: the system to copy (the table copies the
+        row), its card (1.10040, #151) and delete."""
         buttons = [(label, lambda w=what, t=text: self.copy_text(w, t), False)
-                   for label, what, text in self._copies(row)]
+                   for label, what, text in self._copies(row) if label != "row"]
+        buttons.append(("card", lambda r=row: self.make_card(r), False))
         buttons.append(("delete", lambda r=row: self.delete_session(r),
                         BTN_DANGER))
-        row_buttons(self.table, index, buttons)
+        return buttons
+
+    def make_card(self, row=None):
+        """Session card: the picture of `row` - a row's card button - or of
+        the session on This session, saved in the pictures folder."""
+        made = self.app.session_card(row)
+        if not made["path"]:
+            return self.say(made["why"] or "No session card was made.", AMBER)
+        return self.say("Session card saved in the pictures folder: %s" % made["name"], GREEN)
 
     def delete_session(self, row):
         """Take a session off the tab and out of sessions.csv.
@@ -17480,11 +21404,15 @@ class EarningsWindow(ToolWindow):
         """The session you are on at the top; everything, added up, under
         the rows it is the sum of."""
         totals = self.app.earnings.totals(self._rows)
-        self.summary.configure(
-            text="All time: %d Rhino session(s)   %s Cr sold   %s at the face   %s Cr/hr overall"
-                 % (totals["runs"], credits_text(totals["earned"]),
-                    duration_text(totals["hours"]),
-                    credits_text(totals["cr_hr"])))
+        text = ("All time: %d Rhino session(s)   %s Cr sold   %s at the face   %s Cr/hr overall"
+                % (totals["runs"], credits_text(totals["earned"]),
+                   duration_text(totals["hours"]),
+                   credits_text(totals["cr_hr"])))
+        # The game's own count between your last two logins (1.10040, #257).
+        audits = getattr(self.app.earnings, "audits", None) or []
+        if audits:
+            text += "\n" + JR.audit_words(audits[-1])
+        self.summary.configure(text=text)
         self._show_current()
         self.holding.configure(text=self._holding() or
                                "Nothing mined in the hold, or the game is not "
@@ -17623,6 +21551,10 @@ class EarningsWindow(ToolWindow):
             return "%dt: %s" % (total, SV.pack_counts(counts)
                                 .replace(":", " ").replace(";", ", ")), total
         mined, mined_t = listed("mined")
+        # Cargo thrown out in the session (1.10040, #267).
+        thrown = JR.lost_words(row)
+        if thrown:
+            mined += "\n" + thrown
         # More than one Rhino in the session: what each one did, under the
         # total - "Rhino A: 57t, 6 rigs, 22m". The game gives each Rhino its
         # own ID, so the split is the journal's, not a guess.
@@ -17638,7 +21570,17 @@ class EarningsWindow(ToolWindow):
                     bits.append(duration_text(worked / 3600.0))
                 mined += "\nRhino %s: %s" % (part["label"], ", ".join(bits))
         moved, moved_t = listed("transferred")
+        # The ship's own hold after the Rhino came aboard, against the
+        # transfers (1.10040, #256).
+        check_short, check_whole = JR.hold_words(row)
+        moved_cell = ((moved + "\n" + check_short, GREEN if JR.hold_check(row) else AMBER,
+                       moved_t, moved + " - " + check_whole)
+                      if check_short else (moved, None, moved_t))
         sold, sold_t = listed("sold")
+        # A session's tonnes are what crossed to the ship, when anything did
+        # (#256); refined tonnes stand in for a session with no transfer.
+        tonnes, _source = JR.session_tonnes(row)
+        t_hr = tonnes / hours if hours > 0 else 0.0
         body = str(row.get("body") or "")
         system = str(row.get("system") or "")
         where = ("%s / %s" % (system, body)).strip(" /") or "-"
@@ -17650,22 +21592,41 @@ class EarningsWindow(ToolWindow):
              AMBER if live else TEXT, started),
             (where, None),
             (mined, None, mined_t),
-            (moved, None, moved_t),
+            moved_cell,
             (sold, None, sold_t),
             (credits_text(kept), GREEN if kept else DIM, kept),
             (credits_text(SV.credits_per_hour(row)), None,
              SV.credits_per_hour(row)),
             # Tonnes an hour (1.10034): what the digging itself is doing,
             # whatever the market paid for it.
-            ("%.1f t" % SV.tonnes_per_hour(row) if SV.tonnes_per_hour(row) else "-",
-             None, SV.tonnes_per_hour(row)),
+            ("%.1f t" % t_hr if t_hr else "-", None, t_hr),
             # Powerplay merits the game paid for this session's sales
             # (1.10036), counted from its own merit events - not estimated.
             self._merits_cell(row),
             (duration_text(hours) if hours else "-", None, hours),
-            (str(row.get("station") or "") or ("still out" if live else "-"),
-             AMBER if live else None),
+            self._sold_at_cell(row, live),
         ]
+
+    def _sold_at_cell(self, row, live):
+        """Where it was sold - and, for your own sales there, the price at
+        your next read of that market (1.10040, #274)."""
+        station = str(row.get("station") or "")
+        if not station:
+            return ("still out" if live else "-", AMBER if live else None)
+        book = attr(attr(self, "app", None), "market_book", None)
+        marks = []
+        try:
+            if book is not None:
+                marks = book.sales_at(station, row.get("started"), row.get("ended"))
+        except Exception:
+            marks = []
+        words = [JR.mark_words(mark) for mark in marks]
+        short = [w[0] for w in words if w[0]]
+        colour = AMBER if live else None
+        if not words:
+            return (station, colour)
+        return ((station + "\n" + short[-1]) if short else station, colour, station,
+                station + ": " + " ".join(w[1] for w in words))
 
     def _merits_cell(self, row):
         merits = session_merits_earned(self.app, row)
@@ -17853,13 +21814,13 @@ class LandWindow(ToolWindow):
                      text_color=DIM).pack(side="left", padx=(14, 6))
         self.carrying = tip(ctk.CTkComboBox(
             buttons, width=240, height=32, font=F_BODY, **BOX,
-            values=["Any"] + list(SV.KNOWN_COMMODITIES),
+            values=material_names(app.settings),
             command=lambda _value: self._paint()), "Only bodies known or likely to carry the ticked commodities.")
         self.carrying.set("Any")
         self.carrying.pack(side="left")
         # Tick several and a body carrying any of them stays (#188).
         Suggest(self.carrying,
-                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES),
+                lambda typed: ["Any"] + SV.matches(material_names(self.app.settings)[1:],
                                                    typed),
                 on_pick=lambda _value: self._paint(), multi=True)
 
@@ -17867,6 +21828,19 @@ class LandWindow(ToolWindow):
         # the journals remember.
         self._far_rows, self._was_far = [], False
         self._bodies = BodyFilterBar(self, top, "land")
+        # 1.10040 (#305): what each kind of ground here has carried, folded
+        # away until asked for.
+        self.grounds = GroundFold(self, top)
+        # 1.10040 (#303): the five commodities worth most in this system,
+        # above the body table.
+        self.best_box = ctk.CTkFrame(top, fg_color="transparent")
+        self.best_box.pack(fill="x", padx=12, pady=(0, 8))
+        ctk.CTkLabel(self.best_box, text="Best to mine", font=F_SMALL_B,
+                     text_color=AMBER, anchor="w").pack(anchor="w")
+        self.best_text = ctk.CTkLabel(self.best_box, text="", font=F_SMALL,
+                                      text_color=TEXT, anchor="w",
+                                      justify="left", wraplength=900)
+        self.best_text.pack(fill="x", anchor="w")
 
         # Bottom first, so a short window squeezes the table and never
         # pushes the footnote off the edge.
@@ -17877,9 +21851,10 @@ class LandWindow(ToolWindow):
         self.status = ctk.CTkLabel(self, text="", font=F_READOUT,
                                    text_color=DIM, anchor="w")
         self.status.pack(fill="x", padx=14, pady=(0, 4))
-        self.scroller = ScrollTable(self)
+        # 1.10040 (#308): on the toolkit's tree view.
+        self.scroller = NativeTable(self, copy=self.copy_text)
         self.scroller.pack(fill="both", expand=True, padx=12, pady=(0, 6))
-        self.table = self.scroller.inner
+        self.table = self.scroller
         for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
                          "<Button-4>", "<Button-5>"):
             self.bind(sequence, self.scroller.wheel, add="+")
@@ -17923,12 +21898,28 @@ class LandWindow(ToolWindow):
             if event is not None and event.widget is not self:
                 return
             wrap = max(400, self.winfo_width() - 60)
-            for label in (self.heading, self.summary, self.footnote):
-                label.configure(wraplength=wrap)
+            for label in (self.heading, self.summary, self.footnote,
+                          attr(self, "best_text")):
+                if label is not None:
+                    label.configure(wraplength=wrap)
         except Exception:
             pass
 
     # -- drawing ------------------------------------------------------------
+
+    def _best(self, system, rows):
+        """Best to mine and By ground, for the system in hand (1.10040)."""
+        text = attr(self, "best_text")
+        if text is not None:
+            best = self.app.best_to_mine(system)
+            text.configure(
+                text="\n".join(BM.best_line(item) for item in best) if best else
+                "Nothing priced is known or expected here yet - it fills in as the "
+                "system is scanned and shared sites come back.",
+                text_color=TEXT if best else DIM)
+        fold = attr(self, "grounds")
+        if fold is not None:
+            fold.show(BM.by_ground(rows, attr(self.app, "grounds")))
 
     def _paint(self):
         """Draw what is in hand. Must not raise."""
@@ -17938,27 +21929,23 @@ class LandWindow(ToolWindow):
         try:
             system = self._system()
             self._shown_for = self.app.land_signature(system)
+            every = self.app.land_rows(system, landable_only=not self.show_all.get())
+            self._best(system, every)
             bar = attr(self, "_bodies")
             if bar is not None and self._far_view(bar):
                 return
-            self._rows = land_carrying(
-                self.app.land_rows(system, landable_only=not self.show_all.get()),
-                self._carrying())
+            self._rows = land_carrying(every, self._carrying())
             if bar is not None:
                 self._rows = bar.narrow_here(self._rows)
-            for widget in table.winfo_children():
-                widget.destroy()
             self._summarise(system)
             rows = self._sorted(list(self._rows))
             if not rows:
-                ctk.CTkLabel(table, text=self._advice(system), font=F_BODY,
-                             text_color=DIM, justify="left",
-                             wraplength=820).grid(row=0, column=0, padx=14,
-                                                  pady=18, sticky="w")
+                table.show_empty(self._advice(system))
                 return
-            self._headings()
-            for index, row in enumerate(rows, start=1):
-                self._row(index, row)
+            # A body is coloured by how good a bet it is: green, then amber.
+            table.show(LAND_HEADERS, rows, self._land_row, actions=self._buttons,
+                       sort=(self._sort_column, self._sort_reverse),
+                       on_sort=self.sort_by, widths=LAND_WRAP, tone_columns=(0,))
         except Exception as exc:
             self.say("Could not draw the list: %s" % exc, RED)
 
@@ -18039,31 +22026,24 @@ class LandWindow(ToolWindow):
             return False
         rows = bar.narrow_far()
         self._far_rows, self._rows = rows, []
-        for widget in self.table.winfo_children():
-            widget.destroy()
         self.heading.configure(text="Where to land - bodies your journals remember")
         self.summary.configure(text="%d bod%s listed." % (
             len(rows), "y" if len(rows) == 1 else "ies"))
         self.say("")
         rows = self._sorted_far(rows)
         if not rows:
-            ctk.CTkLabel(self.table, text=(
+            self.table.show_empty(
                 "No remembered body matches. Loosen a filter, or widen Look in "
-                "- bodies are remembered from every journal EDSMT has read."),
-                font=F_BODY, text_color=DIM, justify="left",
-                wraplength=820).grid(row=0, column=0, padx=14, pady=18,
-                                     sticky="w")
+                "- bodies are remembered from every journal EDSMT has read.")
             return True
-        self._headings(LAND_FAR_HEADERS)
-        for index, row in enumerate(rows, start=1):
-            for column, cell in enumerate(land_far_cells(row)):
-                text, colour, _key = EarningsWindow._cell(cell)
-                cell_label(self.table, index, column, text, colour, CELL_WRAP)
-            row_buttons(self.table, index, [
-                ("system", lambda s=row["system"]: self.copy_text(
-                    "the system name", s), False),
-                ("body", lambda b=row["body"]: self.copy_text(
-                    "the body name", b), False)])
+        self.table.show(LAND_FAR_HEADERS, rows, land_far_cells,
+                        actions=lambda row: [
+                            ("system", lambda s=row["system"]: self.copy_text(
+                                "the system name", s), False),
+                            ("body", lambda b=row["body"]: self.copy_text(
+                                "the body name", b), False)],
+                        sort=(self._sort_column, self._sort_reverse),
+                        on_sort=self.sort_by)
         return True
 
     def _sorted_far(self, rows):
@@ -18086,29 +22066,15 @@ class LandWindow(ToolWindow):
                                     for c in land_far_cells(row)))
         return "\n".join(lines)
 
-    def _headings(self, headers=LAND_HEADERS):
-        for column, name in enumerate(headers):
-            text = name
-            if column == self._sort_column:
-                text = "%s %s" % (name, "v" if self._sort_reverse else "^")
-            tip(ctk.CTkButton(self.table, text=text, font=F_SMALL_B,
-                          **BTN_HEADING, anchor="w", height=24, width=0,
-                          command=lambda c=column: self.sort_by(c)), "Click to sort by this column; click again to turn it round.").grid(
-                              row=0, column=DATA_COLUMN_0 + column,
-                              padx=4, pady=4, sticky="w")
-        ctk.CTkLabel(self.table, text="Copy", font=F_SMALL_B,
-                     text_color=ORANGE).grid(row=0, column=COPY_COLUMN,
-                                             padx=8, pady=5, sticky="w")
-
-    def _row(self, index, row):
-        for column, cell in enumerate(self._land_row(row)):
-            text, colour, _key = EarningsWindow._cell(cell)
-            cell_label(self.table, index, column, text, colour,
-                       LAND_WRAP.get(LAND_HEADERS[column], CELL_WRAP),
-                       full=cell_full(cell))
-        row_buttons(self.table, index,
-                    [(label, lambda w=what, t=text: self.copy_text(w, t), False)
-                     for label, what, text in self._copies(row)])
+    def _buttons(self, row):
+        """A body's buttons: its name to copy (the table copies the row),
+        and the body's site card when the map knows sites there (#325)."""
+        buttons = [(label, lambda w=what, t=text: self.copy_text(w, t), False)
+                   for label, what, text in self._copies(row) if label != "row"]
+        if row.get("known"):
+            buttons.append(("card", lambda r=row: self.app.site_card(
+                str(r.get("system") or ""), str(r.get("body") or ""), ""), False))
+        return buttons
 
     @staticmethod
     def _land_row(row):
@@ -18586,6 +22552,49 @@ SESSION_CARD_TIPS = {
 # A card with no figure yet.
 CARD_NONE = "\u2014"
 
+# The stat cards over the map (1.10040, #310), in reading order.
+MAP_CARDS = ("Session", "Cr/hr", "Rigs down", "Coverage")
+# How often they are worked out again: the coverage figure walks the swept
+# ground, which is not a job for every tick.
+MAP_CARDS_EVERY_S = 2.5
+MAP_CARD_TIPS = {
+    "Session": "Tonnes the Rhino has refined in the session running now.",
+    "Cr/hr": "The running session's estimated value, an hour - the same "
+             "figure as on Earnings.",
+    "Rigs down": "Rigs you have put down and not picked up yet.",
+    "Coverage": "How much of the survey area you have swept. Set an area by "
+                "logging a signal and its border.",
+}
+
+
+def map_card_figures(app, now=None):
+    """{card: (figure, colour)} for the stat cards over the map: a dash for
+    anything there is no figure for yet."""
+    out = {name: (CARD_NONE, DIM) for name in MAP_CARDS}
+    books = attr(app, "earnings")
+    run = getattr(books, "rhino", None) if books is not None else None
+    if run:
+        # To now, as Earnings counts it: the drive between deposits is
+        # still the session.
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)) \
+            if now is not None else SV.utc_now()
+        if SV._epoch(stamp) > SV._epoch(run.get("ended")):
+            run = dict(run, ended=stamp)
+        est = app.session_estimate(run)
+        out["Session"] = ("%d t" % est["tonnes"], TEXT)
+        if est["value"] > 0:
+            out["Cr/hr"] = (credits_text(est["cr_hr"]), AMBER)
+    rigs = (attr(app, "rigs_at", None) or {}).get("rigs") or []
+    out["Rigs down"] = ("%d" % len(rigs), ORANGE if rigs else TEXT)
+    try:
+        cmap = app._survey_map()
+        percent = cmap.coverage().get("percent") if cmap is not None else None
+    except Exception:
+        percent = None
+    if percent is not None:
+        out["Coverage"] = ("%d%%" % percent, GREEN if percent >= 100 else TEXT)
+    return out
+
 
 def session_merits(rate, lines, sold, earned):
     """Powerplay merits a session's credits are estimated to earn, or None
@@ -18699,6 +22708,12 @@ def current_session(app, rows=(), now=None):
                 "market, or Check prices on Where to sell.")
     else:
         note = ""
+    # The Rhino's tonnes, from the journal's own Cargo count (1.10040, #266).
+    watcher = attr(app, "watcher", None)
+    if live is not None and getattr(watcher, "rhino_out", False):
+        rhino = JR.rhino_words(getattr(watcher, "srv_total", None))
+        if rhino:
+            note = (note + "   " + rhino).strip()
     sold = ("%s   sold so far %s Cr" if live is not None else "%s   sold %s Cr")
     return {"head": sold % (label, credits_text(est["earned"])),
             "lines": (head, value, merits), "cards": cards, "note": note}
@@ -18996,12 +23011,12 @@ class SitesWindow(ToolWindow):
                      text_color=DIM).pack(side="left", padx=(14, 6))
         self.commodity = tip(ctk.CTkComboBox(
             row, width=240, height=32, font=F_BODY, **BOX,
-            values=["Any"] + list(SV.KNOWN_COMMODITIES),
+            values=material_names(app.settings),
             command=lambda _value: self._paint()), "Tick one or several commodities; Any clears them.")
         self.commodity.set("Any")
         self.commodity.pack(side="left")
         Suggest(self.commodity,
-                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES),
+                lambda typed: ["Any"] + SV.matches(material_names(self.app.settings)[1:],
                                                    typed),
                 on_pick=lambda _value: self._paint(), multi=True)
 
@@ -19037,9 +23052,10 @@ class SitesWindow(ToolWindow):
         self.status = ctk.CTkLabel(self, text="", font=F_READOUT,
                                    text_color=DIM, anchor="w")
         self.status.pack(fill="x", padx=14, pady=(0, 4))
-        self.scroller = ScrollTable(self)
+        # 1.10040 (#308): on the toolkit's tree view.
+        self.scroller = NativeTable(self, copy=self.copy_text)
         self.scroller.pack(fill="both", expand=True, padx=12, pady=(0, 6))
-        self.table = self.scroller.inner
+        self.table = self.scroller
         for sequence in ("<MouseWheel>", "<Shift-MouseWheel>",
                          "<Button-4>", "<Button-5>"):
             self.bind(sequence, self.scroller.wheel, add="+")
@@ -19094,17 +23110,10 @@ class SitesWindow(ToolWindow):
             shown = self._narrow(shown)
             shown = self._starred(shown)
             self._rows = self._sorted(shown)
-            for widget in table.winfo_children():
-                widget.destroy()
             self._summarise(shown)
             if not self._rows:
-                ctk.CTkLabel(table, text=self._advice(), font=F_BODY,
-                             text_color=DIM, justify="left",
-                             wraplength=820).grid(row=0, column=0, padx=14,
-                                                  pady=18, sticky="w")
+                table.show_empty(self._advice())
                 return
-            self._headings()
-            self._drawn, self._more_button = 0, None
             self._draw_page()
             self.scroller.top()
         except Exception as exc:
@@ -19116,31 +23125,15 @@ class SitesWindow(ToolWindow):
         return sites if bar is None else bar.narrow_sites(sites)
 
     def _draw_page(self):
-        """The next PAGE_ROWS sites, and a button for the rest. A commander
-        with a few hundred signals logged got every one drawn at once."""
-        rows = attr(self, "_rows", None) or []
-        start = attr(self, "_drawn", 0) or 0
-        more = attr(self, "_more_button", None)
-        if more is not None:
-            try:
-                more.destroy()
-            except Exception:
-                pass
-            self._more_button = None
+        """Every site into the table (1.10040, #308). It holds only the
+        rows on screen, so a few hundred signals logged cost what ten do."""
         here = self._here()
-        end = min(len(rows), start + PAGE_ROWS)
-        for index in range(start, end):
-            self._row(index + 1, rows[index], here)
-        self._drawn = end
-        left = len(rows) - end
-        if left > 0:
-            self._more_button = tip(ctk.CTkButton(
-                self.table, text="Show %d more  (%d not drawn yet)"
-                % (min(PAGE_ROWS, left), left),
-                font=F_STRONG, **BTN_SECONDARY, height=30,
-                command=self._draw_page), "Draws the next page.")
-            self._more_button.grid(row=end + 1, column=DATA_COLUMN_0,
-                                   columnspan=4, padx=8, pady=10, sticky="w")
+        prices = attr(self, "_prices_now", None)
+        self.table.show(SITES_HEADERS, attr(self, "_rows", None) or [],
+                        lambda site: site_cells(site, here, prices),
+                        actions=self._buttons,
+                        sort=(self._sort_column, self._sort_reverse),
+                        on_sort=self.sort_by, widths=SITES_WRAP)
 
     def _summarise(self, shown):
         sites = self._sites
@@ -19164,39 +23157,23 @@ class SitesWindow(ToolWindow):
                    bound_key(getattr(self.app, "settings", None), "deposit",
                              "MARK DEPOSIT")))
 
-    def _headings(self):
-        for column, name in enumerate(SITES_HEADERS):
-            text = name
-            if column == self._sort_column:
-                text = "%s %s" % (name, "v" if self._sort_reverse else "^")
-            tip(ctk.CTkButton(self.table, text=text, font=F_SMALL_B,
-                          **BTN_HEADING, anchor="w", height=24, width=0,
-                          command=lambda c=column: self.sort_by(c)), "Click to sort by this column; click again to turn it round.").grid(
-                              row=0, column=DATA_COLUMN_0 + column,
-                              padx=4, pady=4, sticky="w")
-        ctk.CTkLabel(self.table, text="Copy", font=F_SMALL_B,
-                     text_color=ORANGE).grid(row=0, column=COPY_COLUMN,
-                                             padx=8, pady=5, sticky="w")
-
-    def _row(self, index, site, here):
-        cells = site_cells(site, here, attr(self, "_prices_now", None))
-        for column, cell in enumerate(cells):
-            text, colour, _key = EarningsWindow._cell(cell)
-            cell_label(self.table, index, column, text, colour,
-                       SITES_WRAP.get(SITES_HEADERS[column], CELL_WRAP))
-        line = " | ".join(EarningsWindow._cell(c)[0].replace("\n", " ")
-                          for c in cells)
+    def _buttons(self, site):
+        """A site's buttons: the system to copy (the table copies the row),
+        its star, remove, and the marks when it has a find."""
         buttons = [
             ("system", lambda s=site["system"]: self.copy_text(
-                "the system name", s), False),
-            ("row", lambda s=line: self.copy_text("this site", s), False)]
+                "the system name", s), False)]
         if self._book() is not None:
             starred = SBK.key_of(site) in (attr(self, "_stars", None) or ())
             buttons += [
                 ("\u2605" if starred else "\u2606",
                  lambda s=site: self.toggle_star(s), bool(starred)),
                 ("remove", lambda s=site: self.remove_site(s), BTN_DANGER)]
-        row_buttons(self.table, index, buttons)
+        # 1.10040 (#302): a site with a find on it is on the community map,
+        # so it carries the good and bad marks too.
+        if site.get("finds") and site.get("signal"):
+            buttons += self.app.mark_buttons(site["system"], site["body"], site["signal"])
+        return buttons
 
     def _sorted(self, sites):
         column = self._sort_column
@@ -19356,33 +23333,25 @@ class SitesWindow(ToolWindow):
         book = self._book()
         entries = book.bin() if book is not None else []
         days = SBK.retention_days(self.app.settings.get("trash_days"))
-        for widget in table.winfo_children():
-            widget.destroy()
         self._sync_bin_controls()
         self._bin_rows = entries
         self.summary.configure(
             text="%d removed site(s) in the bin. Each is deleted for good %d "
                  "day(s) after it was removed." % (len(entries), days))
         if not entries:
-            ctk.CTkLabel(table, text="The bin is empty. A site you remove "
-                                     "waits here until it is deleted for good "
-                                     "- Restore puts it back.",
-                         font=F_BODY, text_color=DIM, justify="left",
-                         wraplength=820).grid(row=0, column=0, padx=14,
-                                              pady=18, sticky="w")
+            table.show_empty("The bin is empty. A site you remove waits here "
+                             "until it is deleted for good - Restore puts it back.")
             return
-        for column, name in enumerate(BIN_HEADERS):
-            cell_label(table, 0, column, name, ORANGE)
-        for index, entry in enumerate(entries, 1):
+
+        def cells(entry):
             finds = len(entry.get("deposits") or [])
-            cells = (entry.get("system") or "", entry.get("body") or "",
-                     entry.get("signal") or "-", str(finds) if finds else "-",
-                     str(entry.get("binned") or "")[:10],
-                     "%d d" % SBK.SiteBook.days_left(entry, days))
-            for column, text in enumerate(cells):
-                cell_label(table, index, column, text)
-            row_buttons(table, index, [
-                ("restore", lambda e=entry: self.restore_entry(e), True)])
+            return [(text, None) for text in (
+                entry.get("system") or "", entry.get("body") or "",
+                entry.get("signal") or "-", str(finds) if finds else "-",
+                str(entry.get("binned") or "")[:10],
+                "%d d" % SBK.SiteBook.days_left(entry, days))]
+        table.show(BIN_HEADERS, entries, cells,
+                   actions=lambda entry: [("restore", lambda e=entry: self.restore_entry(e), True)])
 
     def restore_entry(self, entry):
         book = self._book()
@@ -19550,9 +23519,9 @@ class ImportWindow(ctk.CTkToplevel):
     def _read(self):
         text = self.paste.get("1.0", "end").strip()
         if text:
-            return IMP.read_text(text, self._default(), MAX_RIGS), "pasted text"
+            return IMP.read_text(text, self._default(), SITE_RIGS), "pasted text"
         if self._path:
-            return (IMP.read_path(self._path, self._default(), MAX_RIGS),
+            return (IMP.read_path(self._path, self._default(), SITE_RIGS),
                     os.path.basename(self._path))
         return None, ""
 
@@ -19646,12 +23615,13 @@ class MapFilterWindow(ctk.CTkToplevel):
                      text_color=TEXT).pack(side="left")
         self.commodity = tip(ctk.CTkComboBox(
             row, width=300, height=30, font=F_BODY, **BOX,
-            values=["Any"] + list(SV.KNOWN_COMMODITIES)),
+            values=material_names(getattr(self.app, "settings", None))),
             "Tick one or several; Any shows them all.")
         self.commodity.set(pick_text(flt["commodities"], "Any"))
         self.commodity.pack(side="left", fill="x", expand=True)
         Suggest(self.commodity,
-                lambda typed: ["Any"] + SV.matches(list(SV.KNOWN_COMMODITIES), typed),
+                lambda typed: ["Any"] + SV.matches(
+                    material_names(getattr(self.app, "settings", None))[1:], typed),
                 multi=True)
         self.amount = self._choice(top, "Amount", MF.AMOUNT_CHOICES, flt["amount"])
         self.density = self._choice(top, "Density", MF.DENSITY_CHOICES, flt["density"])
@@ -20152,6 +24122,11 @@ class FindFilters:
                 and book.systems:
             extra_heads.append("Powerplay")
             extra_cells.append(self._power_cells)
+        if kind == "sites":
+            # 1.10040 (#303): what a site is worth, sortable - most
+            # valuable first on the first click.
+            extra_heads.append("Value")
+            extra_cells.append(self._value_cells)
         if not extra_heads:
             return headers, builder
 
@@ -20161,6 +24136,16 @@ class FindFilters:
                 cells.extend(make(row))
             return cells
         return list(headers) + extra_heads, wide
+
+    def _value_cells(self, row):
+        """A site's rigs at the best known prices of what it carries, as
+        credits; the sort key is the value turned round, so one click puts
+        the most valuable first."""
+        price_of = getattr(self.window.app, "mine_price", None)
+        worth = BM.site_value(row, price_of) if callable(price_of) else 0.0
+        if worth <= 0:
+            return [("-", DIM, 0.0)]
+        return [("{:,.0f} Cr".format(worth), None, -worth)]
 
     @staticmethod
     def _price_cells(row):
@@ -20208,7 +24193,9 @@ class FindFilters:
             "hide_worked": win._flag(win.hide_worked, True),
             "only_verified": win._flag(win.only_verified), "sort": sort,
             # The search it was saved on (1.10038).
-            "mode": attr(win, "mode", None) or FD.DEFAULT_MODE}
+            "mode": attr(win, "mode", None) or FD.DEFAULT_MODE,
+            # Powerplay's own filters (1.10040).
+            "pp": win._pp_state() if hasattr(win, "_pp_state") else {}}
 
     def restore(self, state):
         """Put the window back as a saved search had it. Anything the saved
@@ -20242,6 +24229,8 @@ class FindFilters:
             win.hide_worked.set(bool(state.get("hide_worked", True)))
             win.only_verified.set(bool(state.get("only_verified", False)))
             set_picks(win.commodity, state.get("commodity") or [])
+            if hasattr(win, "_pp_restore"):
+                win._pp_restore(state.get("pp"))
         finally:
             self._building = False
         sort = state.get("sort")
@@ -20258,6 +24247,85 @@ class FindFilters:
 BODY_FILTER_HINT = ("Search bodies by type, volcanism, gravity, temperature and "
                     "signals - in this system, or in every system your "
                     "journals have been to.")
+
+
+class GroundFold:
+    """Where to land's By ground fold (1.10040, #305): shut to begin with,
+    like Body filters. Open, a button for each kind of ground in the system;
+    one pressed shows the share of the shared sites on that ground that
+    carried each commodity. One ground open at a time."""
+
+    def __init__(self, window, parent):
+        self.window = window
+        self.expanded = False
+        self.open = None
+        self.heads = []
+        self._entries, self._drawn = [], None
+        panel = ctk.CTkFrame(parent, fg_color="transparent")
+        panel.pack(fill="x", padx=12, pady=(0, 8))
+        self.toggle_button = tip(ctk.CTkButton(
+            panel, text="By ground  +", width=140, height=28, font=F_STRONG,
+            **BTN_SECONDARY, command=self.toggle),
+            "Each kind of ground in this system, and how often the shared sites "
+            "on it carried each commodity.")
+        self.toggle_button.pack(anchor="w")
+        self.detail = ctk.CTkFrame(panel, fg_color="transparent")
+
+    def toggle(self):
+        self.expanded = not self.expanded
+        if self.expanded:
+            self.detail.pack(fill="x", pady=(6, 0))
+        else:
+            self.detail.pack_forget()
+        self.toggle_button.configure(text="By ground  %s" % ("-" if self.expanded else "+"))
+        self._draw()
+
+    def show(self, entries):
+        """The grounds of the system in hand (bestmine.by_ground)."""
+        self._entries = list(entries or [])
+        if self.open not in {entry["ground"] for entry in self._entries}:
+            self.open = None
+        self._draw()
+
+    def open_ground(self, ground):
+        """Open one ground, shutting whichever was open; again shuts it."""
+        self.open = None if self.open == ground else ground
+        self._draw()
+
+    def _draw(self):
+        """Draw only when something shown has changed. Must not raise."""
+        try:
+            wanted = (self.expanded, self.open,
+                      tuple((e["ground"], e["sites"], tuple(e["bodies"]), tuple(e["shares"]))
+                            for e in self._entries))
+            if wanted == self._drawn:
+                return
+            self._drawn = wanted
+            for widget in self.detail.winfo_children():
+                widget.destroy()
+            self.heads = []
+            if not self.expanded:
+                return
+            if not self._entries:
+                ctk.CTkLabel(self.detail, text="No body here has a known kind of ground yet.",
+                             font=F_SMALL, text_color=DIM, anchor="w").pack(fill="x")
+                return
+            for entry in self._entries:
+                is_open = entry["ground"] == self.open
+                button = ctk.CTkButton(
+                    self.detail, text=BM.ground_heading(entry) + ("  -" if is_open else "  +"),
+                    anchor="w", height=26, font=F_SMALL_B,
+                    **(BTN_PRIMARY if is_open else BTN_SECONDARY),
+                    command=lambda g=entry["ground"]: self.open_ground(g))
+                button.pack(fill="x", pady=1)
+                self.heads.append(button)
+                if is_open:
+                    ctk.CTkLabel(self.detail, text=BM.share_words(entry), font=F_SMALL,
+                                 text_color=TEXT if entry["shares"] else DIM,
+                                 justify="left", anchor="w", wraplength=860).pack(
+                        fill="x", padx=12, pady=(0, 4))
+        except Exception:
+            pass        # the window has gone; there is nothing left to draw
 
 
 class BodyFilterBar:
@@ -21042,6 +25110,11 @@ class LeaderboardWindow(ToolWindow):
                           font=F_STRONG, **BTN_SECONDARY, command=self.open_web),
             "The board, and what the community map took in lately, in your "
             "browser - a page you can share.").pack(side="right", padx=(8, 0))
+        tip(ctk.CTkButton(bar, text="Share my week", width=130, height=32,
+                          font=F_STRONG, **BTN_SECONDARY, command=self.share_week),
+            "Your week on the surface as a card - finds, sites, best patch, "
+            "furthest, your place on the board - saved in the pictures folder "
+            "and opened, ready to post.").pack(side="right", padx=(8, 0))
         self.join = ctk.CTkButton(bar, text="Join", width=100, height=32,
                                   font=F_STRONG, **BTN_SECONDARY,
                                   command=self.toggle)
@@ -21159,6 +25232,14 @@ class LeaderboardWindow(ToolWindow):
         except Exception as exc:
             self.say("Could not open a browser: %s" % exc, RED)
             return False
+
+    def share_week(self):
+        """Share my week: the app fetches and opens your card, and this
+        window repeats what the app said about it."""
+        got = self.app.share_my_week()
+        said = attr(self.app, "_last_said", None) or ("", None)
+        self.say(said[0], said[1])
+        return got
 
     def toggle(self):
         opted, _sharing = self.opted()
@@ -21286,7 +25367,9 @@ def already_running():
 def report_crash(exc):
     """No console when installed, so write a log and say something."""
     import traceback
-    detail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    # Any webhook address taken out, as everywhere else crash.log is written.
+    detail = SB.scrub("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                      home="")
     log = os.path.join(DATA_DIR, "crash.log")
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -21300,7 +25383,7 @@ def report_crash(exc):
         root = tk.Tk(); root.withdraw()
         messagebox.showerror(APP_TITLE,
                              "%s: %s\n\nDetails written to:\n%s"
-                             % (type(exc).__name__, exc, log))
+                             % (type(exc).__name__, SB.scrub(exc, home=""), log))
         root.destroy()
     except Exception:
         print(detail)
@@ -21312,13 +25395,8 @@ if __name__ == "__main__":
         raise SystemExit(0)
     tidy_after_update()
     try:
+        # The window puts its own icon on (wear_icon).
         window = EDSMT()
-        icon = os.path.join(getattr(sys, "_MEIPASS", app_dir()), "radioraxxla.ico")
-        if os.path.exists(icon):
-            try:
-                window.iconbitmap(icon)
-            except Exception:
-                pass
         window.mainloop()
     except Exception as exc:
         report_crash(exc)

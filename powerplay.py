@@ -34,6 +34,7 @@ import os
 import tempfile
 import threading
 
+import catchup as CU
 import survey as SV
 
 POWERPLAY_FILE = "powerplay.json"
@@ -640,12 +641,11 @@ class PowerBook:
     def learn_file(self, path):
         """Read the pledge and the systems out of one journal. How many
         notes changed anything."""
-        with open(path, "rb") as handle:
-            data = handle.read()
-        if b'"Power' not in data:
+        # A chunk at a time, never the whole file in memory (1.10040, #276).
+        if not CU.contains(path, b'"Power'):
             return 0
         changed = 0
-        for raw in data.splitlines():
+        for raw in CU.lines_of(path):
             if b'"event"' not in raw:
                 continue
             if not (b'"PowerplayState"' in raw or b'"ControllingPower"' in raw

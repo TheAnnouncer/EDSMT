@@ -753,6 +753,9 @@ def on_screen(title):
 def texts_in(widget):
     out = []
     for child in widget.winfo_children():
+        # A table on the tree view (1.10040) says what its rows show.
+        if callable(getattr(child, "texts", None)):
+            out.extend(child.texts())
         try:
             out.append(str(child.cget("text")))
         except Exception:
@@ -785,7 +788,7 @@ if HAVE_DISPLAY:
     JOURNALS = os.path.join(TMP, "journals")
     os.makedirs(JOURNALS, exist_ok=True)
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-        json.dump({"asked_to_share": True, "journal_dir": JOURNALS, "find_unlocked": True}, _f)
+        json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "journal_dir": JOURNALS, "find_unlocked": True}, _f)
     app = A.EDSMT()
     app.geometry("1400x900+0+0")
     app.updates.check = lambda *args, **kwargs: None
@@ -1081,11 +1084,14 @@ def _bodies_windows():
     pump()
 
 
-@on_screen("Powerplay: the window opens from its button and lists where it counts")
+@on_screen("Powerplay: the window opens from its tab and lists where it counts")
 def _powerplay_window():
-    button = find_button(app, "Powerplay")
-    check("there is a Powerplay button on the main window", button is not None)
-    button.invoke()
+    # 1.10040 (#310): the tools are chevrons on the tab strip, not buttons.
+    pump(4)
+    tab = next((t for t in app.tab_strip.tabs if t.key == "powerplay"), None)
+    check("there is a Powerplay tab on the main window", tab is not None)
+    app.tab_strip.event_generate("<Button-1>", x=int(tab.text_x),
+                                 y=int(app.tab_strip.winfo_height() / 2))
     pump(4)
     win = app.power_window
     check("pressing it opens the Powerplay window", win is not None and win.winfo_exists()

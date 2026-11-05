@@ -210,7 +210,7 @@ A.SETTINGS_FILE = os.path.join(A.DATA_DIR, "settings.json")
 JOURNALS = os.path.join(TMP, "journals")
 os.makedirs(JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-    json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS}, _f)
+    json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "tour_done": True, "journal_dir": JOURNALS}, _f)
 app = A.EDSMT()
 app.geometry("1600x1000+0+0")
 app.updates.check = lambda *args, **kwargs: None
@@ -259,18 +259,26 @@ def _land_window():
     lander._paint()
     pump(6)
     top = lander._rows[0]
-    cells = {text_of(w): w for w in labels_in(lander.table)}
+    # 1.10040 (#308): the table is a tree view; a cell's whole text is the
+    # tip the tree shows for the cell under the mouse.
+    cells = lander.table.texts()
     check("the Why cell shows the few words", top["why"] in cells, sorted(cells)[:12])
     check("not the sentence", top["note"] not in cells)
-    cell = cells.get(top["why"])
+    why = A.LAND_HEADERS.index("Why")
     check("the sentence is the cell's tooltip",
-          getattr(cell, "_edsmt_tip", None) == top["note"], getattr(cell, "_edsmt_tip", None))
+          lander.table.cell_text(0, why) == (top["why"], top["note"]), lander.table.cell_text(0, why))
+    tree = lander.table.tree
+    box = tree.bbox(tree.get_children()[0], "#%d" % (why + 1))
+    lander.table._hover(type("E", (), {"x": box[0] + 4, "y": box[1] + 4,
+                                       "x_root": 100, "y_root": 100})())
     app.settings["show_tips"] = False
     try:
-        cell._edsmt_tooltip._show()
+        check("the tip under the mouse is that sentence", lander.table._tip.text == top["note"],
+              lander.table._tip.text)
+        lander.table._tip._show()
         check("and it shows with tips switched off - it is the table's content, not a "
-              "note on a control", cell._edsmt_tooltip._win is not None)
-        cell._edsmt_tooltip._hide()
+              "note on a control", lander.table._tip._win is not None)
+        lander.table._tip._hide()
         button = next(w for w in walk(lander) if text_of(w) == "Copy all")
         button._edsmt_tooltip._show()
         check("while a control's note still stays hidden with tips off",

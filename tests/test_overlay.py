@@ -176,8 +176,8 @@ check("what the scope centres on is pickable too",
 check("the settings screen exposes them all",
       all(('"%s"' % k) in src for k in sorted(defaults) if k.startswith("overlay_")
           and k not in ("overlay_x", "overlay_y")))
-check("the overlay is off until asked for",
-      '"overlay_enabled": False' in src)
+check("the overlay is on from the first start (#313)",
+      '"overlay_enabled": True' in src)
 
 print("== the window is actually visible ==")
 # This exists because the overlay shipped invisible on every machine it was
@@ -591,8 +591,12 @@ _two = drawn([row(420, 200, id="u1", commodity="Haematite", rigs="6"),
 check("two finds, both named, is not '2 unlabelled'",
       not any(t.endswith("unlabelled") for t in texts(_two)), texts(_two))
 check("the commander is a chevron", len(shapes(scope, "create_polygon")) >= 1)
-check("and it is amber, the Radio Raxxla colour",
-      any(kw.get("fill") == OV.AMBER for _a, kw in shapes(scope, "create_polygon")))
+# 1.10040 (#304): you are drawn in a marker colour of your own, apart from
+# the theme's colours - a cyan on every theme unless one is picked.
+_mine = OV.marker_colour({"overlay_mode": "radar"})
+check("and it is your marker colour, apart from the theme's own",
+      any(str(kw.get("fill", "")).lower() == _mine for _a, kw in shapes(scope, "create_polygon"))
+      and _mine not in (OV.ORANGE.lower(), OV.AMBER.lower()), _mine)
 check("nothing drawn is green",
       not any(str(kw.get("fill", "")).lower() in ("green", "#00ff00", "#0f0")
               for _n, _a, kw in scope.calls))

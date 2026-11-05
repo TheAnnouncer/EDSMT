@@ -485,13 +485,15 @@ d.settings = dict(A.DEFAULT_SETTINGS)
 d.watcher = type("W", (), {"cmdr": "Jameson"})()
 check("with no webhook set, nothing is posted", d.post_discord_find({"commodity": "Gold"}) is False
       and d.worker.jobs == [])
-d.settings["discord_webhook"] = HOOK
+# 1.10040: the webhook is a row of the list, its switches its own.
+d.settings["discord_webhooks"] = [{"name": "My Discord", "url": HOOK, "finds": False,
+                                   "sessions": True, "map": True}]
 check("with one, but per-find posts off - the default from 1.10035 - a find does not go",
       d.post_discord_find({"commodity": "Gold"}) is False)
-d.settings["discord_post_finds"] = True
+d.settings["discord_webhooks"][0]["finds"] = True
 check("with one, a find goes", d.post_discord_find({"commodity": "Gold"})
       and d.worker.jobs == [EDO.DISCORD_TAG])
-d.settings["discord_post_finds"] = False
+d.settings["discord_webhooks"][0]["finds"] = False
 check("unless finds are switched off", d.post_discord_find({"commodity": "Gold"}) is False)
 d.earnings = type("E", (), {"sessions": [dict(run, id="old")]})()
 check("sessions already over when EDSMT starts are not posted",
@@ -503,15 +505,17 @@ check("one that ends is posted once", d.post_discord_sessions() == 1
       and d.worker.jobs.count(EDO.DISCORD_TAG) == 2, d.worker.jobs)
 check("and not again", d.post_discord_sessions() == 0)
 built = method("SettingsWindow", "__init__")
+# 1.10040: a row for each webhook (test_110040_webhooks.py drives them).
+row = method("SettingsWindow", "add_hook_row")
 check("Settings has a Discord section, the address behind dots",
-      '"discord_webhook", "Webhook URL"' in built and "secret=True" in
-      built[built.index('"discord_webhook"'):built.index('"discord_webhook"') + 200])
-check("with the two switches and a test button",
-      '"discord_post_finds"' in built and '"discord_post_sessions"' in built
-      and "command=self.test_discord" in built)
+      '"Discord"' in built and "self.hooks_box" in built and "show=MASK" in row)
+check("with the switches and a test button",
+      '("finds", "Finds")' in row and '("sessions", "Sessions")' in row
+      and "self.test_discord(row)" in row)
 saving = method("SettingsWindow", "save")
 check("and Save refuses an address that is not a webhook",
-      "EDO.discord_hook_ok(hook)" in saving)
+      "self.hooks_to_save()" in saving
+      and "EDO.discord_hook_ok(url)" in method("SettingsWindow", "hooks_to_save"))
 check("a marked find is posted from the one place finds are recorded",
       "self.post_discord_find(record)" in method("EDSMT", "mark_deposit"))
 check("ended sessions are looked for every tick",

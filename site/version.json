@@ -1,15 +1,16 @@
 {
-  "version": "1.10039",
+  "version": "1.10040",
   "url": "https://radioraxxla.com/EDSMT/",
-  "headline": "New \u2014 Linux, a Theme tab with Powerplay and in-game colours, overlay boxes that change shape",
+  "headline": "New \u2014 a welcome window",
   "installer": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10039",
-    "sha256": "56647f27abcac178df7c4a4f62a6e139af11bb60c1eb286e315c725f64fbd589",
-    "bytes": 18848700
+    "url": "https://radioraxxla.com/EDSMT/EDSMT-Setup.exe?v=1.10040",
+    "sha256": "f52863d2d00e3660152fc883af9feb8995446569beb961ba838d84fa7e630b32",
+    "bytes": 22703349
   },
   "portable": {
-    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10039",
-    "sha256": "920c0a69e5cddfc7aa02de8d1ad4afe9c8063824ffa36c7dd3b4cb4fbf666a1e",
-    "bytes": 24231017
-  }
+    "url": "https://radioraxxla.com/EDSMT/EDSMT.exe?v=1.10040",
+    "sha256": "4c3d791a1082e83e3bed7413b1efd62a3bfb05f1a6681094b69859f08f99d6e3",
+    "bytes": 28847093
+  },
+  "signature": "QZDB2rWCLvyEVAt+HXT/sCrwwKEn6IGK6dur712F29bZ/OAda97fiUWiKQbe/WGzQIS+u67L8azd3+6ScFJhAQ=="
 }

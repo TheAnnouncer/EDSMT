@@ -206,7 +206,9 @@ with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
                "show_tips": False, "journal_dir": JOURNALS,
                "overlay_enabled": True, "overlay_hint_shown": 9,
                "community_share_cmdr_name": True, "rig_offset_m": 0,
-               "golden_radius_m": 600}, _f)
+               "golden_radius_m": 600,
+               # The welcome window is for a person, not a screenshot.
+               "welcome_seen_version": A.APP_VERSION}, _f)
 
 app = A.EDSMT()
 app.updates.check = lambda *args, **kwargs: None

@@ -54,7 +54,7 @@ A.SETTINGS_FILE = os.path.join(A.DATA_DIR, "settings.json")
 JOURNALS = os.path.join(TMP, "journals")
 os.makedirs(JOURNALS, exist_ok=True)
 with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-    json.dump({"asked_to_share": True, "tour_done": True, "journal_dir": JOURNALS}, _f)
+    json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "tour_done": True, "journal_dir": JOURNALS}, _f)
 app = A.EDSMT()
 app.geometry("1600x1000+0+0")
 app.updates.check = lambda *args, **kwargs: None
@@ -90,7 +90,8 @@ def _tabs():
           and "tools_as_tabs" in A.SETTING_TIPS)
     check("the map is on show to begin with", app.active_tab == "map"
           and app.plan.winfo_manager() == "grid")
-    check("the top bar has a Map tab beside the six", set(app.tab_buttons) ==
+    # 1.10040 (#310): the tabs are a chevron strip under the status strip.
+    check("the tab strip has a Map tab beside the six", {t.key for t in app.tab_strip.tabs} ==
           {"map", "find", "sites", "land", "earnings", "powerplay", "leaderboard"})
     for key, opener, cls in OPENERS:
         tool = opened(opener)
@@ -100,7 +101,7 @@ def _tabs():
         check("%s is on show in the map's place, and its button is lit" % key,
               app.active_tab == key and tool.winfo_manager() == "grid"
               and app.plan.winfo_manager() == ""
-              and app.tab_buttons[key].cget("fg_color") == A.BTN_PRIMARY["fg_color"])
+              and app.tab_strip.lit == key)
         check("and the tab has the window's width: the rail steps aside (%s)" % key,
               app.rail_frame.winfo_manager() == "")
         others = [k for k, t in app.docked_tools.items() if k != key and t.winfo_manager()]

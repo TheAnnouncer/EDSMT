@@ -226,6 +226,8 @@ def build_scene(rows, system="", body="", signal="", anchor=None, survey=None,
             "id": item["id"], "x": px, "y": py, "r": item["radius"],
             "commodity": item["commodity"], "colour": colour(item["commodity"]),
             "hollow": facts["depleted"], "rigs": facts["rigs"],
+            # A site card (1.10040, #325): the rest of the body, faint.
+            "dim": bool(deposit.get("dim")) if (deposit := item.get("deposit") or {}) else False,
             "range_m": item["range_m"], "amount": facts["amount"],
             "density": facts["density"],
             "from_centre_m": math.hypot(item["east_m"], item["north_m"]),
@@ -370,7 +372,9 @@ def draw_scene(scene):
         circle(p["x"], p["y"], p["r"], outline=GOLD, line=2)
     for marker in scene["markers"]:
         r = marker["r"]
-        if marker["hollow"]:
+        if marker.get("dim"):
+            circle(marker["x"], marker["y"], max(3, r * 0.6), fill=PLOT, outline=DIM, line=1)
+        elif marker["hollow"]:
             circle(marker["x"], marker["y"], r, fill=PLOT, outline=marker["colour"], line=2)
         else:
             circle(marker["x"], marker["y"], r, fill=marker["colour"], outline=BACKGROUND)
@@ -389,6 +393,8 @@ def draw_scene(scene):
     ordered = sorted(scene["markers"], key=lambda m: (-(int(m["rigs"]) if str(m["rigs"]).isdigit() else 0),
                                                      m["range_m"]))
     for marker in ordered:
+        if marker.get("dim"):
+            continue
         label = marker["commodity"] or "Unknown"
         if marker["rigs"]:
             label += "  %sR" % marker["rigs"]

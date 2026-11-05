@@ -38,7 +38,8 @@ CHECKS = [
  (1,  "Find window opens at all",            lambda: "_rewrap" in DEFS),
  (2,  "click-then-press hotkey binding",     lambda: wired("binding_from_event")),
  (3,  "says when a hotkey is taken",         lambda: "already taken" in APP),
- (4,  "copy buttons on system name",         lambda: "COPY_COLUMN = 0" in APP and APP.count("column=COPY_COLUMN") >= 2),
+ (4,  "copy buttons on system name",         lambda: "COPY_COLUMN = 0" in APP and APP.count("column=COPY_COLUMN") >= 1
+                                                      and APP.count('("system", "the system name"') >= 2),
  (5,  "Find filters reach the server",       lambda: '"name"' in APP and "verified_only" in EDO),
  (6,  "sortable columns",                    lambda: wired("sort_by") and "def _sorted" in APP),
  (7,  "commander shown on EVERY table",      lambda: APP.count("self._found_by(row)") >= 3),

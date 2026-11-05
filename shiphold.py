@@ -21,6 +21,8 @@ import math
 import os
 import threading
 
+import catchup as CU
+
 CAPACITY_FILE = "ship_capacity.json"
 RHINO_HOLD_T = 72                       # the largest Rhino tick seen, WATCH
 _LOADOUT = b'"Loadout"'
@@ -134,12 +136,11 @@ class CapacityBook:
 
     def learn_file(self, path):
         """Every Loadout in one journal file. How many were new."""
-        with open(path, "rb") as handle:
-            data = handle.read()
-        if _LOADOUT not in data:
+        # A chunk at a time, never the whole file in memory (1.10040, #276).
+        if not CU.contains(path, _LOADOUT):
             return 0
         learnt = 0
-        for raw in data.split(b"\n"):
+        for raw in CU.lines_of(path):
             if _LOADOUT not in raw:
                 continue
             try:

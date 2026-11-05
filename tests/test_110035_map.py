@@ -402,7 +402,11 @@ if HAVE_DISPLAY:
     JOURNALS = os.path.join(TMP, "journals")
     os.makedirs(JOURNALS, exist_ok=True)
     with open(A.SETTINGS_FILE, "w", encoding="utf-8") as _f:
-        json.dump({"asked_to_share": True, "journal_dir": JOURNALS}, _f)
+        # The trail is off on a new install since 1.10040 (#313); these checks draw it.
+        # The overlay (on for a new install since then too) would draw on its own
+        # timer over these hand-made draws, so it stays off as it was before.
+        json.dump({"asked_to_share": True, "welcome_seen_version": A.APP_VERSION, "journal_dir": JOURNALS,
+                   "map_trail": True, "overlay_enabled": False, "overlay_show_deposit": False}, _f)
     app = A.EDSMT()
     app.geometry("1400x900+0+0")
     app.updates.check = lambda *args, **kwargs: None

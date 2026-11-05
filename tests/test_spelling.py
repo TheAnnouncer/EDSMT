@@ -68,7 +68,11 @@ SOURCES = ["edsmt.py", "overlay.py", "journal.py", "survey.py", "edonline.py",
            "finder.py", "powerplay.py", "mapimage.py", "shiphold.py", "sessionledger.py", "supportbundle.py", "sellplan.py", "board.py", "crowd.py", "presale.py", "gamebinds.py", "galaxy.py",
            "waypoints.py", "guidance.py", "chattags.py", "inputdev.py", "inputmix.py", "importers.py", "regrowth.py", "sitebook.py", "markerfilter.py",
            # 1.10039: the overlay's shape, the game's colours and the X side of the hotkeys say things too.
-           "warp.py", "gametheme.py", "x11keys.py"]
+           "warp.py", "gametheme.py", "x11keys.py",
+           # 1.10040: the OBS page and the session card.
+           "streamout.py", "sessioncard.py",
+           # 1.10040: the voice lines, the sonar and the VoiceAttack profile.
+           "voice.py", "sonar.py", "voiceattack.py"]
 # Anything else to hold to the same spelling, as full paths separated by
 # os.pathsep - how the checks kept beside the API's source use this list.
 SOURCES += [p for p in os.environ.get("EDSMT_SPELL_EXTRA", "").split(os.pathsep) if p]
@@ -97,7 +101,8 @@ for name in SOURCES:
 
 
 print("== the documents ==")
-DOCS = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "docs/GUIDE.md"]
+DOCS = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "docs/GUIDE.md",
+        "docs/VOICEATTACK.md"]
 for name in DOCS:
     path = os.path.join(REPO, name)
     if not os.path.exists(path):

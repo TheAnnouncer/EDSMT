@@ -406,13 +406,16 @@ print("== no shape: exactly what 1.10038 drew ==")
 # on every box, its arguments rounded to a thousandth of a pixel and its
 # colours written as #colour (the themes are reworked on their own). With
 # no shape set, this release must draw the same marks, in the same order.
+# 1.10040 (#304): the commander's chevron on the radar and the deposit card
+# carries the tag "me", so it can wear a marker colour of its own. The same
+# points, the same order, nothing added - re-pinned for those four only.
 FLAT_1_10038 = {
-    "deposit locked": "59b9e705165ee6310944/61",
-    "deposit unlocked": "0de1cec16ce12224aac5/68",
+    "deposit locked": "fd370cc7ecdb9a6fadc3/61",
+    "deposit unlocked": "1a92922b2968b1ccc710/68",
     "guide locked": "a4000a57e1baee0472bb/21",
     "guide unlocked": "d7c3349cd219719969a4/28",
-    "radar locked": "3cbb2dbfc388b9a37360/56",
-    "radar unlocked": "92d2de393cfda7367e5e/63",
+    "radar locked": "394f79a4adc759efb85b/56",
+    "radar unlocked": "f98ac7e14c6f42cabecc/63",
     "status locked": "3d277aa62b142048f927/37",
     "status unlocked": "bf5d0f2fe66effa81e02/41",
     "strip locked": "bb034b37f3cbc48db4fa/27",
