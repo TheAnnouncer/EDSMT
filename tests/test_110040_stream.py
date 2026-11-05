@@ -823,13 +823,23 @@ def _app_server():
     app.follow_stream()
     check("off: nothing listens", not app.stream_server().running)
     port = free_port()
+    # What the main window said, not only the line it shows now: on a
+    # machine with no network another notice (the leaderboard, unreachable)
+    # can take the status line a moment later (GitHub's Windows runner).
+    heard = []
+    real_say = app.say
+
+    def say(text, *args, **kwargs):
+        heard.append(str(text))
+        return real_say(text, *args, **kwargs)
+    app.say = say
     try:
         on(stream_enabled=True, stream_port=port)
         app.follow_stream()
         check("on: listening on 127.0.0.1 at that port", app.stream_server().running
               and app.stream_server().address() == ("127.0.0.1", port), app.stream_server().address())
         check("and the main window says where to point OBS",
-              SO.page_url(port) in app.status.cget("text"), app.status.cget("text"))
+              any(SO.page_url(port) in line for line in heard + [app.status.cget("text")]), heard[-3:])
         publish()
         status, _h, body = fetch(port, "/state.json")
         check("the page's state is the app's", status == 200 and json.loads(body)["cmdr"] == "Jameson"
@@ -842,7 +852,7 @@ def _app_server():
         app.settings["stream_port"] = "80"
         app.follow_stream()
         check("a port it may not use: stopped, and says what it needs", not app.stream_server().running
-              and "1024" in app.status.cget("text"), app.status.cget("text"))
+              and any("1024" in line for line in heard[-3:] + [app.status.cget("text")]), heard[-3:])
         port2 = free_port()
         app.settings["stream_port"] = port2
         app.follow_stream()
@@ -856,6 +866,7 @@ def _app_server():
         app._save_on_exit()
         check("and the port is let go first when the app closes or restarts", not app.stream_server().running)
     finally:
+        app.say = real_say
         app.settings["stream_enabled"] = False
         app.stop_stream()
 
